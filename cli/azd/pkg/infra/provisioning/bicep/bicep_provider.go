@@ -463,7 +463,11 @@ func parametersHash(templateParameters azure.ArmTemplateParameterDefinitions, pa
 	for paramName, paramDefinition := range templateParameters {
 		pValue := paramDefinition.DefaultValue
 		if param, exists := params[paramName]; exists {
-			pValue = param.Value
+			if paramValue, ok := param.(azure.ArmParameterValue); ok {
+				pValue = paramValue.Value
+			} else if paramRef, ok := param.(azure.ArmParameterKeyvaultReference); ok {
+				pValue = paramRef.Reference
+			}
 		}
 		nameAndValueParams[paramName] = pValue
 	}
@@ -1483,7 +1487,7 @@ func (p *BicepProvider) createOutputParameters(
 
 // loadParameters reads the parameters file template for environment/module specified by Options,
 // doing environment and command substitutions, and returns the values.
-func (p *BicepProvider) loadParameters(ctx context.Context) (map[string]azure.ArmParameterValue, error) {
+func (p *BicepProvider) loadParameters(ctx context.Context) (map[string]azure.ArmParameter, error) {
 	parametersFilename := fmt.Sprintf("%s.parameters.json", p.options.Module)
 	parametersRoot := p.options.Path
 
@@ -1830,28 +1834,34 @@ func (p *BicepProvider) ensureParameters(
 		// If a value is explicitly configured via a parameters file, use it.
 		// unless the parameter value inference is nil/empty
 		if v, has := parameters[key]; has {
-			paramValue := armParameterFileValue(parameterType, v.Value, param.DefaultValue)
-
-			if paramValue != nil {
-				needForDeployParameter := hasMetadata &&
-					azdMetadata.Type != nil &&
-					*azdMetadata.Type == azure.AzdMetadataTypeNeedForDeploy
-				if needForDeployParameter && paramValue == "" && param.DefaultValue != nil {
-					// Parameters with needForDeploy metadata don't support overriding with empty values when a default
-					// value is present. If the value is empty, we'll use the default value instead.
-					defValue, castOk := param.DefaultValue.(string)
-					if castOk {
-						paramValue = defValue
-					}
-				}
-				configuredParameters[key] = azure.ArmParameterValue{
-					Value: paramValue,
-				}
-				if needForDeployParameter {
-					mustSetParamAsConfig(key, paramValue, p.env.Config, param.Secure())
-					configModified = true
-				}
+			fmt.Printf("Type: %T\n", v)
+			if kvRef, ok := v.(azure.ArmParameterKeyvaultReference); ok {
+				configuredParameters[key] = kvRef
 				continue
+			} else if v, ok := v.(azure.ArmParameterValue); ok {
+				paramValue := armParameterFileValue(parameterType, v.Value, param.DefaultValue)
+
+				if paramValue != nil {
+					needForDeployParameter := hasMetadata &&
+						azdMetadata.Type != nil &&
+						*azdMetadata.Type == azure.AzdMetadataTypeNeedForDeploy
+					if needForDeployParameter && paramValue == "" && param.DefaultValue != nil {
+						// Parameters with needForDeploy metadata don't support overriding with empty values when a default
+						// value is present. If the value is empty, we'll use the default value instead.
+						defValue, castOk := param.DefaultValue.(string)
+						if castOk {
+							paramValue = defValue
+						}
+					}
+					configuredParameters[key] = azure.ArmParameterValue{
+						Value: paramValue,
+					}
+					if needForDeployParameter {
+						mustSetParamAsConfig(key, paramValue, p.env.Config, param.Secure())
+						configModified = true
+					}
+					continue
+				}
 			}
 		}
 

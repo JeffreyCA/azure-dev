@@ -257,8 +257,10 @@ func (d *StackDeployments) DeployToSubscription(
 
 	stackParams := map[string]*armdeploymentstacks.DeploymentParameter{}
 	for k, v := range parameters {
-		stackParams[k] = &armdeploymentstacks.DeploymentParameter{
-			Value: v.Value,
+		if v, ok := v.(azure.ArmParameterValue); ok {
+			stackParams[k] = &armdeploymentstacks.DeploymentParameter{
+				Value: v.Value,
+			}
 		}
 	}
 
@@ -320,8 +322,10 @@ func (d *StackDeployments) DeployToResourceGroup(
 
 	stackParams := map[string]*armdeploymentstacks.DeploymentParameter{}
 	for k, v := range parameters {
-		stackParams[k] = &armdeploymentstacks.DeploymentParameter{
-			Value: v.Value,
+		if v, ok := v.(azure.ArmParameterValue); ok {
+			stackParams[k] = &armdeploymentstacks.DeploymentParameter{
+				Value: v.Value,
+			}
 		}
 	}
 
