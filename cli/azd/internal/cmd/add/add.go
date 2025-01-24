@@ -183,6 +183,8 @@ func (a *AddAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 		return nil, fmt.Errorf("marshalling yaml: %w", err)
 	}
 
+	fmt.Printf("Marshalled yaml: %s\n", string(new))
+
 	newCfg, err := project.Parse(ctx, string(new))
 	if err != nil {
 		return nil, fmt.Errorf("re-parsing yaml: %w", err)

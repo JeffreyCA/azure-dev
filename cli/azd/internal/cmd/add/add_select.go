@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
 )
@@ -28,6 +29,7 @@ func (a *AddAction) selectMenu() []Menu {
 	return []Menu{
 		{Namespace: "db", Label: "Database", SelectResource: selectDatabase},
 		{Namespace: "host", Label: "Host service"},
+		{Namespace: "storage", Label: "Storage", SelectResource: selectStorage},
 		{Namespace: "ai.openai", Label: "Azure OpenAI", SelectResource: a.selectOpenAi},
 	}
 }
@@ -54,5 +56,35 @@ func selectDatabase(
 	}
 
 	r.Type = resourceTypesDisplayMap[resourceTypesDisplay[dbOption]]
+	return r, nil
+}
+
+func selectStorage(
+	console input.Console,
+	ctx context.Context,
+	p promptOptions) (*project.ResourceConfig, error) {
+	resourceTypesDisplayMap := make(map[string]project.ResourceType)
+
+	for _, resourceType := range project.AllResourceTypes() {
+		if strings.HasPrefix(string(resourceType), "storage") {
+			resourceTypesDisplayMap[resourceType.String()] = resourceType
+		}
+	}
+
+	r := &project.ResourceConfig{}
+	resourceTypesDisplay := slices.Sorted(maps.Keys(resourceTypesDisplayMap))
+	storageOption, err := console.Select(ctx, input.ConsoleOptions{
+		Message: "Which type of storage account?",
+		Options: resourceTypesDisplay,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	r.Type = resourceTypesDisplayMap[resourceTypesDisplay[storageOption]]
+	r.Props = project.StorageProps{
+		// Containers: []string {"container1"},
+		AuthType: internal.AuthTypeConnectionString,
+	}
 	return r, nil
 }

@@ -40,6 +40,13 @@ func configure(
 
 		r.Name = "redis"
 		return r, nil
+	case project.ResourceTypeStorage:
+		if _, exists := p.prj.Resources["storage"]; exists {
+			return nil, fmt.Errorf("only one Storage resource is allowed at this time")
+		}
+
+		r.Name = "storage"
+		return r, nil
 	default:
 		return r, nil
 	}

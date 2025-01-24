@@ -5,6 +5,7 @@ package project
 
 import (
 	"fmt"
+
 	"github.com/azure/azure-dev/cli/azd/internal"
 
 	"github.com/braydonk/yaml"
@@ -19,6 +20,7 @@ func AllResourceTypes() []ResourceType {
 		ResourceTypeDbMongo,
 		ResourceTypeHostContainerApp,
 		ResourceTypeOpenAiModel,
+		ResourceTypeStorage,
 	}
 }
 

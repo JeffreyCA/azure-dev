@@ -6,12 +6,14 @@ package project
 import (
 	"context"
 	"fmt"
-	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/azure/azure-dev/cli/azd/internal"
+	"github.com/azure/azure-dev/cli/azd/pkg/input"
 
 	"github.com/azure/azure-dev/cli/azd/internal/scaffold"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
@@ -146,6 +148,11 @@ func infraSpec(projectConfig *ProjectConfig, console input.Console, ctx context.
 			infraSpec.DbPostgres = &scaffold.DatabasePostgres{
 				DatabaseName: res.Name,
 				DatabaseUser: "pgadmin",
+			}
+		case ResourceTypeStorage:
+			infraSpec.AzureStorageAccount = &scaffold.AzureDepStorageAccount{
+				ContainerNames: []string{res.Name},
+				AuthType: internal.AuthTypeConnectionString,
 			}
 		case ResourceTypeHostContainerApp:
 			svcSpec := scaffold.ServiceSpec{
