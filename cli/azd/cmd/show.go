@@ -18,6 +18,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
@@ -307,6 +308,11 @@ func (s *showAction) showResource(ctx context.Context, name string, env *environ
 		if err != nil {
 			return err
 		}
+	case strings.EqualFold(resType, "Microsoft.Storage/storageAccounts"):
+		err = showStorageAccount(ctx, s.console, credential, id, resourceOptions)
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("resource type '%s' is not currently supported in alpha", resType)
 	}
@@ -435,6 +441,64 @@ func showModelDeployment(
 		console.Message(ctx, "")
 	}
 
+	return nil
+}
+
+func showStorageAccount(
+	ctx context.Context,
+	console input.Console,
+	cred azcore.TokenCredential,
+	id *arm.ResourceID,
+	opts showResourceOptions,
+) error {
+	client, err := armstorage.NewAccountsClient(id.SubscriptionID, cred, opts.clientOpts)
+	if err != nil {
+		return fmt.Errorf("creating storage accounts client: %w", err)
+	}
+
+	resp, err := client.GetProperties(ctx, id.ResourceGroupName, id.Name, nil)
+	if err != nil {
+		return fmt.Errorf("getting storage account: %w", err)
+	}
+
+	console.Message(ctx, color.HiMagentaString("%s (Storage Account)", id.Name))
+
+	// Display endpoints if available
+	props := resp.Properties
+	if props != nil && props.PrimaryEndpoints != nil {
+		console.Message(ctx, "  Endpoints:")
+		if props.PrimaryEndpoints.Blob != nil {
+			console.Message(ctx, color.HiBlueString("    Blob: %s", *props.PrimaryEndpoints.Blob))
+		}
+		if props.PrimaryEndpoints.File != nil {
+			console.Message(ctx, color.HiBlueString("    File: %s", *props.PrimaryEndpoints.File))
+		}
+		if props.PrimaryEndpoints.Queue != nil {
+			console.Message(ctx, color.HiBlueString("    Queue: %s", *props.PrimaryEndpoints.Queue))
+		}
+		if props.PrimaryEndpoints.Table != nil {
+			console.Message(ctx, color.HiBlueString("    Table: %s", *props.PrimaryEndpoints.Table))
+		}
+	}
+
+	// Optionally list keys if show-secrets is set
+	if opts.showSecrets {
+		keysResp, err := client.ListKeys(ctx, id.ResourceGroupName, id.Name, nil)
+		if err != nil {
+			return fmt.Errorf("listing storage account keys: %w", err)
+		}
+
+		if len(keysResp.Keys) > 0 {
+			console.Message(ctx, "  Keys:")
+			for _, key := range keysResp.Keys {
+				if key.KeyName != nil && key.Value != nil {
+					console.Message(ctx, color.HiBlueString("    %s: %s", *key.KeyName, *key.Value))
+				}
+			}
+		}
+	}
+
+	console.Message(ctx, "") // Blank line for spacing
 	return nil
 }
 
