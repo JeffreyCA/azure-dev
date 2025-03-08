@@ -106,7 +106,14 @@ func Metadata(r *project.ResourceConfig) resourceMeta {
 			"AZURE_KEY_VAULT_ENDPOINT",
 			"AZURE_KEY_VAULT_NAME",
 		}
+	case project.ResourceTypeAiSearch:
+		res.AzureResourceType = "Microsoft.Search/searchServices"
+		res.UseEnvVars = []string{
+			"AZURE_SEARCH_ENDPOINT",
+			"AZURE_SEARCH_NAME",
+		}
 	}
+
 	return res
 }
 
