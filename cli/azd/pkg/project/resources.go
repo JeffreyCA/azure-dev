@@ -18,6 +18,7 @@ func AllResourceTypes() []ResourceType {
 		ResourceTypeDbMySql,
 		ResourceTypeDbMongo,
 		ResourceTypeDbCosmos,
+		ResourceTypeHostAppService,
 		ResourceTypeHostContainerApp,
 		ResourceTypeOpenAiModel,
 		ResourceTypeMessagingEventHubs,
@@ -36,6 +37,7 @@ const (
 	ResourceTypeDbMongo             ResourceType = "db.mongo"
 	ResourceTypeDbCosmos            ResourceType = "db.cosmos"
 	ResourceTypeHostContainerApp    ResourceType = "host.containerapp"
+	ResourceTypeHostAppService      ResourceType = "host.appservice"
 	ResourceTypeOpenAiModel         ResourceType = "ai.openai.model"
 	ResourceTypeMessagingEventHubs  ResourceType = "messaging.eventhubs"
 	ResourceTypeMessagingServiceBus ResourceType = "messaging.servicebus"
@@ -57,6 +59,8 @@ func (r ResourceType) String() string {
 		return "MongoDB"
 	case ResourceTypeDbCosmos:
 		return "CosmosDB"
+	case ResourceTypeHostAppService:
+		return "App Service"
 	case ResourceTypeHostContainerApp:
 		return "Container App"
 	case ResourceTypeOpenAiModel:
@@ -86,6 +90,8 @@ func (r ResourceType) AzureResourceType() string {
 	// Alongside this, the resource type should be updated in the scaffold/resource_meta.go
 	// See notes there on how to easily obtain the resource type for new AVM modules.
 	switch r {
+	case ResourceTypeHostAppService:
+		return "Microsoft.Web/sites"
 	case ResourceTypeHostContainerApp:
 		return "Microsoft.App/containerApps"
 	case ResourceTypeDbRedis:
@@ -160,6 +166,8 @@ func (r *ResourceConfig) MarshalYAML() (interface{}, error) {
 	switch raw.Type {
 	case ResourceTypeOpenAiModel:
 		errMarshal = marshalRawProps(raw.Props.(AIModelProps))
+	case ResourceTypeHostAppService:
+		errMarshal = marshalRawProps(raw.Props.(AppServiceProps))
 	case ResourceTypeHostContainerApp:
 		errMarshal = marshalRawProps(raw.Props.(ContainerAppProps))
 	case ResourceTypeDbCosmos:
@@ -209,6 +217,12 @@ func (r *ResourceConfig) UnmarshalYAML(value *yaml.Node) error {
 			return err
 		}
 		raw.Props = amp
+	case ResourceTypeHostAppService:
+		asp := AppServiceProps{}
+		if err := unmarshalProps(&asp); err != nil {
+			return err
+		}
+		raw.Props = asp
 	case ResourceTypeHostContainerApp:
 		cap := ContainerAppProps{}
 		if err := unmarshalProps(&cap); err != nil {
@@ -249,6 +263,11 @@ func (r *ResourceConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	*r = ResourceConfig(raw)
 	return nil
+}
+
+type AppServiceProps struct {
+	Port int             `yaml:"port,omitempty"`
+	Env  []ServiceEnvVar `yaml:"env,omitempty"`
 }
 
 type ContainerAppProps struct {

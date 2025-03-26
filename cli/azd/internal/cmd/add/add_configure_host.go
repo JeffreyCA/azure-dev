@@ -37,7 +37,8 @@ var LanguageMap = map[appdetect.Language]project.ServiceLanguageKind{
 func (a *AddAction) configureHost(
 	console input.Console,
 	ctx context.Context,
-	p PromptOptions) (*project.ServiceConfig, *project.ResourceConfig, error) {
+	p PromptOptions,
+	resourceType project.ResourceType) (*project.ServiceConfig, *project.ResourceConfig, error) {
 	prj, err := a.promptCodeProject(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -238,6 +239,8 @@ func addServiceAsResource(
 
 	if svc.Host == project.ContainerAppTarget {
 		resSpec.Type = project.ResourceTypeHostContainerApp
+	} else if svc.Host == project.AppServiceTarget {
+		resSpec.Type = project.ResourceTypeHostAppService
 	} else {
 		return nil, fmt.Errorf("unsupported service target: %s", svc.Host)
 	}
