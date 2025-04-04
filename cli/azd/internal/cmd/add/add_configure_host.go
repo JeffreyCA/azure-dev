@@ -34,16 +34,27 @@ var LanguageMap = map[appdetect.Language]project.ServiceLanguageKind{
 	appdetect.Python:     project.ServiceLanguagePython,
 }
 
+var HostMap = map[project.ResourceType]project.ServiceTargetKind{
+	project.ResourceTypeHostAppService:   project.AppServiceTarget,
+	project.ResourceTypeHostContainerApp: project.ContainerAppTarget,
+}
+
 func (a *AddAction) configureHost(
 	console input.Console,
 	ctx context.Context,
-	p PromptOptions) (*project.ServiceConfig, *project.ResourceConfig, error) {
+	p PromptOptions,
+	hostType project.ResourceType) (*project.ServiceConfig, *project.ResourceConfig, error) {
+	svcTarget, ok := HostMap[hostType]
+	if !ok {
+		return nil, nil, fmt.Errorf("unsupported host type: %s", hostType)
+	}
+
 	prj, err := a.promptCodeProject(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	svcSpec, err := a.projectAsService(ctx, p, prj)
+	svcSpec, err := a.projectAsService(ctx, p, prj, svcTarget)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -151,6 +162,7 @@ func (a *AddAction) projectAsService(
 	ctx context.Context,
 	p PromptOptions,
 	prj *appdetect.Project,
+	kind project.ServiceTargetKind,
 ) (*project.ServiceConfig, error) {
 	_, supported := LanguageMap[prj.Language]
 	if !supported {
@@ -183,7 +195,7 @@ func (a *AddAction) projectAsService(
 	}
 
 	confirm, err := a.console.Confirm(ctx, input.ConsoleOptions{
-		Message:      "azd will use " + color.MagentaString("Azure Container App") + " to host this project. Continue?",
+		Message:      "azd will use " + color.MagentaString(kind.String()) + " to host this project. Continue?",
 		DefaultValue: true,
 	})
 	if err != nil {
@@ -192,81 +204,115 @@ func (a *AddAction) projectAsService(
 		return nil, errors.New("cancelled")
 	}
 
-	if prj.Docker == nil {
-		confirm, err := a.console.Confirm(ctx, input.ConsoleOptions{
-			Message:      "No Dockerfile found. Allow azd to automatically build a container image?",
-			DefaultValue: true,
-		})
-		if err != nil {
-			return nil, err
+	if kind == project.ContainerAppTarget {
+		if prj.Docker == nil {
+			confirm, err := a.console.Confirm(ctx, input.ConsoleOptions{
+				Message:      "No Dockerfile found. Allow azd to automatically build a container image?",
+				DefaultValue: true,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if !confirm {
+				path, err := promptDockerfile(ctx, a.console, "Where is your Dockerfile located?")
+				if err != nil {
+					return nil, err
+				}
+
+				docker, err := appdetect.AnalyzeDocker(path)
+				if err != nil {
+					return nil, err
+				}
+
+				prj.Docker = docker
+			}
 		}
-
-		if !confirm {
-			path, err := promptDockerfile(ctx, a.console, "Where is your Dockerfile located?")
-			if err != nil {
-				return nil, err
-			}
-
-			docker, err := appdetect.AnalyzeDocker(path)
-			if err != nil {
-				return nil, err
-			}
-
-			prj.Docker = docker
+	} else if kind == project.AppServiceTarget {
+		if prj.Docker != nil {
+			return nil, fmt.Errorf("found Dockerfile. Containerized App Service is not currently supported")
 		}
 	}
 
 	svc, err := ServiceFromDetect(
 		a.azdCtx.ProjectDirectory(),
 		svcName,
-		*prj)
+		*prj,
+		kind)
 	if err != nil {
 		return nil, err
 	}
 
 	return &svc, nil
 }
-
 func addServiceAsResource(
 	ctx context.Context,
 	console input.Console,
 	svc *project.ServiceConfig,
-	prj appdetect.Project) (*project.ResourceConfig, error) {
+	prj appdetect.Project,
+) (*project.ResourceConfig, error) {
 	resSpec := project.ResourceConfig{
 		Name: svc.Name,
 	}
 
 	if svc.Host == project.ContainerAppTarget {
 		resSpec.Type = project.ResourceTypeHostContainerApp
+
+		props := project.ContainerAppProps{
+			Port: -1,
+		}
+
+		if svc.Docker.Path == "" {
+			// no Dockerfile is present, set port based on azd default builder logic
+			if _, err := os.Stat(filepath.Join(svc.RelativePath, "Dockerfile")); errors.Is(err, os.ErrNotExist) {
+				// default builder always specifies port 80
+				props.Port = 80
+				if svc.Language == project.ServiceLanguageJava || svc.Language.IsDotNet() {
+					props.Port = 8080
+				}
+			}
+		}
+
+		if props.Port == -1 {
+			port, err := PromptPort(console, ctx, svc.Name, prj)
+			if err != nil {
+				return nil, err
+			}
+
+			props.Port = port
+		}
+
+		resSpec.Props = props
+	} else if svc.Host == project.AppServiceTarget {
+		resSpec.Type = project.ResourceTypeHostAppService
+
+		props := project.AppServiceProps{}
+
+		if svc.Docker.Path == "" {
+			// no Dockerfile is present, set port based on azd default builder logic
+			if _, err := os.Stat(filepath.Join(svc.RelativePath, "Dockerfile")); errors.Is(err, os.ErrNotExist) {
+				// default builder always specifies port 80
+				props.Port = 80
+				if svc.Language == project.ServiceLanguageJava || svc.Language.IsDotNet() {
+					props.Port = 8080
+				}
+			}
+		}
+
+		if props.Port == -1 {
+			port, err := PromptPort(console, ctx, svc.Name, prj)
+			if err != nil {
+				return nil, err
+			}
+
+			props.Port = port
+		}
+
+		resSpec.Props = props
 	} else {
 		return nil, fmt.Errorf("unsupported service target: %s", svc.Host)
 	}
 
-	props := project.ContainerAppProps{
-		Port: -1,
-	}
-
-	if svc.Docker.Path == "" {
-		// no Dockerfile is present, set port based on azd default builder logic
-		if _, err := os.Stat(filepath.Join(svc.RelativePath, "Dockerfile")); errors.Is(err, os.ErrNotExist) {
-			// default builder always specifies port 80
-			props.Port = 80
-			if svc.Language == project.ServiceLanguageJava || svc.Language.IsDotNet() {
-				props.Port = 8080
-			}
-		}
-	}
-
-	if props.Port == -1 {
-		port, err := PromptPort(console, ctx, svc.Name, prj)
-		if err != nil {
-			return nil, err
-		}
-
-		props.Port = port
-	}
-
-	resSpec.Props = props
 	return &resSpec, nil
 }
 
@@ -274,7 +320,9 @@ func addServiceAsResource(
 func ServiceFromDetect(
 	root string,
 	svcName string,
-	prj appdetect.Project) (project.ServiceConfig, error) {
+	prj appdetect.Project,
+	svcKind project.ServiceTargetKind,
+) (project.ServiceConfig, error) {
 	svc := project.ServiceConfig{
 		Name: svcName,
 	}
@@ -292,7 +340,7 @@ func ServiceFromDetect(
 		svc.Name = names.LabelName(dirName)
 	}
 
-	svc.Host = project.ContainerAppTarget
+	svc.Host = svcKind
 	svc.RelativePath = rel
 
 	language, supported := LanguageMap[prj.Language]
@@ -303,6 +351,9 @@ func ServiceFromDetect(
 	svc.Language = language
 
 	if prj.Docker != nil {
+		if svcKind != project.ContainerAppTarget {
+			return svc, fmt.Errorf("unsupported host with Dockerfile: %s", svcKind)
+		}
 		relDocker, err := filepath.Rel(prj.Path, prj.Docker.Path)
 		if err != nil {
 			return svc, err

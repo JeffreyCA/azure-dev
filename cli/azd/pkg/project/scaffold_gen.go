@@ -223,9 +223,29 @@ func infraSpec(projectConfig *ProjectConfig) (*scaffold.InfraSpec, error) {
 				Name: res.Name,
 				Port: -1,
 				Env:  map[string]string{},
+				Kind: scaffold.ContainerAppKind,
 			}
 
 			err := mapContainerApp(res, &svcSpec, &infraSpec)
+			if err != nil {
+				return nil, err
+			}
+
+			err = mapHostUses(res, &svcSpec, backendMapping, existingMap, projectConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			infraSpec.Services = append(infraSpec.Services, svcSpec)
+		case ResourceTypeHostAppService:
+			svcSpec := scaffold.ServiceSpec{
+				Name: res.Name,
+				Port: -1,
+				Env:  map[string]string{},
+				Kind: scaffold.AppServiceKind,
+			}
+
+			err := mapAppService(res, &svcSpec, &infraSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -331,6 +351,47 @@ func infraSpec(projectConfig *ProjectConfig) (*scaffold.InfraSpec, error) {
 
 func mapContainerApp(res *ResourceConfig, svcSpec *scaffold.ServiceSpec, infraSpec *scaffold.InfraSpec) error {
 	props := res.Props.(ContainerAppProps)
+	for _, envVar := range props.Env {
+		if len(envVar.Value) == 0 && len(envVar.Secret) == 0 {
+			return fmt.Errorf(
+				"environment variable %s for host %s is invalid: both value and secret are empty",
+				envVar.Name,
+				res.Name)
+		}
+
+		if len(envVar.Value) > 0 && len(envVar.Secret) > 0 {
+			return fmt.Errorf(
+				"environment variable %s for host %s is invalid: both value and secret are set",
+				envVar.Name,
+				res.Name)
+		}
+
+		isSecret := len(envVar.Secret) > 0
+		value := envVar.Value
+		if isSecret {
+			value = envVar.Secret
+		}
+
+		// Notice that we derive isSecret from its usage.
+		// This is generally correct, except for the case where:
+		// - CONNECTION_STRING: ${DB_HOST}:${DB_SECRET}
+		// Here, DB_HOST is not a secret, but DB_SECRET is. And yet, DB_HOST will be marked as a secret.
+		// This is a limitation of the current implementation, but it's safer to mark both as secrets above.
+		evaluatedValue := genBicepParamsFromEnvSubst(value, isSecret, infraSpec)
+		svcSpec.Env[envVar.Name] = evaluatedValue
+	}
+
+	port := props.Port
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port value %d for host %s must be between 1 and 65535", port, res.Name)
+	}
+
+	svcSpec.Port = port
+	return nil
+}
+
+func mapAppService(res *ResourceConfig, svcSpec *scaffold.ServiceSpec, infraSpec *scaffold.InfraSpec) error {
+	props := res.Props.(AppServiceProps)
 	for _, envVar := range props.Env {
 		if len(envVar.Value) == 0 && len(envVar.Secret) == 0 {
 			return fmt.Errorf(

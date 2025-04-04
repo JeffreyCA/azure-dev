@@ -45,6 +45,7 @@ module monitoring 'br/public:avm/ptn/azd/monitoring:0.1.0' = {
   }
 }
 
+{{- if hasACA .Services}}
 // Container registry
 module containerRegistry 'br/public:avm/res/container-registry/registry:0.1.1' = {
   name: 'registry'
@@ -75,6 +76,7 @@ module containerAppsEnvironment 'br/public:avm/res/app/managed-environment:0.4.5
     zoneRedundant: false
   }
 }
+{{- end}}
 {{- end}}
 
 {{- if .DbCosmosMongo}}
@@ -467,6 +469,7 @@ module {{bicepName $svc.Name}}_{{$existing.Name}}_{{.Name}} 'modules/role-assign
 {{- end}}
 {{- end}}
 
+{{- if isACA .Kind}}
 module {{bicepName .Name}}FetchLatestImage './modules/fetch-container-image.bicep' = {
   name: '{{bicepName .Name}}-fetch-image'
   params: {
@@ -738,6 +741,8 @@ module {{bicepName .Name}} 'br/public:avm/res/app/container-app:0.8.0' = {
     tags: union(tags, { 'azd-service-name': '{{.Name}}' })
   }
 }
+{{- end}}
+
 {{- if .AiFoundryProject}}
 
 resource {{bicepName .Name}}backendRoleAzureAIDeveloperRG 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
@@ -814,7 +819,9 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.12.0' = {
 {{- end}}
 
 {{- if .Services}}
+{{- if hasACA .Services}}
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
+{{- end}}
 {{- range .Services}}
 output AZURE_RESOURCE_{{alphaSnakeUpper .Name}}_ID string = {{bicepName .Name}}.outputs.resourceId
 {{- end}}

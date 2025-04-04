@@ -127,9 +127,17 @@ type StorageAccount struct {
 	Containers []string
 }
 
+type ServiceKind string
+
+const (
+	AppServiceKind   ServiceKind = "appservice"
+	ContainerAppKind ServiceKind = "containerapp"
+)
+
 type ServiceSpec struct {
 	Name string
 	Port int
+	Kind ServiceKind
 
 	Env map[string]string
 

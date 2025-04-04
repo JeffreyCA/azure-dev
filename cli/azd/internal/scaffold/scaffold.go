@@ -33,6 +33,18 @@ func Load() (*template.Template, error) {
 		"lower":            strings.ToLower,
 		"alphaSnakeUpper":  AlphaSnakeUpper,
 		"formatParam":      FormatParameter,
+		"isACA": func(kind ServiceKind) bool {
+			return strings.EqualFold(string(kind), string(ContainerAppKind))
+		},
+		"isAppService": func(kind ServiceKind) bool {
+			return strings.EqualFold(string(kind), string(AppServiceKind))
+		},
+		"hasACA": func(services []ServiceSpec) bool {
+			return HasServiceKind(services, ContainerAppKind)
+		},
+		"hasAppService": func(services []ServiceSpec) bool {
+			return HasServiceKind(services, AppServiceKind)
+		},
 	}
 
 	t, err := template.New("templates").
