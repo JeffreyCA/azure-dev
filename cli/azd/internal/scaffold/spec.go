@@ -127,11 +127,27 @@ type StorageAccount struct {
 	Containers []string
 }
 
+type ServiceKind string
+
+const (
+	AppServiceKind   ServiceKind = "appservice"
+	ContainerAppKind ServiceKind = "containerapp"
+)
+
+type RuntimeInfo struct {
+	Type    string
+	Version string
+}
+
 type ServiceSpec struct {
 	Name string
 	Port int
+	Kind ServiceKind
 
 	Env map[string]string
+
+	// App Service specific configuration
+	Runtime *RuntimeInfo
 
 	// Front-end properties.
 	Frontend *Frontend

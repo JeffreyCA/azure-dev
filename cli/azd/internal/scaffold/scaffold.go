@@ -33,6 +33,18 @@ func Load() (*template.Template, error) {
 		"lower":            strings.ToLower,
 		"alphaSnakeUpper":  AlphaSnakeUpper,
 		"formatParam":      FormatParameter,
+		"isACA": func(kind ServiceKind) bool {
+			return strings.EqualFold(string(kind), string(ContainerAppKind))
+		},
+		"isAppService": func(kind ServiceKind) bool {
+			return strings.EqualFold(string(kind), string(AppServiceKind))
+		},
+		"hasACA": func(services []ServiceSpec) bool {
+			return HasServiceKind(services, ContainerAppKind)
+		},
+		"hasAppService": func(services []ServiceSpec) bool {
+			return HasServiceKind(services, AppServiceKind)
+		},
 	}
 
 	t, err := template.New("templates").
@@ -71,7 +83,7 @@ func Execute(
 func supportingFiles(spec InfraSpec) []string {
 	files := []string{"/abbreviations.json"}
 
-	if len(spec.Services) > 0 {
+	if HasServiceKind(spec.Services, ContainerAppKind) {
 		files = append(files, "/modules/fetch-container-image.bicep")
 	}
 
@@ -238,9 +250,11 @@ func preExecExpand(spec *InfraSpec) {
 	}
 
 	for _, svc := range spec.Services {
-		// containerapp requires a global '_exist' parameter for each service
-		spec.Parameters = append(spec.Parameters,
-			containerAppExistsParameter(svc.Name))
+		if svc.Kind == ContainerAppKind {
+			// containerapp requires a global '_exist' parameter for each service
+			spec.Parameters = append(spec.Parameters,
+				containerAppExistsParameter(svc.Name))
+		}
 	}
 
 	for _, res := range spec.Existing {

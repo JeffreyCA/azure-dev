@@ -214,6 +214,24 @@ func EnvFormat(src string) string {
 	return fmt.Sprintf("${AZURE_%s}", snake)
 }
 
+// IsACA returns true if the service target kind is ACA, otherwise false.
+func IsACA(kind ServiceKind) bool {
+	return strings.EqualFold(string(kind), string(ContainerAppKind))
+}
+
+func IsAppService(kind ServiceKind) bool {
+	return strings.EqualFold(string(kind), string(AppServiceKind))
+}
+
+func HasServiceKind(services []ServiceSpec, kind ServiceKind) bool {
+	for _, service := range services {
+		if strings.EqualFold(string(service.Kind), string(kind)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Formats a parameter value for use in a bicep file.
 // If the value is a string, it is quoted inline with no indentation.
 // Otherwise, the value is marshaled with indentation specified by prefix and indent.

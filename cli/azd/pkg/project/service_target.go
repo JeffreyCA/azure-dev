@@ -29,6 +29,29 @@ const (
 	AiEndpointTarget         ServiceTargetKind = "ai.endpoint"
 )
 
+func (r ServiceTargetKind) String() string {
+	switch r {
+	case AppServiceTarget:
+		return "Azure App Service"
+	case ContainerAppTarget:
+		return "Azure Container Apps"
+	case AzureFunctionTarget:
+		return "Azure Functions"
+	case StaticWebAppTarget:
+		return "Azure Static Web Apps"
+	case SpringAppTarget:
+		return "Azure Spring Apps"
+	case AksTarget:
+		return "Azure Kubernetes Service"
+	case DotNetContainerAppTarget:
+		return "Azure Container Apps (.NET)"
+	case AiEndpointTarget:
+		return "Azure AI Endpoint"
+	default:
+		return string(r)
+	}
+}
+
 // RequiresContainer returns true if the service target runs a container image.
 func (stk ServiceTargetKind) RequiresContainer() bool {
 	switch stk {
