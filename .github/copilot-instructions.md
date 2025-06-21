@@ -60,18 +60,18 @@ go build
 When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/version.txt` following this process:
 
 #### Step 1: Prepare version header
-If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rename it to the version being released. Do not create a new "Unreleased" section.
+If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rename it to the version being released without the `-beta.1 (Unreleased)` suffix. Do not create a new "Unreleased" section.
 
 #### Step 2: Gather raw commits
 Run this command to get commits since the last release:
 ```bash
-git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20
+git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
 ```
 Start with 20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase the value until found.
 
 #### Step 3: Create tracking table
 For each commit, create a tracking table with these columns:
-| Commit Hash | Date | PR# | Commit Message | Author Name | Author Email | GitHub Handle | Category | Final Entry | Include? |
+| Commit Hash | Date | PR# | Commit Message | GitHub Handle | Category | Final Entry | Include? |
 
 #### Step 4: Process each commit iteratively
 For each commit in your tracking table:
