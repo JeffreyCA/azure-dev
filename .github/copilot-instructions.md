@@ -76,12 +76,8 @@ git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s"
 
 Increase `-20` if needed to find the cutoff commit. `git log` shows commits in reverse chronological order (newest first). You must identify the cutoff commit and exclude it along with any commits older than it.
 
-#### Step 3: Create intermediate tracking table
-For commits newer than the cutoff, create a table with these columns:
-| Commit Hash | Date | PR# | Commit Message | GitHub Handle | Category | Final Entry | Include? |
-
-#### Step 4: Process each commit iteratively
-For each commit in your tracking table:
+#### Step 3: Process commits systematically
+For each commit newer than the cutoff, systematically process them to:
 
 1. **Extract PR number**: Look for `(#XXXX)` pattern in commit message
 2. **Fetch PR context**: 
@@ -96,21 +92,20 @@ For each commit in your tracking table:
     - [[PR#]](https://github.com/Azure/azure-dev/pull/PR#) User-friendly description.
     ```
     For external contributors, append: " Thanks @handle for the contribution!"
-7. **Mark include decision**: Exclude non-customer-facing changes:
+7. **Make inclusion decision**: Exclude non-customer-facing changes:
     - CI/CD changes
     - Internal tooling
     - Test-only changes
-    - Dependency updates outside of `cli/azd`
 
-#### Step 5: Organize by category
-Group all entries marked "Include? = Yes" by their category.
+#### Step 4: Organize by category
+Group all entries marked for inclusion by their category.
 
-#### Step 6: Validate and refine
+#### Step 5: Validate and refine
 - Ensure entries are concise and user-focused
 - Start descriptions with action verbs (Add, Fix, Update, etc.)
 - Verify all PR links are correctly formatted
 - Remove categories with no entries
-- Run cspell and add flagged GitHub handles to `vscode/cspell-github-user-aliases.txt` if needed
+- Run `cspell lint "cli/azd/CHANGELOG.md" --relative --config cli/azd/.vscode/cspell.yaml --no-progress` and add flagged GitHub handles to `.vscode/cspell-github-user-aliases.txt` if needed
 
 ### Writing style
 - Keep entries brief but informative, matching existing entries
