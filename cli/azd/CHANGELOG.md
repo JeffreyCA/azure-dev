@@ -1,14 +1,35 @@
 # Release History
 
-## 1.18.0-beta.1 (Unreleased)
+## 1.18.0 (2025-06-21)
 
 ### Features Added
+
+- [[#5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions support.
+- [[#4942]](https://github.com/Azure/azure-dev/pull/4942) Update `env set` to accept multiple key-value pairs.
+- [[#4969]](https://github.com/Azure/azure-dev/pull/4969) Add case-insensitive sorting support for prompts.
+- [[#5285]](https://github.com/Azure/azure-dev/pull/5285) Introduce `AZURE_PRINCIPAL_TYPE` to conditionally set user-only role assignments for compose + CI/CD.
+- [[#5280]](https://github.com/Azure/azure-dev/pull/5280) Combine "Create a minimal project" with "Scan current directory" option and add `--minimal` flag to `azd init`.
+- [[#5270]](https://github.com/Azure/azure-dev/pull/5270) Add Terraform pipeline config OIDC support.
+- [[#5193]](https://github.com/Azure/azure-dev/pull/5193) Add support for `existing` resource in AI build start extensions.
 
 ### Breaking Changes
 
 ### Bugs Fixed
 
+- [[#5386]](https://github.com/Azure/azure-dev/pull/5386) Fix string prompt to any conversion.
+- [[#5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid azure.yaml JSON schema properties.
+
 ### Other Changes
+
+- [[#5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies for CVE-2024-48924.
+- [[#5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from 5.29.0 to 5.29.5.
+- [[#5364]](https://github.com/Azure/azure-dev/pull/5364) Update brace-expansion dependency in todo template.
+- [[#5283]](https://github.com/Azure/azure-dev/pull/5283) Update brace-expansion dependency in spelling tools.
+- [[#5281]](https://github.com/Azure/azure-dev/pull/5281) Update PostgreSQL dependency.
+- [[#5203]](https://github.com/Azure/azure-dev/pull/5203) Ensure latest static-web-apps CLI npm package is used.
+- [[#5259]](https://github.com/Azure/azure-dev/pull/5259) Update azure-sdk-build-tools repository resource references.
+- [[#5379]](https://github.com/Azure/azure-dev/pull/5379) Update recordings for vs-server tests.
+- [[#5265]](https://github.com/Azure/azure-dev/pull/5265) Fix parallel tests for vs-server.
 
 ## 1.17.0 (2025-06-05)
 
