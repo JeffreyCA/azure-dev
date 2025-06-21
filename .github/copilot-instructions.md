@@ -65,7 +65,7 @@ If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rena
 #### Step 2: Gather raw commits
 **IMPORTANT**: Ensure you have the latest commits from main by running `git fetch` before any `git log` commands:
 ```bash
-git fetch --unshallow origin
+git fetch --unshallow origin && git fetch origin main:refs/remotes/origin/main
 ```
 
 Then run this command to get commits since the last release:
