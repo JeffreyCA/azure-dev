@@ -1,13 +1,13 @@
-# GitHub Copilot Instructions
+# GitHub Copilot instructions
 
 This is the Azure Developer CLI - a Go-based CLI tool for managing Azure application development workflows. It handles infrastructure provisioning, application deployment, environment management, and project lifecycle automation. Please follow these guidelines when contributing.
 
-## Code Standards
+## Code standards
 
-### Required Before Each Commit
-- Run `gofmt -s -w .` before committing any changes to ensure proper code formatting
-- Run `golangci-lint run ./...` to check for linting issues
-- Run `cspell lint "**/*.go" --relative --config ./.vscode/cspell.yaml` to check spelling
+### Required before each commit
+- From `cli/azd/` directory, run `gofmt -s -w .` before committing any changes to ensure proper code formatting
+- From `cli/azd/` directory, run `golangci-lint run ./...` to check for linting issues
+- From `cli/azd/` directory, run `cspell lint "**/*.go" --relative --config ./.vscode/cspell.yaml --no-progress` to check spelling
 - New Go files must include the standard copyright header:
   ```go
   // Copyright (c) Microsoft Corporation. All rights reserved.
@@ -16,7 +16,7 @@ This is the Azure Developer CLI - a Go-based CLI tool for managing Azure applica
 
 **Note: All formatting, linting, and spelling commands should be run from the `cli/azd` directory.**
 
-### Development Flow
+### Development flow
 **Prerequisites:** [Go](https://go.dev/dl/) 1.24
 
 **Build `azd` binary:**
@@ -29,7 +29,7 @@ go build
 - Quick tests: `go test ./... -short`
 - All tests: `go test ./...`
 
-## Repository Structure
+## Repository structure
 - `cli/azd/`: Main CLI application entry point and command definitions
 - `cli/azd/cmd/`: CLI command implementations using Cobra framework
 - `cli/azd/internal/`: Internal CLI packages - application detection, scaffolding, telemetry, tracing, error handling, and CLI-specific utilities not intended for external use
@@ -40,14 +40,14 @@ go build
 - `ext/`: Extensions for VS Code, Azure DevOps, and Dev Containers
 - `eng/`: Engineering scripts, CI/CD pipelines, and build automation
 
-## Key Guidelines
+## Key guidelines
 1. Follow Go best practices and idiomatic patterns
 1. Maintain existing code structure and organization, unless refactoring is necessary or directly requested
 1. Use dependency injection patterns where appropriate
 1. Write unit tests for new functionality. Use table-driven unit tests when possible.
 1. Review and update relevant documentation in `cli/azd/docs/` when making major changes or adding new features
 
-## Testing Approach
+## Testing approach
 - Unit tests in `*_test.go` files alongside source code
 - Integration tests in `cli/azd/test/functional/` for end-to-end workflows
 - Mock external services using interfaces and dependency injection
@@ -55,25 +55,25 @@ go build
 - Test both success and error scenarios extensively
 - Update test snapshots in `cli/azd/cmd/testdata/*.snap` when changing CLI help output by setting `UPDATE_SNAPSHOTS=true` before running `go test`
 
-## Changelog Updates for Releases
+## Changelog updates for releases
 
 When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/version.txt` following this process:
 
-#### Step 1: Prepare Version Header
+#### Step 1: Prepare version header
 If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rename it to the version being released. Do not create a new "Unreleased" section.
 
-#### Step 2: Gather Raw Commits
+#### Step 2: Gather raw commits
 Run this command to get commits since the last release:
 ```bash
-git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -N
+git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20
 ```
-Start with N=20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase N until you find it.
+Start with 20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase the value until found.
 
-#### Step 3: Create Tracking Table
+#### Step 3: Create tracking table
 For each commit, create a tracking table with these columns:
 | Commit Hash | Date | PR# | Commit Message | Author Name | Author Email | GitHub Handle | Category | Final Entry | Include? |
 
-#### Step 4: Process Each Commit Iteratively
+#### Step 4: Process each commit iteratively
 For each commit in your tracking table:
 
 1. **Extract PR Number**: Look for `(#XXXX)` pattern in commit message
@@ -95,15 +95,15 @@ For each commit in your tracking table:
    For external contributors, append: " Thanks @handle for the contribution!"
 7. **Mark Include Decision**: Exclude non-customer-facing changes (CI/CD changes, internal tooling, test-only changes, etc.)
 
-#### Step 5: Organize by Category
+#### Step 5: Organize by category
 Group all entries marked "Include? = Yes" by their category.
 
-#### Step 6: Validate and Refine
+#### Step 6: Validate and refine
 - Ensure entries are concise and user-focused
 - Start descriptions with action verbs (Add, Fix, Update, etc.)
 - Verify all PR links are correctly formatted
 
-### Writing Style
+### Writing style
 - Keep entries brief but informative, matching the style of existing entries
 - Describe impact to end users, not implementation details
 - Start with verbs (Add, Fix, Update, Support, etc.)
