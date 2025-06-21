@@ -14,8 +14,6 @@ This is the Azure Developer CLI - a Go-based CLI tool for managing Azure applica
   // Licensed under the MIT License.
   ```
 
-**Note: All formatting, linting, and spelling commands should be run from the `cli/azd` directory.**
-
 ### Development flow
 **Prerequisites:** [Go](https://go.dev/dl/) 1.24
 
@@ -30,15 +28,15 @@ go build
 - All tests: `go test ./...`
 
 ## Repository structure
-- `cli/azd/`: Main CLI application entry point and command definitions
-- `cli/azd/cmd/`: CLI command implementations using Cobra framework
-- `cli/azd/internal/`: Internal CLI packages - application detection, scaffolding, telemetry, tracing, error handling, and CLI-specific utilities not intended for external use
-- `cli/azd/pkg/`: Reusable business logic - Azure service integrations, environment/project management, infrastructure provisioning, deployment targets, and cross-cutting platform concerns
+- `cli/azd/`: Main CLI application and command definitions
+- `cli/azd/cmd/`: CLI command implementations (Cobra framework)
+- `cli/azd/internal/`: Internal CLI packages (not for external use)
+- `cli/azd/pkg/`: Reusable business logic (Azure services, deployment, infrastructure)
 - `cli/azd/test/`: Test helpers and mocks
-- `templates/`: Project template definitions and scaffolding resources
-- `schemas/`: JSON schemas for azure.yaml validation
+- `templates/`: Sample azd templates
+- `schemas/`: JSON schemas for azure.yaml
 - `ext/`: Extensions for VS Code, Azure DevOps, and Dev Containers
-- `eng/`: Engineering scripts, CI/CD pipelines, and build automation
+- `eng/`: Build scripts and CI/CD pipelines
 
 ## Key guidelines
 1. Follow Go best practices and idiomatic patterns
@@ -50,50 +48,59 @@ go build
 ## Testing approach
 - Unit tests in `*_test.go` files alongside source code
 - Integration tests in `cli/azd/test/functional/` for end-to-end workflows
-- Mock external services using interfaces and dependency injection
-- Use testify for assertions and test organization
-- Test both success and error scenarios extensively
 - Update test snapshots in `cli/azd/cmd/testdata/*.snap` when changing CLI help output by setting `UPDATE_SNAPSHOTS=true` before running `go test`
 
 ## Changelog updates for releases
 
-When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/version.txt` following this process:
+When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/version.txt`:
 
 #### Step 1: Prepare version header
-If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rename it to the version being released. Do not create a new "Unreleased" section.
+Rename any existing `## 1.x.x-beta.1 (Unreleased)` section to the version being released, and remove the `-beta.1` and `Unreleased` parts.
 
-#### Step 2: Gather raw commits
-Run this command to get commits since the last release:
+#### Step 2: Gather commits
+**IMPORTANT**: Ensure you have the latest commits from main by first running the following `git fetch` commands before any `git log` commands:
 ```bash
-git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20
+git fetch --unshallow origin && git fetch origin main:refs/remotes/origin/main
 ```
-Start with 20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase the value until found.
 
-#### Step 3: Create tracking table
-For each commit, create a tracking table with these columns:
-| Commit Hash | Date | PR# | Commit Message | Author Name | Author Email | GitHub Handle | Category | Final Entry | Include? |
+**Determine cutoff commit**: Run this command to find the last changelog update commit:
+```bash
+git --no-pager log -n 3 --follow -p -- cli/azd/CHANGELOG.md
+```
+Look at the commit messages and diff output to identify the most recent commit that made actual changelog content updates. Ignore commits like "Increment CLI version after release".
+
+**Gather commits since cutoff**: Run this command to get commits since the last release:
+```bash
+git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
+```
+
+Increase `-20` if needed to find the cutoff commit. `git log` shows commits in reverse chronological order (newest first). You must identify the cutoff commit and exclude it along with any commits older than it.
+
+#### Step 3: Create intermediate tracking table
+For commits newer than the cutoff, create a table with these columns:
+| Commit Hash | Date | PR# | Commit Message | GitHub Handle | Category | Final Entry | Include? |
 
 #### Step 4: Process each commit iteratively
 For each commit in your tracking table:
 
-1. **Extract PR Number**: Look for `(#XXXX)` pattern in commit message
-2. **Fetch PR Context**: 
-   - Fetch the PR webpage: `https://github.com/Azure/azure-dev/pull/PR#`
-   - Read the PR description and any linked GitHub issues
-   - Fetch any linked issue webpages referenced in the PR (e.g., "Fixes #XXXX")
-3. **Identify GitHub Handle**: Convert email to GitHub handle (may require PR lookup)
-4. **Determine Category**:
-   - **Features Added**: New functionality, enhancements
-   - **Breaking Changes**: Changes that may break existing functionality (rare)
-   - **Bugs Fixed**: Bug fixes and corrections
-   - **Other Changes**: Dependencies, internal improvements, non-user-facing changes
-5. **Check External Contributor**: Compare GitHub handle against `.github/CODEOWNERS`
-6. **Write Final Entry**: Follow this format:
-   ```md
-   - [[PR#]](https://github.com/Azure/azure-dev/pull/PR#) User-friendly description.
-   ```
-   For external contributors, append: " Thanks @handle for the contribution!"
-7. **Mark Include Decision**: Exclude non-customer-facing changes (CI/CD changes, internal tooling, test-only changes, etc.)
+1. **Extract PR number**: Look for `(#XXXX)` pattern in commit message
+2. **Fetch PR context**: 
+    - Fetch the PR webpage: `https://github.com/Azure/azure-dev/pull/PR#`
+    - Read the PR description and any linked GitHub issues
+    - Fetch any linked issue webpages referenced in the PR (e.g., "Fixes #XXXX")
+3. **Identify GitHub handle**: Convert email to GitHub handle (may require PR lookup)
+4. **Determine category**: Features Added, Bugs Fixed, Breaking Changes, Other Changes
+5. **Check external contributor**: Compare GitHub handle against `.github/CODEOWNERS`
+6. **Write final entry**: Follow this format:
+    ```md
+    - [[PR#]](https://github.com/Azure/azure-dev/pull/PR#) User-friendly description.
+    ```
+    For external contributors, append: " Thanks @handle for the contribution!"
+7. **Mark include decision**: Exclude non-customer-facing changes:
+    - CI/CD changes
+    - Internal tooling
+    - Test-only changes
+    - Dependency updates outside of `cli/azd`
 
 #### Step 5: Organize by category
 Group all entries marked "Include? = Yes" by their category.
@@ -102,8 +109,10 @@ Group all entries marked "Include? = Yes" by their category.
 - Ensure entries are concise and user-focused
 - Start descriptions with action verbs (Add, Fix, Update, etc.)
 - Verify all PR links are correctly formatted
+- Remove categories with no entries
+- Run cspell and add flagged GitHub handles to `vscode/cspell-github-user-aliases.txt` if needed
 
 ### Writing style
-- Keep entries brief but informative, matching the style of existing entries
+- Keep entries brief but informative, matching existing entries
 - Describe impact to end users, not implementation details
-- Start with verbs (Add, Fix, Update, Support, etc.)
+- Start with verbs (Add, Fix, Update, etc.)
