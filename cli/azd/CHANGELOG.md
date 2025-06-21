@@ -1,14 +1,10 @@
 # Release History
 
-## 1.18.0-beta.1 (Unreleased)
-
-### Features Added
-
-### Breaking Changes
-
-### Bugs Fixed
+## 1.18.0 (2025-06-21)
 
 ### Other Changes
+
+- [[6]](https://github.com/JeffreyCA/azure-dev/pull/6) Update changelog update process documentation.
 
 ## 1.17.0 (2025-06-05)
 
