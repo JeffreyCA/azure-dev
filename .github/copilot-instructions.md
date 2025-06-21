@@ -65,7 +65,7 @@ If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rena
 #### Step 2: Gather raw commits
 Run this command to get commits since the last release:
 ```bash
-git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
+git fetch origin main && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
 ```
 Start with 20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase the value until found.
 
