@@ -1,14 +1,20 @@
 # Release History
 
-## 1.18.0-beta.1 (Unreleased)
+## 1.18.0 (2025-06-21)
 
 ### Features Added
 
-### Breaking Changes
+- [[4942]](https://github.com/Azure/azure-dev/pull/4942) Update `azd env set` to accept multiple key-value pairs via command line arguments and `--file` option.
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions to the official registry for enhanced functionality.
+- [[5280]](https://github.com/Azure/azure-dev/pull/5280) Combine "Create a minimal project" with "Scan current directory" option in `azd init` and add `--minimal` flag.
+- [[5270]](https://github.com/Azure/azure-dev/pull/5270) Add OIDC support for Terraform pipeline configuration.
+- [[5285]](https://github.com/Azure/azure-dev/pull/5285) Introduce `AZURE_PRINCIPAL_TYPE` environment variable to conditionally set user-only role assignments in CI/CD pipelines.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add support for `existing` resource configuration in AI build extensions.
+- [[4969]](https://github.com/Azure/azure-dev/pull/4969) Add case-insensitive alphabetical sorting for subscription and resource group prompts.
 
 ### Bugs Fixed
 
-### Other Changes
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid azure.yaml JSON schema properties.
 
 ## 1.17.0 (2025-06-05)
 
