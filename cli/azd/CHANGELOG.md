@@ -1,14 +1,28 @@
 # Release History
 
-## 1.18.0-beta.1 (Unreleased)
+## 1.18.0
 
 ### Features Added
+
+- [[4942]](https://github.com/Azure/azure-dev/pull/4942) Update `azd env set` to accept multiple key-value pairs.
+- [[4969]](https://github.com/Azure/azure-dev/pull/4969) Add support for case-insensitive sorting in prompts.
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions support.
+- [[5280]](https://github.com/Azure/azure-dev/pull/5280) Combine "Create a minimal project" with "Scan current directory" option in `azd init` and add `--minimal` flag.
+- [[5270]](https://github.com/Azure/azure-dev/pull/5270) Add Terraform pipeline config OIDC support.
+- [[5285]](https://github.com/Azure/azure-dev/pull/5285) Introduce `AZURE_PRINCIPAL_TYPE` environment variable to conditionally set user-only role assignments for compose and CI/CD.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add extension support for `existing` resource in AI build start.
 
 ### Breaking Changes
 
 ### Bugs Fixed
 
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid azure.yaml JSON schema properties.
+
 ### Other Changes
+
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies for CVE-2024-48924.
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from 5.29.0 to 5.29.5.
+- [[5203]](https://github.com/Azure/azure-dev/pull/5203) Ensure latest static-web-apps CLI npm package is always used.
 
 ## 1.17.0 (2025-06-05)
 
