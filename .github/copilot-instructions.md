@@ -63,22 +63,20 @@ When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/v
 If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rename it to the version being released without the `-beta.1 (Unreleased)` suffix. Do not create a new "Unreleased" section.
 
 #### Step 2: Gather raw commits
-Run this command to get commits since the last release:
+**IMPORTANT**: Ensure you have the latest commits from main by running `git fetch` before any `git log` commands:
 ```bash
-git fetch origin main && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 main
+git fetch --unshallow origin
 ```
 
-If this fails, try adding the upstream remote:
-
+Then run this command to get commits since the last release:
 ```bash
-git remote add upstream https://github.com/Azure/azure-dev.git && git fetch upstream && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 upstream/main
+git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
 ```
 
-Start with 20 and gather commits up to the cutoff commit with a message like "Release changelog for v1.x.y". If you don't see the cutoff commit, increase the value from 20 until found.
+Start with 20 and gather commits up to the cutoff commit with a message like "Release changelog for v1.x.y". If you don't see the cutoff commit, increase the value from 20 until found. The git log shows commits in reverse chronological order (newest first).
 
-The git log shows commits in reverse chronological order (newest first).
 #### Step 3: Create intermediate tracking table
-Create a tracking table with these columns in the order they appear in git log (newest first), but excluding the cutoff commit and commits after it:
+Create a tracking table with these columns in the order they appear in git log (newest first), but excluding the cutoff commit and commits after/below it:
 | Commit Hash | Date | PR# | Commit Message | GitHub Handle | Category | Final Entry | Include? |
 
 #### Step 4: Process each commit iteratively
@@ -101,7 +99,11 @@ For each commit in your tracking table:
    - [[PR#]](https://github.com/Azure/azure-dev/pull/PR#) User-friendly description.
    ```
    For external contributors, append: " Thanks @handle for the contribution!"
-7. **Mark Include Decision**: Exclude non-customer-facing changes (CI/CD changes, internal tooling, test-only changes, etc.)
+7. **Mark Include Decision**: Exclude non-customer-facing changes, such as:
+    - CI/CD changes
+    - Internal tooling
+    - Test-only changes
+    - Dependency updates outside of `cli/azd`
 
 #### Step 5: Organize by category
 Group all entries marked "Include? = Yes" by their category.
