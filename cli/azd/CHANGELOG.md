@@ -4,11 +4,36 @@
 
 ### Features Added
 
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial support for azd extensions.
+- [[4942]](https://github.com/Azure/azure-dev/pull/4942) Update `azd env set` to accept multiple key-value pairs.
+- [[4969]](https://github.com/Azure/azure-dev/pull/4969) Add case-insensitive sorting support for prompts.
+- [[5285]](https://github.com/Azure/azure-dev/pull/5285) Add `AZURE_PRINCIPAL_TYPE` environment variable for conditional role assignments.
+- [[5280]](https://github.com/Azure/azure-dev/pull/5280) Combine minimal project creation options in `azd init` and add `--minimal` flag.
+- [[5270]](https://github.com/Azure/azure-dev/pull/5270) Add OIDC support for Terraform pipeline configuration.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add support for existing resources in AI build start extension.
+- [[5187]](https://github.com/Azure/azure-dev/pull/5187) Improve user experience when declining azd init confirmation.
+- [[5200]](https://github.com/Azure/azure-dev/pull/5200) Allow setting default values for parameter prompts.
+- [[5248]](https://github.com/Azure/azure-dev/pull/5248) Add Managed Identity authentication support for pipeline configuration.
+- [[5260]](https://github.com/Azure/azure-dev/pull/5260) Rename `azd infra synth` command and promote to beta.
+- [[5257]](https://github.com/Azure/azure-dev/pull/5257) Add .gitignore support for Aspire projects during pipeline configuration.
+- [[5249]](https://github.com/Azure/azure-dev/pull/5249) Add service name support for Visual Studio Aspire integration.
+- [[5199]](https://github.com/Azure/azure-dev/pull/5199) Optimize container registry login to only occur when pushing.
+- [[5214]](https://github.com/Azure/azure-dev/pull/5214) Add Linux support to Homebrew formulae.
+
 ### Breaking Changes
 
 ### Bugs Fixed
 
+- [[5386]](https://github.com/Azure/azure-dev/pull/5386) Fix string prompt to any type conversion.
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid properties in azure.yaml JSON schema.
+- [[5255]](https://github.com/Azure/azure-dev/pull/5255) Fix background telemetry upload handling in VS Server.
+
 ### Other Changes
+
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Security update for dependencies (CVE-2024-48924).
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency to 5.29.5.
+- [[5203]](https://github.com/Azure/azure-dev/pull/5203) Update to use latest static-web-apps CLI package.
+- [[5241]](https://github.com/Azure/azure-dev/pull/5241) Update azure.yaml schemas and documentation for compose beta.
 
 ## 1.17.0 (2025-06-05)
 
