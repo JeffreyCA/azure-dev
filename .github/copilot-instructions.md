@@ -65,12 +65,20 @@ If there's an existing section with heading `## 1.x.x-beta.1 (Unreleased)`, rena
 #### Step 2: Gather raw commits
 Run this command to get commits since the last release:
 ```bash
-git fetch origin main && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 origin/main
+git fetch origin main && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 main
 ```
-Start with 20 and gather commits up to the first commit with message like "Release changelog for v1.17.0 (#5263)". If you don't see the cutoff commit, increase the value until found.
 
-#### Step 3: Create tracking table
-For each commit, create a tracking table with these columns:
+If this fails, try adding the upstream remote:
+
+```bash
+git remote add upstream https://github.com/Azure/azure-dev.git && git fetch upstream && git --no-pager log --oneline --pretty=format:"%h %C(dim white)(%ad)%C(reset) %s" --date=short -20 upstream/main
+```
+
+Start with 20 and gather commits up to the cutoff commit with a message like "Release changelog for v1.x.y". If you don't see the cutoff commit, increase the value from 20 until found.
+
+The git log shows commits in reverse chronological order (newest first).
+#### Step 3: Create intermediate tracking table
+Create a tracking table with these columns in the order they appear in git log (newest first), but excluding the cutoff commit and commits after it:
 | Commit Hash | Date | PR# | Commit Message | GitHub Handle | Category | Final Entry | Include? |
 
 #### Step 4: Process each commit iteratively
@@ -106,4 +114,4 @@ Group all entries marked "Include? = Yes" by their category.
 ### Writing style
 - Keep entries brief but informative, matching the style of existing entries
 - Describe impact to end users, not implementation details
-- Start with verbs (Add, Fix, Update, Support, etc.)
+- Start with verbs (Add, Fix, Update, etc.)
