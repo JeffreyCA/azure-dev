@@ -313,3 +313,15 @@ func SplitDockerImage(fullImg string) (name string, tag string) {
 
 	return fullImg[:split], fullImg[split+1:]
 }
+
+// IsContainerdEnabled checks if Docker is using containerd image store
+func (d *Cli) IsContainerdEnabled(ctx context.Context) (bool, error) {
+	runArgs := exec.NewRunArgs("docker", "info", "-f", "{{ .DriverStatus }}")
+	result, err := d.commandRunner.Run(ctx, runArgs)
+	if err != nil {
+		return false, fmt.Errorf("failed to check docker info: %w", err)
+	}
+
+	// If containerd is enabled, the output contains "driver-type io.containerd.snapshotter.v1"
+	return strings.Contains(result.Stdout, "driver-type io.containerd.snapshotter.v1"), nil
+}

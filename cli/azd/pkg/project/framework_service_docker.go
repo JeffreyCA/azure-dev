@@ -559,6 +559,18 @@ func (p *dockerProject) packBuild(
 			}
 		}
 
+		// Check if the error is related to containerd and offer a helpful suggestion
+		if isContainerdRelatedError(err) {
+			containerdEnabled, checkErr := p.docker.IsContainerdEnabled(ctx)
+			if checkErr == nil && containerdEnabled {
+				return nil, &internal.ErrorWithSuggestion{
+					Err: err,
+					Suggestion: "The build failed because Docker's containerd image store is enabled, which is not compatible with pack builds. " +
+						"\nSuggested action: Disable the containerd image store in Docker Desktop settings under 'Settings > General > Use containerd for pulling and storing images'.",
+				}
+			}
+		}
+
 		return nil, err
 	}
 
@@ -612,6 +624,17 @@ func getEnvironForPython(ctx context.Context, svc *ServiceConfig) ([]string, err
 	}
 
 	return nil, nil
+}
+
+// isContainerdRelatedError checks if the error is related to containerd image store issues
+func isContainerdRelatedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+	// Check for the specific error pattern that occurs when containerd is enabled
+	return strings.Contains(errStr, "Error response from daemon: No such image: sha256:")
 }
 
 func getDockerOptionsWithDefaults(options DockerProjectOptions) DockerProjectOptions {

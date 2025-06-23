@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -643,6 +644,47 @@ func Test_DockerProject_Package(t *testing.T) {
 
 			require.Equal(t, tt.expectDockerPullCalled, dockerPullCalled)
 			require.Equal(t, tt.expectDockerTagCalled, dockerTagCalled)
+		})
+	}
+}
+
+func Test_isContainerdRelatedError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "NilError",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "ContainerdError",
+			err:      fmt.Errorf("Error response from daemon: No such image: sha256:1a3f079e7ffed5eb4c02ecf6fdcc38c8fe459b021b4803471703dbded90181c4"),
+			expected: true,
+		},
+		{
+			name:     "OtherNoSuchImageError",
+			err:      fmt.Errorf("Error response from daemon: No such image: some-image:latest"),
+			expected: false,
+		},
+		{
+			name:     "DifferentError",
+			err:      fmt.Errorf("some other build error"),
+			expected: false,
+		},
+		{
+			name:     "NestedContainerdError",
+			err:      fmt.Errorf("build failed: %w", fmt.Errorf("Error response from daemon: No such image: sha256:abc123")),
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isContainerdRelatedError(tt.err)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

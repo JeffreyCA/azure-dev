@@ -596,3 +596,57 @@ func TestSplitDockerImage(t *testing.T) {
 		})
 	}
 }
+
+func Test_IsContainerdEnabled(t *testing.T) {
+	t.Run("ContainerdEnabled", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			require.Equal(t, "docker", args.Cmd)
+			require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+			return exec.NewRunResult(0, "[[driver-type io.containerd.snapshotter.v1]]", ""), nil
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.NoError(t, err)
+		require.True(t, enabled)
+	})
+
+	t.Run("ContainerdDisabled", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			require.Equal(t, "docker", args.Cmd)
+			require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+			return exec.NewRunResult(0, "[[Backing Filesystem extfs] [Supports d_type true] [Using metacopy false]]", ""), nil
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.NoError(t, err)
+		require.False(t, enabled)
+	})
+
+	t.Run("DockerInfoError", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.NewRunResult(1, "", "docker: command not found"), errors.New("command failed")
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.Error(t, err)
+		require.False(t, enabled)
+		require.Contains(t, err.Error(), "failed to check docker info")
+	})
+}
