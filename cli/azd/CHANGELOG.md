@@ -1,14 +1,33 @@
 # Release History
 
-## 1.18.0-beta.1 (Unreleased)
+## 1.18.0 (2025-06-23)
 
 ### Features Added
 
-### Breaking Changes
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions registry.
+- [[4942]](https://github.com/Azure/azure-dev/pull/4942) Update `env set` to accept multiple key-value pairs.
+- [[5280]](https://github.com/Azure/azure-dev/pull/5280) Combine "Create a minimal project" with "Scan current directory" option and add `--minimal` flag to `azd init`.
+- [[5270]](https://github.com/Azure/azure-dev/pull/5270) Add Terraform pipeline config support for OIDC.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add extension support for `existing` resource for AI build start.
+- [[5285]](https://github.com/Azure/azure-dev/pull/5285) Introduce `AZURE_PRINCIPAL_TYPE` to conditionally set user-only role assignments for compose + CI/CD.
+- [[4969]](https://github.com/Azure/azure-dev/pull/4969) Add case-insensitive sorting support for subscription and resource group prompts.
 
 ### Bugs Fixed
 
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid azure.yaml JSON schema properties.
+
 ### Other Changes
+
+- [[5379]](https://github.com/Azure/azure-dev/pull/5379) Update recordings for vs-server test.
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies to mitigate CVE-2024-48924.
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from 5.29.0 to 5.29.5.
+- [[5364]](https://github.com/Azure/azure-dev/pull/5364) Bump brace-expansion dependency in /templates/todo/api/js.
+- [[5283]](https://github.com/Azure/azure-dev/pull/5283) Bump brace-expansion dependency in /eng/common/spelling.
+- [[5281]](https://github.com/Azure/azure-dev/pull/5281) Bump org.postgresql:postgresql dependency.
+- [[5203]](https://github.com/Azure/azure-dev/pull/5203) Ensure use of latest static-web-apps CLI npm package.
+- [[5259]](https://github.com/Azure/azure-dev/pull/5259) Update azure-sdk-build-tools Repository Resource Refs in YAML files.
+- [[5241]](https://github.com/Azure/azure-dev/pull/5241) Update azure.yaml schemas and feature stage documentation for compose beta.
+- [[5265]](https://github.com/Azure/azure-dev/pull/5265) Fix parallel tests for vs-server.
 
 ## 1.17.0 (2025-06-05)
 
