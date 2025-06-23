@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -643,6 +644,79 @@ func Test_DockerProject_Package(t *testing.T) {
 
 			require.Equal(t, tt.expectDockerPullCalled, dockerPullCalled)
 			require.Equal(t, tt.expectDockerTagCalled, dockerTagCalled)
+		})
+	}
+}
+
+func TestIsContainerdPackBuildError(t *testing.T) {
+	mockContext := mocks.NewMockContext(context.Background())
+	env := environment.NewWithValues("test-env", nil)
+	dockerCli := docker.NewCli(mockContext.CommandRunner)
+
+	project := &dockerProject{
+		env:           env,
+		docker:        dockerCli,
+		console:       mockinput.NewMockConsole(),
+		commandRunner: mockContext.CommandRunner,
+	}
+
+	tests := []struct {
+		name              string
+		errorMessage      string
+		containerdEnabled bool
+		dockerInfoError   bool
+		expectedResult    bool
+	}{
+		{
+			name:              "containerd error with containerd enabled",
+			errorMessage:      "ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/test:latest: saving image \"pack.local/builder/test:latest\": Error response from daemon: No such image: sha256:abc123]",
+			containerdEnabled: true,
+			expectedResult:    true,
+		},
+		{
+			name:              "containerd error with containerd disabled",
+			errorMessage:      "ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/test:latest: saving image \"pack.local/builder/test:latest\": Error response from daemon: No such image: sha256:abc123]",
+			containerdEnabled: false,
+			expectedResult:    false,
+		},
+		{
+			name:              "different error with containerd enabled",
+			errorMessage:      "Some other build error",
+			containerdEnabled: true,
+			expectedResult:    false,
+		},
+		{
+			name:            "containerd error but docker info fails",
+			errorMessage:    "ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/test:latest: saving image \"pack.local/builder/test:latest\": Error response from daemon: No such image: sha256:abc123]",
+			dockerInfoError: true,
+			expectedResult:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Mock docker info command
+			mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+				return strings.Contains(command, "docker info")
+			}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+				if tt.dockerInfoError {
+					return exec.RunResult{}, fmt.Errorf("docker info failed")
+				}
+
+				driverStatus := "[[Backing Filesystem extfs] [Supports d_type true]]"
+				if tt.containerdEnabled {
+					driverStatus = "[[driver-type io.containerd.snapshotter.v1]]"
+				}
+
+				return exec.RunResult{
+					Stdout:   driverStatus,
+					ExitCode: 0,
+				}, nil
+			})
+
+			err := fmt.Errorf("%s", tt.errorMessage)
+			result := project.isContainerdPackBuildError(context.Background(), err)
+			require.Equal(t, tt.expectedResult, result)
 		})
 	}
 }

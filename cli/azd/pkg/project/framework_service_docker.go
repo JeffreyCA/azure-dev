@@ -559,6 +559,17 @@ func (p *dockerProject) packBuild(
 			}
 		}
 
+		// Check for containerd-related pack build failures
+		if p.isContainerdPackBuildError(ctx, err) {
+			return nil, &internal.ErrorWithSuggestion{
+				Err: err,
+				Suggestion: "Pack build failed when containerd image store is enabled in Docker. " +
+					"This is a known issue with buildpacks and containerd.\n" +
+					"Suggested action: Disable the containerd image store feature by unchecking " +
+					"'Use containerd for pulling and storing images' in Docker Desktop Settings > Features in development.",
+			}
+		}
+
 		return nil, err
 	}
 
@@ -628,4 +639,24 @@ func getDockerOptionsWithDefaults(options DockerProjectOptions) DockerProjectOpt
 	}
 
 	return options
+}
+
+// isContainerdPackBuildError checks if the pack build error is related to containerd image store
+func (p *dockerProject) isContainerdPackBuildError(ctx context.Context, err error) bool {
+	errStr := err.Error()
+
+	// Check for the specific error pattern mentioned in the issue
+	if !strings.Contains(errStr, "failed to build: failed to write image to the following tags") ||
+		!strings.Contains(errStr, "Error response from daemon: No such image:") {
+		return false
+	}
+
+	// Check if containerd image store is enabled
+	isContainerdEnabled, checkErr := p.docker.IsContainerdImageStoreEnabled(ctx)
+	if checkErr != nil {
+		// If we can't determine containerd status, don't provide the suggestion
+		return false
+	}
+
+	return isContainerdEnabled
 }
