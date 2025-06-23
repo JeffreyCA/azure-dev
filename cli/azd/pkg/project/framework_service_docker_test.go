@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -643,6 +644,47 @@ func Test_DockerProject_Package(t *testing.T) {
 
 			require.Equal(t, tt.expectDockerPullCalled, dockerPullCalled)
 			require.Equal(t, tt.expectDockerTagCalled, dockerTagCalled)
+		})
+	}
+}
+
+func Test_isContainerdPackError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "unrelated error",
+			err:      errors.New("some other error"),
+			expected: false,
+		},
+		{
+			name:     "containerd pack error",
+			err:      errors.New("ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/657662746b6877776b68:latest: saving image \"pack.local/builder/657662746b6877776b68:latest\": Error response from daemon: No such image: sha256:1a3f079e7ffed5eb4c02ecf6fdcc38c8fe459b021b4803471703dbded90181c4]"),
+			expected: true,
+		},
+		{
+			name:     "partial containerd error - missing saving image",
+			err:      errors.New("failed to write image to the following tags: [pack.local/builder/657662746b6877776b68:latest: Error response from daemon: No such image"),
+			expected: false,
+		},
+		{
+			name:     "partial containerd error - missing pack.local/builder",
+			err:      errors.New("failed to write image to the following tags: saving image: Error response from daemon: No such image"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isContainerdPackError(tt.err)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

@@ -437,6 +437,21 @@ func (p *dockerProject) Package(
 // Default builder image to produce container images from source, needn't java jdk storage, use the standard bp
 const DefaultBuilderImage = "mcr.microsoft.com/oryx/builder:debian-bullseye-20240424.1"
 
+// isContainerdPackError checks if the error is related to containerd image store issues during pack build
+// The specific error pattern occurs when containerd is enabled and pack cannot save the image
+func isContainerdPackError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+	// Check for the specific error pattern mentioned in the issue
+	return strings.Contains(errStr, "failed to write image to the following tags") &&
+		strings.Contains(errStr, "saving image") &&
+		strings.Contains(errStr, "pack.local/builder") &&
+		strings.Contains(errStr, "Error response from daemon: No such image")
+}
+
 func (p *dockerProject) packBuild(
 	ctx context.Context,
 	svc *ServiceConfig,
@@ -556,6 +571,21 @@ func (p *dockerProject) packBuild(
 					fmt.Sprintf(
 						"\nSuggested action: Author a Dockerfile and save it as %s",
 						filepath.Join(svc.Path(), dockerOptions.Path)),
+			}
+		}
+
+		// Check if this is a containerd-related pack build error
+		if isContainerdPackError(err) {
+			if containerdEnabled, checkErr := p.docker.IsContainerdEnabled(ctx); checkErr == nil && containerdEnabled {
+				return nil, &internal.ErrorWithSuggestion{
+					Err: err,
+					Suggestion: "Pack build failed due to containerd image store being enabled in Docker. " +
+						"To resolve this issue, disable the containerd image store in Docker Desktop:\n" +
+						"1. Open Docker Desktop\n" +
+						"2. Go to Settings > Features in development > Use containerd for pulling and storing images\n" +
+						"3. Uncheck this option and restart Docker Desktop\n" +
+						"4. Run 'azd package' again",
+				}
 			}
 		}
 
