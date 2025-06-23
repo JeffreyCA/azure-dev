@@ -437,6 +437,19 @@ func (p *dockerProject) Package(
 // Default builder image to produce container images from source, needn't java jdk storage, use the standard bp
 const DefaultBuilderImage = "mcr.microsoft.com/oryx/builder:debian-bullseye-20240424.1"
 
+// isContainerdPackError checks if the error is related to containerd issues when using pack build
+func isContainerdPackError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+	// Look for the specific error pattern mentioned in the issue:
+	// - Contains "saving image" and "No such image" which indicates the containerd issue
+	// - This is the pattern from buildpacks when containerd is enabled
+	return strings.Contains(errStr, "saving image") && strings.Contains(errStr, "No such image")
+}
+
 func (p *dockerProject) packBuild(
 	ctx context.Context,
 	svc *ServiceConfig,
@@ -556,6 +569,17 @@ func (p *dockerProject) packBuild(
 					fmt.Sprintf(
 						"\nSuggested action: Author a Dockerfile and save it as %s",
 						filepath.Join(svc.Path(), dockerOptions.Path)),
+			}
+		}
+
+		// Check if this is a containerd-related error
+		if isContainerdPackError(err) {
+			if containerdEnabled, checkErr := p.docker.IsContainerdEnabled(ctx); checkErr == nil && containerdEnabled {
+				return nil, &internal.ErrorWithSuggestion{
+					Err: err,
+					Suggestion: "This error may be caused by having containerd image store enabled in Docker. " +
+						"Try disabling the containerd image store in Docker settings under 'Features in development' and try again.",
+				}
 			}
 		}
 

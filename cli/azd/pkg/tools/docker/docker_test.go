@@ -596,3 +596,69 @@ func TestSplitDockerImage(t *testing.T) {
 		})
 	}
 }
+
+func Test_IsContainerdEnabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		dockerInfoOut string
+		expectEnabled bool
+		expectError   bool
+		errorMessage  string
+	}{
+		{
+			name:          "containerd enabled",
+			dockerInfoOut: "[[driver-type io.containerd.snapshotter.v1]]",
+			expectEnabled: true,
+			expectError:   false,
+		},
+		{
+			name:          "containerd disabled",
+			dockerInfoOut: "[[Backing Filesystem extfs] [Supports d_type true] [Using metacopy false] [Native Overlay Diff true] [userxattr false]]",
+			expectEnabled: false,
+			expectError:   false,
+		},
+		{
+			name:         "docker info error",
+			expectError:  true,
+			errorMessage: "docker info failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockContext := mocks.NewMockContext(context.Background())
+			docker := NewCli(mockContext.CommandRunner)
+
+			mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+				return strings.Contains(command, "docker info")
+			}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+				require.Equal(t, "docker", args.Cmd)
+				require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+				if tt.expectError {
+					return exec.RunResult{
+						Stdout:   "",
+						Stderr:   tt.errorMessage,
+						ExitCode: 1,
+					}, errors.New(tt.errorMessage)
+				}
+
+				return exec.RunResult{
+					Stdout:   tt.dockerInfoOut,
+					Stderr:   "",
+					ExitCode: 0,
+				}, nil
+			})
+
+			enabled, err := docker.IsContainerdEnabled(context.Background())
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "checking docker driver status")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectEnabled, enabled)
+			}
+		})
+	}
+}

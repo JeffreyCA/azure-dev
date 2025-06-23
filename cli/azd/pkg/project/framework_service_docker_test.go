@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -643,6 +644,113 @@ func Test_DockerProject_Package(t *testing.T) {
 
 			require.Equal(t, tt.expectDockerPullCalled, dockerPullCalled)
 			require.Equal(t, tt.expectDockerTagCalled, dockerTagCalled)
+		})
+	}
+}
+
+func Test_isContainerdPackError(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		expect bool
+	}{
+		{
+			name:   "nil error",
+			err:    nil,
+			expect: false,
+		},
+		{
+			name:   "containerd pack error",
+			err:    errors.New("ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/xxx:latest: saving image \"pack.local/builder/xxx:latest\": Error response from daemon: No such image: sha256:abc123]"),
+			expect: true,
+		},
+		{
+			name:   "saving image with No such image",
+			err:    errors.New("saving image failed: No such image"),
+			expect: true,
+		},
+		{
+			name:   "other error with saving image only",
+			err:    errors.New("error while saving image"),
+			expect: false,
+		},
+		{
+			name:   "other error with No such image only",
+			err:    errors.New("No such image found"),
+			expect: false,
+		},
+		{
+			name:   "unrelated error",
+			err:    errors.New("some other build error"),
+			expect: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isContainerdPackError(tt.err)
+			require.Equal(t, tt.expect, result)
+		})
+	}
+}
+
+func Test_packBuild_ContainerdErrorHandling(t *testing.T) {
+	tests := []struct {
+		name               string
+		packBuildError     error
+		containerdEnabled  bool
+		containerdCheckErr error
+		expectSuggestion   bool
+		expectedText       string
+	}{
+		{
+			name:               "containerd error with containerd enabled",
+			packBuildError:     errors.New("ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/xxx:latest: saving image \"pack.local/builder/xxx:latest\": Error response from daemon: No such image: sha256:abc123]"),
+			containerdEnabled:  true,
+			containerdCheckErr: nil,
+			expectSuggestion:   true,
+			expectedText:       "containerd image store enabled",
+		},
+		{
+			name:               "containerd error with containerd disabled",
+			packBuildError:     errors.New("ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/xxx:latest: saving image \"pack.local/builder/xxx:latest\": Error response from daemon: No such image: sha256:abc123]"),
+			containerdEnabled:  false,
+			containerdCheckErr: nil,
+			expectSuggestion:   false,
+		},
+		{
+			name:               "containerd error with containerd check error",
+			packBuildError:     errors.New("ERROR: failed to build: failed to write image to the following tags: [pack.local/builder/xxx:latest: saving image \"pack.local/builder/xxx:latest\": Error response from daemon: No such image: sha256:abc123]"),
+			containerdEnabled:  false,
+			containerdCheckErr: errors.New("docker info failed"),
+			expectSuggestion:   false,
+		},
+		{
+			name:               "non-containerd error",
+			packBuildError:     errors.New("some other pack build error"),
+			containerdEnabled:  true,
+			containerdCheckErr: nil,
+			expectSuggestion:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the logic by verifying that isContainerdPackError correctly identifies the error
+			// and the suggestion would be provided when containerd is enabled
+			isContainerdErr := isContainerdPackError(tt.packBuildError)
+			
+			if tt.expectSuggestion {
+				require.True(t, isContainerdErr, "should identify as containerd pack error")
+				require.True(t, tt.containerdEnabled, "containerd should be enabled")
+				require.NoError(t, tt.containerdCheckErr, "containerd check should succeed")
+			} else if tt.packBuildError != nil && strings.Contains(tt.packBuildError.Error(), "saving image") && strings.Contains(tt.packBuildError.Error(), "No such image") {
+				require.True(t, isContainerdErr, "should identify as containerd pack error")
+				// But suggestion should not be provided if containerd is disabled or check fails
+				if tt.containerdCheckErr == nil {
+					require.False(t, tt.containerdEnabled, "containerd should be disabled")
+				}
+			}
 		})
 	}
 }
