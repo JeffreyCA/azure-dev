@@ -1,5 +1,33 @@
 # Release History
 
+## 1.18.0 (2025-06-24)
+
+### Features Added
+
+- [[5203]](https://github.com/Azure/azure-dev/pull/5203) Make sure to always use latest static-web-apps CLI npm package.
+- [[5270]](https://github.com/Azure/azure-dev/pull/5270) Add support for Terraform+OIDC in pipeline config.
+- [[5280]](https://github.com/Azure/azure-dev/pull/5280) Combine "Create a minimal project" with "Scan current directory" option and add --minimal flag.
+- [[5285]](https://github.com/Azure/azure-dev/pull/5285) [compose + CI/CD] - Introduce AZURE_PRINCIPAL_TYPE to conditionally set user-only role assignments.
+- [[4942]](https://github.com/Azure/azure-dev/pull/4942) Update env set to accept multiple key-value pairs.
+- [[4969]](https://github.com/Azure/azure-dev/pull/4969) Case-insensitive sorting for subscriptions.
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions support.
+
+### Bugs Fixed
+
+- [[5391]](https://github.com/Azure/azure-dev/pull/5391) Fix getting principal type when using legacy auth (az auth).
+- [[5386]](https://github.com/Azure/azure-dev/pull/5386) Fix regression, prompting for bool or int without default.
+- [[5372]](https://github.com/Azure/azure-dev/pull/5372) Fix null tags handling in deployment-stack.
+
+### Other Changes
+
+- [[5368]](https://github.com/Azure/azure-dev/pull/5368) Refactor: Use %v to log errors instead of %s + error.Error().
+- [[5369]](https://github.com/Azure/azure-dev/pull/5369) Refactor: Rename evaluateArgsWithConfig to evaluateBuildArgs for clarity.
+- [[5393]](https://github.com/Azure/azure-dev/pull/5393) Test: Parallelize vs tests.
+- [[5373]](https://github.com/Azure/azure-dev/pull/5373) Test: Omit socket reset errors in recording proxy.
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies for CVE-2024-48924.
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from 5.29.0 to 5.29.5.
+- [[5265]](https://github.com/Azure/azure-dev/pull/5265) Fix parallel tests for vsserver.
+
 ## 1.17.2 (2025-06-23)
 
 ### Bugs Fixed
