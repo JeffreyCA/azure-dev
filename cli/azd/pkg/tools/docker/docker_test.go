@@ -11,12 +11,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/test/mocks"
 	"github.com/stretchr/testify/require"
 )
 
 const mockedDockerImgId = "fake-docker-image-id"
+
+const containerdBuildError = "ERROR: failed to build: failed to write image to the following tags: " +
+	"[pack.local/builder/657662746b6877776b68:latest: saving image " +
+	"\"pack.local/builder/657662746b6877776b68:latest\": Error response from daemon: " +
+	"No such image: sha256:1a3f079e7ffed5eb4c02ecf6fdcc38c8fe459b021b4803471703dbded90181c4]"
+
+const dockerInfoContainerdDisabled = "[[Backing Filesystem extfs] [Supports d_type true] " +
+	"[Using metacopy false] [Native Overlay Diff true] [userxattr false]]"
 
 func Test_DockerBuild(t *testing.T) {
 	cwd := "."
@@ -595,4 +604,213 @@ func TestSplitDockerImage(t *testing.T) {
 			require.Equal(t, tt.wantTag, tag)
 		})
 	}
+}
+
+func TestIsContainerdEnabled(t *testing.T) {
+	t.Run("ContainerdEnabled", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			require.Equal(t, "docker", args.Cmd)
+			require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+			return exec.RunResult{
+				Stdout:   "[[driver-type io.containerd.snapshotter.v1]]",
+				Stderr:   "",
+				ExitCode: 0,
+			}, nil
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.NoError(t, err)
+		require.True(t, enabled)
+	})
+
+	t.Run("ContainerdDisabled", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			require.Equal(t, "docker", args.Cmd)
+			require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+			return exec.RunResult{
+				Stdout:   dockerInfoContainerdDisabled,
+				Stderr:   "",
+				ExitCode: 0,
+			}, nil
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.NoError(t, err)
+		require.False(t, enabled)
+	})
+
+	t.Run("ErrorExecutingCommand", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				ExitCode: 1,
+			}, errors.New("docker daemon not running")
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+		require.Error(t, err)
+		require.False(t, enabled)
+		require.Contains(t, err.Error(), "checking docker driver status")
+	})
+}
+
+func TestBuildWithContainerdError(t *testing.T) {
+	cwd := "."
+	dockerFile := "./Dockerfile"
+	dockerContext := "../"
+	platform := DefaultPlatform
+	imageName := "IMAGE_NAME"
+
+	t.Run("ContainerdBuildErrorWithSuggestion", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		// Mock the docker build command to return containerd-related error
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker build")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				ExitCode: 1,
+			}, errors.New(containerdBuildError)
+		})
+
+		// Mock the docker info command to return containerd enabled
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				Stdout:   "[[driver-type io.containerd.snapshotter.v1]]",
+				Stderr:   "",
+				ExitCode: 0,
+			}, nil
+		})
+
+		_, err := docker.Build(
+			context.Background(),
+			cwd,
+			dockerFile,
+			platform,
+			"",
+			dockerContext,
+			imageName,
+			[]string{},
+			[]string{},
+			[]string{},
+			nil,
+		)
+
+		require.Error(t, err)
+
+		// Check if it's an ErrorWithSuggestion
+		var errWithSuggestion *internal.ErrorWithSuggestion
+		require.True(t, errors.As(err, &errWithSuggestion))
+		require.Contains(t, errWithSuggestion.Suggestion, "containerd image store")
+		require.Contains(t, errWithSuggestion.Suggestion, "Docker Desktop settings")
+	})
+
+	t.Run("ContainerdBuildErrorButContainerdCheckFails", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		// Mock the docker build command to return containerd-related error
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker build")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				ExitCode: 1,
+			}, errors.New(containerdBuildError)
+		})
+
+		// Mock the docker info command to fail
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				ExitCode: 1,
+			}, errors.New("docker daemon not running")
+		})
+
+		_, err := docker.Build(
+			context.Background(),
+			cwd,
+			dockerFile,
+			platform,
+			"",
+			dockerContext,
+			imageName,
+			[]string{},
+			[]string{},
+			[]string{},
+			nil,
+		)
+
+		require.Error(t, err)
+
+		// Should not be ErrorWithSuggestion since containerd check failed
+		var errWithSuggestion *internal.ErrorWithSuggestion
+		require.False(t, errors.As(err, &errWithSuggestion))
+		require.Contains(t, err.Error(), "building image")
+	})
+
+	t.Run("ContainerdBuildErrorButContainerdDisabled", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		// Mock the docker build command to return containerd-related error
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker build")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				ExitCode: 1,
+			}, errors.New(containerdBuildError)
+		})
+
+		// Mock the docker info command to return containerd disabled
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				Stdout:   dockerInfoContainerdDisabled,
+				Stderr:   "",
+				ExitCode: 0,
+			}, nil
+		})
+
+		_, err := docker.Build(
+			context.Background(),
+			cwd,
+			dockerFile,
+			platform,
+			"",
+			dockerContext,
+			imageName,
+			[]string{},
+			[]string{},
+			[]string{},
+			nil,
+		)
+
+		require.Error(t, err)
+
+		// Should not be ErrorWithSuggestion since containerd is disabled
+		var errWithSuggestion *internal.ErrorWithSuggestion
+		require.False(t, errors.As(err, &errWithSuggestion))
+		require.Contains(t, err.Error(), "building image")
+	})
 }

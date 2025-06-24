@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
 	"github.com/blang/semver/v4"
@@ -118,6 +119,17 @@ func (d *Cli) Build(
 
 	_, err = d.commandRunner.Run(ctx, runArgs)
 	if err != nil {
+		// Check if this is a containerd-related error
+		if d.isContainerdBuildError(err) {
+			containerdEnabled, checkErr := d.IsContainerdEnabled(ctx)
+			if checkErr == nil && containerdEnabled {
+				return "", &internal.ErrorWithSuggestion{
+					Err: fmt.Errorf("building image: %w", err),
+					//nolint:lll
+					Suggestion: "Docker build failed with containerd image store enabled. Try disabling the containerd image store in Docker Desktop settings under 'Features in development' and run 'azd package' again",
+				}
+			}
+		}
 		return "", fmt.Errorf("building image: %w", err)
 	}
 
@@ -162,6 +174,26 @@ func (d *Cli) Inspect(ctx context.Context, imageName string, format string) (str
 	}
 
 	return out.Stdout, nil
+}
+
+// IsContainerdEnabled checks if Docker is using containerd as the image store
+func (d *Cli) IsContainerdEnabled(ctx context.Context) (bool, error) {
+	out, err := d.executeCommand(ctx, "", "info", "-f", "{{ .DriverStatus }}")
+	if err != nil {
+		return false, fmt.Errorf("checking docker driver status: %w", err)
+	}
+
+	// When containerd is enabled, the output contains "driver-type io.containerd.snapshotter.v1"
+	return strings.Contains(out.Stdout, "driver-type io.containerd.snapshotter.v1"), nil
+}
+
+// isContainerdBuildError checks if the error is related to containerd image store issues
+func (d *Cli) isContainerdBuildError(err error) bool {
+	errStr := err.Error()
+	// Check for the specific error pattern that occurs with containerd enabled
+	return strings.Contains(errStr, "saving image") &&
+		strings.Contains(errStr, "No such image") &&
+		strings.Contains(errStr, "pack.local/builder")
 }
 
 func (d *Cli) versionInfo() tools.VersionInfo {
