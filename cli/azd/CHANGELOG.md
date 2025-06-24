@@ -1,5 +1,26 @@
 # Release History
 
+## 1.18.0 (2025-06-24)
+
+### Features Added
+
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial set of azd extensions to the official registry.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add support for `existing` resource type in AI extension build start command.
+
+### Bugs Fixed
+
+- [[5372]](https://github.com/Azure/azure-dev/pull/5372) Fix null tag handling in deployment stack operations.
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid properties in azure.yaml JSON schema validation.
+
+### Other Changes
+
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies to address CVE-2024-48924.
+- [[5368]](https://github.com/Azure/azure-dev/pull/5368) Refactor error logging to use standardized format patterns.
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from v5.29.0 to v5.29.5.
+- [[5369]](https://github.com/Azure/azure-dev/pull/5369) Refactor build argument evaluation function for improved clarity.
+- [[5395]](https://github.com/Azure/azure-dev/pull/5395) Add GitHub Copilot instructions documentation.
+- [[5393]](https://github.com/Azure/azure-dev/pull/5393), [[5373]](https://github.com/Azure/azure-dev/pull/5373), [[5387]](https://github.com/Azure/azure-dev/pull/5387), [[5379]](https://github.com/Azure/azure-dev/pull/5379), [[5265]](https://github.com/Azure/azure-dev/pull/5265) Improve test reliability and performance.
+
 ## 1.17.2 (2025-06-23)
 
 ### Bugs Fixed
