@@ -30,6 +30,10 @@ jobs:
           # Fetch full history for writing changelogs
           fetch-depth: 0
 
+      # Workaround for fetch-depth being overridden by Copilot
+      - name: Run git fetch
+        run: git fetch origin main:refs/remotes/origin/main
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
