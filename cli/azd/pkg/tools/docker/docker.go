@@ -289,6 +289,18 @@ func (d *Cli) executeCommand(ctx context.Context, cwd string, args ...string) (e
 	return d.commandRunner.Run(ctx, runArgs)
 }
 
+// IsContainerdEnabled checks if Docker is using containerd image store
+// by running 'docker info -f "{{ .DriverStatus }}"' and checking for containerd.snapshotter
+func (d *Cli) IsContainerdEnabled(ctx context.Context) (bool, error) {
+	out, err := d.executeCommand(ctx, "", "info", "-f", "{{ .DriverStatus }}")
+	if err != nil {
+		return false, fmt.Errorf("checking docker driver status: %w", err)
+	}
+
+	driverStatus := strings.TrimSpace(out.Stdout)
+	return strings.Contains(driverStatus, "io.containerd.snapshotter.v1"), nil
+}
+
 // SplitDockerImage splits the image into the name and tag.
 // If the image does not have a tag or is invalid, the full string is returned as name, and tag will be empty.
 func SplitDockerImage(fullImg string) (name string, tag string) {

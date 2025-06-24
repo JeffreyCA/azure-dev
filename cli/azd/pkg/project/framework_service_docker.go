@@ -559,6 +559,19 @@ func (p *dockerProject) packBuild(
 			}
 		}
 
+		// Check if this is a containerd-related error
+		if strings.Contains(err.Error(), "saving image") && strings.Contains(err.Error(), "pack.local/builder") {
+			// Check if containerd is enabled
+			if containerdEnabled, checkErr := p.docker.IsContainerdEnabled(ctx); checkErr == nil && containerdEnabled {
+				return nil, &internal.ErrorWithSuggestion{
+					Err: err,
+					Suggestion: "Docker containerd image store is enabled, which is incompatible with pack builds. " +
+						"\nSuggested action: Disable containerd image store in Docker Desktop settings under " +
+						"'Features in development' > 'Use containerd for pulling and storing images' and try again.",
+				}
+			}
+		}
+
 		return nil, err
 	}
 
