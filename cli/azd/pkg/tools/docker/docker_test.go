@@ -596,3 +596,69 @@ func TestSplitDockerImage(t *testing.T) {
 		})
 	}
 }
+
+func Test_IsContainerdEnabled(t *testing.T) {
+	tests := []struct {
+		name               string
+		driverStatusOutput string
+		expectContainerd   bool
+		expectError        bool
+	}{
+		{
+			name:               "containerd enabled",
+			driverStatusOutput: "[[driver-type io.containerd.snapshotter.v1]]",
+			expectContainerd:   true,
+			expectError:        false,
+		},
+		{
+			name: "containerd disabled - overlay2",
+			driverStatusOutput: "[[Backing Filesystem extfs] [Supports d_type true] " +
+				"[Using metacopy false] [Native Overlay Diff true] [userxattr false]]",
+			expectContainerd: false,
+			expectError:      false,
+		},
+		{
+			name:               "containerd disabled - empty output",
+			driverStatusOutput: "",
+			expectContainerd:   false,
+			expectError:        false,
+		},
+		{
+			name:               "containerd check in mixed output",
+			driverStatusOutput: "[[Backing Filesystem extfs] [driver-type io.containerd.snapshotter.v1] [userxattr false]]",
+			expectContainerd:   true,
+			expectError:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockContext := mocks.NewMockContext(context.Background())
+			docker := NewCli(mockContext.CommandRunner)
+
+			mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+				return strings.Contains(command, "docker info")
+			}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+				require.Equal(t, "docker", args.Cmd)
+				require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+				if tt.expectError {
+					return exec.RunResult{}, errors.New("docker info failed")
+				}
+
+				return exec.RunResult{
+					Stdout: tt.driverStatusOutput,
+				}, nil
+			})
+
+			enabled, err := docker.IsContainerdEnabled(context.Background())
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectContainerd, enabled)
+			}
+		})
+	}
+}
