@@ -164,6 +164,20 @@ func (d *Cli) Inspect(ctx context.Context, imageName string, format string) (str
 	return out.Stdout, nil
 }
 
+// IsContainerdEnabled checks if Docker is using containerd as the image store.
+// When containerd is enabled, pack build operations may fail with specific errors.
+func (d *Cli) IsContainerdEnabled(ctx context.Context) (bool, error) {
+	out, err := d.executeCommand(ctx, "", "info", "-f", "{{ .DriverStatus }}")
+	if err != nil {
+		return false, fmt.Errorf("checking docker driver status: %w", err)
+	}
+
+	// When containerd is enabled, the driver status contains:
+	// [[driver-type io.containerd.snapshotter.v1]]
+	driverStatus := strings.TrimSpace(out.Stdout)
+	return strings.Contains(driverStatus, "io.containerd.snapshotter.v1"), nil
+}
+
 func (d *Cli) versionInfo() tools.VersionInfo {
 	return tools.VersionInfo{
 		MinimumVersion: semver.Version{

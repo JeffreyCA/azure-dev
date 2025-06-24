@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -643,6 +644,92 @@ func Test_DockerProject_Package(t *testing.T) {
 
 			require.Equal(t, tt.expectDockerPullCalled, dockerPullCalled)
 			require.Equal(t, tt.expectDockerTagCalled, dockerTagCalled)
+		})
+	}
+}
+
+func Test_DockerProject_IsContainerdRelatedError(t *testing.T) {
+	env := environment.NewWithValues("test-env", nil)
+
+	tests := []struct {
+		name              string
+		errorMessage      string
+		containerdEnabled bool
+		dockerInfoError   bool
+		expectedResult    bool
+	}{
+		{
+			name:              "containerd error with containerd enabled",
+			errorMessage:      "failed to write image to the following tags: [pack.local/builder/657662746b6877776b68:latest: saving image \"pack.local/builder/657662746b6877776b68:latest\": Error response from daemon: No such image: sha256:1a3f079e7ffed5eb4c02ecf6fdcc38c8fe459b021b4803471703dbded90181c4]",
+			containerdEnabled: true,
+			expectedResult:    true,
+		},
+		{
+			name:              "containerd error with containerd disabled",
+			errorMessage:      "failed to write image to the following tags: [pack.local/builder/test:latest]",
+			containerdEnabled: false,
+			expectedResult:    false,
+		},
+		{
+			name:              "non-containerd error",
+			errorMessage:      "some other error occurred",
+			containerdEnabled: true,
+			expectedResult:    false,
+		},
+		{
+			name:              "buildpacksio/lifecycle error with containerd enabled",
+			errorMessage:      "ERROR: failed to build: failed to write image to buildpacksio/lifecycle:0.17.0",
+			containerdEnabled: true,
+			expectedResult:    true,
+		},
+		{
+			name:              "docker info error with containerd pattern",
+			errorMessage:      "No such image: sha256:abc123 pack.local/builder",
+			containerdEnabled: false,
+			dockerInfoError:   true,
+			expectedResult:    true, // Should assume it's containerd when docker info fails
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockContext := mocks.NewMockContext(context.Background())
+
+			dockerCli := docker.NewCli(mockContext.CommandRunner)
+
+			// Mock docker info command
+			mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+				return strings.Contains(command, "docker info")
+			}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+				if tt.dockerInfoError {
+					return exec.RunResult{
+						Stdout:   "",
+						Stderr:   "docker daemon not running",
+						ExitCode: 1,
+					}, errors.New("docker daemon not running")
+				}
+
+				driverStatus := "[[Backing Filesystem extfs]]"
+				if tt.containerdEnabled {
+					driverStatus = "[[driver-type io.containerd.snapshotter.v1]]"
+				}
+
+				return exec.RunResult{
+					Stdout:   driverStatus,
+					Stderr:   "",
+					ExitCode: 0,
+				}, nil
+			})
+
+			dockerProject := &dockerProject{
+				env:    env,
+				docker: dockerCli,
+			}
+
+			testError := errors.New(tt.errorMessage)
+			result := dockerProject.isContainerdRelatedError(context.Background(), testError)
+
+			require.Equal(t, tt.expectedResult, result)
 		})
 	}
 }

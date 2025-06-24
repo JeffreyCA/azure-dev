@@ -573,6 +573,90 @@ func Test_IsSupportedDockerVersion(t *testing.T) {
 	}
 }
 
+func Test_IsContainerdEnabled(t *testing.T) {
+	tests := []struct {
+		name             string
+		dockerInfoOutput string
+		expectedEnabled  bool
+		expectError      bool
+	}{
+		{
+			name:             "containerd enabled",
+			dockerInfoOutput: "[[driver-type io.containerd.snapshotter.v1]]",
+			expectedEnabled:  true,
+			expectError:      false,
+		},
+		{
+			name:             "containerd disabled - overlay2",
+			dockerInfoOutput: "[[Backing Filesystem extfs] [Supports d_type true] [Using metacopy false] [Native Overlay Diff true] [userxattr false]]",
+			expectedEnabled:  false,
+			expectError:      false,
+		},
+		{
+			name:             "containerd disabled - empty",
+			dockerInfoOutput: "",
+			expectedEnabled:  false,
+			expectError:      false,
+		},
+		{
+			name:             "containerd disabled - different driver",
+			dockerInfoOutput: "[[driver-type overlay2]]",
+			expectedEnabled:  false,
+			expectError:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockContext := mocks.NewMockContext(context.Background())
+			docker := NewCli(mockContext.CommandRunner)
+
+			mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+				return strings.Contains(command, "docker info")
+			}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+				require.Equal(t, "docker", args.Cmd)
+				require.Equal(t, []string{"info", "-f", "{{ .DriverStatus }}"}, args.Args)
+
+				return exec.RunResult{
+					Stdout:   tt.dockerInfoOutput,
+					Stderr:   "",
+					ExitCode: 0,
+				}, nil
+			})
+
+			enabled, err := docker.IsContainerdEnabled(context.Background())
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedEnabled, enabled)
+			}
+		})
+	}
+
+	t.Run("docker info command error", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		docker := NewCli(mockContext.CommandRunner)
+
+		mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+			return strings.Contains(command, "docker info")
+		}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+			return exec.RunResult{
+				Stdout:   "",
+				Stderr:   "docker daemon not running",
+				ExitCode: 1,
+			}, errors.New("docker daemon not running")
+		})
+
+		enabled, err := docker.IsContainerdEnabled(context.Background())
+
+		require.Error(t, err)
+		require.False(t, enabled)
+		require.Contains(t, err.Error(), "checking docker driver status")
+	})
+}
+
 func TestSplitDockerImage(t *testing.T) {
 	tests := []struct {
 		name      string

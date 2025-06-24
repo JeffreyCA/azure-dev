@@ -559,6 +559,17 @@ func (p *dockerProject) packBuild(
 			}
 		}
 
+		// Check if the error is related to containerd and suggest disabling it
+		if p.isContainerdRelatedError(ctx, err) {
+			return nil, &internal.ErrorWithSuggestion{
+				Err: err,
+				Suggestion: "The pack build failed due to Docker's containerd image store being enabled. " +
+					"Buildpacks are not compatible with containerd. " +
+					"\nSuggested action: Disable the containerd image store in Docker Desktop settings " +
+					"under 'Features in development' and try again.",
+			}
+		}
+
 		return nil, err
 	}
 
@@ -577,6 +588,45 @@ func (p *dockerProject) packBuild(
 			ImageName: imageName,
 		},
 	}, nil
+}
+
+// isContainerdRelatedError checks if the pack build error is related to containerd being enabled.
+// It looks for specific error patterns that indicate containerd compatibility issues and
+// confirms that containerd is actually enabled in Docker.
+func (p *dockerProject) isContainerdRelatedError(ctx context.Context, err error) bool {
+	errorMessage := err.Error()
+
+	// Check for containerd-related error patterns from the original issue
+	containerdErrorPatterns := []string{
+		"failed to write image to the following tags",
+		"No such image",
+		"buildpacksio/lifecycle",
+		"pack.local/builder",
+	}
+
+	hasContainerdErrorPattern := false
+	for _, pattern := range containerdErrorPatterns {
+		if strings.Contains(errorMessage, pattern) {
+			hasContainerdErrorPattern = true
+			break
+		}
+	}
+
+	// If we don't find the containerd error pattern, this is not a containerd-related error
+	if !hasContainerdErrorPattern {
+		return false
+	}
+
+	// Confirm that containerd is actually enabled in Docker
+	containerdEnabled, checkErr := p.docker.IsContainerdEnabled(ctx)
+	if checkErr != nil {
+		// If we can't check containerd status, assume it might be the issue
+		// since we already found the error pattern
+		log.Printf("Failed to check containerd status: %v", checkErr)
+		return true
+	}
+
+	return containerdEnabled
 }
 
 func getEnvironForPython(ctx context.Context, svc *ServiceConfig) ([]string, error) {
