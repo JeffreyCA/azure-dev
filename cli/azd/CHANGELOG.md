@@ -1,5 +1,35 @@
 # Release History
 
+## 1.18.0 (2025-07-01)
+
+### Features Added
+
+- [[5213]](https://github.com/Azure/azure-dev/pull/5213) Add initial azd extensions support.
+- [[5193]](https://github.com/Azure/azure-dev/pull/5193) Add support for `existing` resource for AI build start in extensions.
+
+### Bugs Fixed
+
+- [[5372]](https://github.com/Azure/azure-dev/pull/5372) Fix null tags handling for deployment stacks.
+- [[5272]](https://github.com/Azure/azure-dev/pull/5272) Fix invalid azure.yaml JSON schema properties.
+
+### Other Changes
+
+- [[5395]](https://github.com/Azure/azure-dev/pull/5395) Add copilot-instructions.md.
+- [[5368]](https://github.com/Azure/azure-dev/pull/5368) Refactor to use %v to log errors instead of %s + error.Error().
+- [[5369]](https://github.com/Azure/azure-dev/pull/5369) Rename evaluateArgsWithConfig to evaluateBuildArgs for clarity.
+- [[5393]](https://github.com/Azure/azure-dev/pull/5393) Parallelize vs tests.
+- [[5373]](https://github.com/Azure/azure-dev/pull/5373) Omit socket reset errors in recording proxy tests.
+- [[5387]](https://github.com/Azure/azure-dev/pull/5387) Skip unreliable deployment stack tests.
+- [[5379]](https://github.com/Azure/azure-dev/pull/5379) Update recordings for vsserver test.
+- [[5370]](https://github.com/Azure/azure-dev/pull/5370) Update dependencies for CVE-2024-48924.
+- [[5331]](https://github.com/Azure/azure-dev/pull/5331) Update protobuf dependency from 5.29.0 to 5.29.5.
+- [[5364]](https://github.com/Azure/azure-dev/pull/5364) Update brace-expansion dependency in templates/todo/api/js.
+- [[5283]](https://github.com/Azure/azure-dev/pull/5283) Update brace-expansion dependency in eng/common/spelling.
+- [[5281]](https://github.com/Azure/azure-dev/pull/5281) Update org.postgresql:postgresql dependency.
+- [[5265]](https://github.com/Azure/azure-dev/pull/5265) Fix parallel tests for vsserver.
+- [[5259]](https://github.com/Azure/azure-dev/pull/5259) Update azure-sdk-build-tools Repository Resource Refs in YAML files.
+- [[5241]](https://github.com/Azure/azure-dev/pull/5241) Update azure.yaml schemas and feature stage documentation.
+
 ## 1.17.2 (2025-06-23)
 
 ### Bugs Fixed
