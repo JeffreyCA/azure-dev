@@ -318,7 +318,7 @@ func parseExecutableFiles(stagedFilesOutput string) ([]string, error) {
 }
 
 // Initializes a minimal azd project.
-func (i *Initializer) InitializeMinimal(ctx context.Context, azdCtx *azdcontext.AzdContext) error {
+func (i *Initializer) InitializeMinimal(ctx context.Context, azdCtx *azdcontext.AzdContext, envType string) error {
 	projectDir := azdCtx.ProjectDirectory()
 
 	isEmpty, err := osutil.IsDirEmpty(projectDir)
@@ -326,7 +326,12 @@ func (i *Initializer) InitializeMinimal(ctx context.Context, azdCtx *azdcontext.
 		return err
 	}
 
-	yamlPath, err := os.Stat(azdCtx.ProjectPath())
+	if !environment.IsValidEnvironmentType(envType) {
+		return fmt.Errorf("environment type '%s' is invalid (only alphanumeric characters allowed)", envType)
+	}
+
+	projectPath := azdcontext.ProjectFileNameForEnvironmentType(envType)
+	yamlPath, err := os.Stat(projectPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -347,7 +352,7 @@ func (i *Initializer) InitializeMinimal(ctx context.Context, azdCtx *azdcontext.
 		Name: name,
 	}
 
-	err = project.Save(ctx, &prjConfig, azdCtx.ProjectPath())
+	err = project.Save(ctx, &prjConfig, projectPath)
 	if err != nil {
 		return fmt.Errorf("saving project config: %w", err)
 	}

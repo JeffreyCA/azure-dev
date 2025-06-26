@@ -60,6 +60,7 @@ type initFlags struct {
 	fromCode       bool
 	minimal        bool
 	up             bool
+	envType        string
 	internal.EnvFlag
 }
 
@@ -112,6 +113,12 @@ func (i *initFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOpt
 		"",
 		false,
 		"Provision and deploy to Azure after initializing the project from a template.",
+	)
+	local.StringVar(
+		&i.envType,
+		"env-type",
+		"",
+		"Environment type to use for the new environment. If not specified, the default environment type will be used.",
 	)
 	local.StringVarP(&i.location, "location", "l", "", "Azure location for the new environment")
 	i.EnvFlag.Bind(local, global)
@@ -304,7 +311,8 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 		}
 		initializeMinimal := func() error {
 			tracing.SetUsageAttributes(fields.InitMethod.String("project"))
-			err := i.repoInitializer.InitializeMinimal(ctx, azdCtx)
+
+			err := i.repoInitializer.InitializeMinimal(ctx, azdCtx, i.flags.envType)
 			if err != nil {
 				return err
 			}
@@ -466,6 +474,7 @@ func (i *initAction) initializeEnv(
 		Name:         i.flags.EnvironmentName,
 		Subscription: i.flags.subscription,
 		Location:     i.flags.location,
+		Type:         i.flags.envType,
 		Examples:     examples,
 	}
 

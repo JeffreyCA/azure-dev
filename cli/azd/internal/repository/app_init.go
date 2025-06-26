@@ -248,7 +248,7 @@ func (i *Initializer) InitFromApp(
 		}
 	}
 
-	title = "Generating " + output.WithHighLightFormat("./"+azdcontext.ProjectFileName)
+	title = "Generating " + output.WithHighLightFormat("./"+azdCtx.ProjectFileNameForEnvironment(""))
 	i.console.ShowSpinner(ctx, title, input.Step)
 	err = i.genProjectFile(ctx, azdCtx, detect)
 	if err != nil {
