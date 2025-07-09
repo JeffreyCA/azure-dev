@@ -199,27 +199,27 @@ When preparing a new release changelog, update `cli/azd/CHANGELOG.md` and `cli/v
 ### Step 1: Prepare version header
 Rename any existing `## 1.x.x-beta.1 (Unreleased)` section to the version being released, without the `-beta.1` and `Unreleased` parts. Do the same for `cli/version.txt`.
 
-### Step 2: Gather commits
-**Find cutoff commit**: 
-```bash
-git --no-pager log --grep="Increment CLI version" --invert-grep -n 3 --follow -p -- cli/azd/CHANGELOG.md
-```
-Look at the commit messages and diff output to identify the commit that added the previous version's changelog.
+### Step 2: Get cutoff commit from user and gather commits
+**IMPORTANT**: DO NOT proceed with changelog generation or commit any changes until the user explicitly provides a cutoff commit SHA. Always ask the user to provide the cutoff commit before starting.
 
-**Get commits to process**:
-```bash
-git --no-pager log --oneline --pretty=format:"%h (%ad) %s" --date=short -20 origin/main
-```
-Increase `-20` if needed to find the cutoff commit. `git log` shows commits in reverse chronological order (newest first). You must identify the cutoff commit and only take commits newer than (above) it.
+**Request cutoff commit**: Ask the user to provide the commit SHA that should serve as the cutoff point (the last commit that was included in the previous release), tagging them explicitly (@username). The user should identify this commit - do not attempt to find it automatically.
+
+**Get commits to process**: Once the user provides the cutoff commit SHA:
+1. Use `github-mcp-server/list_commits` with `owner: "Azure"`, `repo: "azure-dev"`, `sha: "main"` to get recent commits
+2. Continue with pagination if needed to collect all commits newer than the provided cutoff commit
+3. Process commits in reverse chronological order (newest first)
 
 ### Step 3: Gather context and write changelog entry
-**IMPORTANT: For EACH commit collected, do the following:**
+**IMPORTANT**: Process EACH commit collected in Step 2 (newer than the user-provided cutoff). Do not skip any commits - each commit requires individual processing.
+
+**For each commit:**
 
 1. **Extract PR number**: Look for `(#XXXX)` pattern in commit message
-2. **Fetch PR details** using GitHub tools: owner: `Azure`, repo: `azure-dev`, pullNumber: `PR#`
-    - Get the GitHub handle of the PR owner, and determine whether the owner is outside the core team (handle not in `.github/CODEOWNERS`)
-3. **Identify linked issues**: Scan PR details for GitHub issue references
-4. **Fetch linked issue details** using GitHub tools: owner: `Azure`, repo: `azure-dev`, issue_number: `XXXX`
+2. **Fetch PR details** using GitHub MCP tools: `github-mcp-server/get_pull_request` with `owner: "Azure"`, `repo: "azure-dev"`, `pullNumber: PR#`
+    - Get the GitHub handle of the PR owner from the PR details
+    - Check `.github/CODEOWNERS` to determine whether the owner is outside the core team (handle not in `.github/CODEOWNERS`)
+3. **Identify linked issues**: Scan PR details for GitHub issue references (e.g., "fixes #1234", "closes #5678")
+4. **Fetch linked issue details** using `github-mcp-server/get_issue` with `owner: "Azure"`, `repo: "azure-dev"`, `issue_number: XXXX` for each linked issue
 5. **Categorize change**: Features Added, Bugs Fixed, Other Changes
 6. **Write changelog entry**:
     - **Format**: `- [[PR#]](https://github.com/Azure/azure-dev/pull/PR#) User-friendly description.`
