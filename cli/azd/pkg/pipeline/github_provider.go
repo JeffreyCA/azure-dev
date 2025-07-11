@@ -397,6 +397,18 @@ func (p *GitHubCiProvider) credentialOptions(
 			},
 		}
 
+		envName := "prod"
+		envName = p.env.Name()
+
+		environmentCredential := &graphsdk.FederatedIdentityCredential{
+			Name:        url.PathEscape(fmt.Sprintf("%s-environment", credentialSafeName)),
+			Issuer:      federatedIdentityIssuer,
+			Subject:     fmt.Sprintf("repo:%s:environment:%s", repoSlug, envName),
+			Description: to.Ptr("Created by Azure Developer CLI"),
+			Audiences:   []string{federatedIdentityAudience},
+		}
+		federatedCredentials = append(federatedCredentials, environmentCredential)
+
 		for _, branch := range branches {
 			branchCredentials := &graphsdk.FederatedIdentityCredential{
 				Name:        url.PathEscape(fmt.Sprintf("%s-%s", credentialSafeName, branch)),
