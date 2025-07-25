@@ -402,15 +402,51 @@ func (p *ProvisionAction) Run(ctx context.Context) (*actions.ActionResult, error
 func deployResultToUx(previewResult *provisioning.DeployPreviewResult) ux.UxItem {
 	var operations []*ux.Resource
 	for _, change := range previewResult.Preview.Properties.Changes {
+		// Add the main resource
 		operations = append(operations, &ux.Resource{
 			Operation: ux.OperationType(change.ChangeType),
 			Type:      change.ResourceType,
 			Name:      change.Name,
 		})
+
+		// Add any derived resources from the main resource
+		operations = append(operations, addDerivedResources(change)...)
 	}
 	return &ux.PreviewProvision{
 		Operations: operations,
 	}
+}
+
+// addDerivedResources extracts derived resource changes from a main resource change
+// For example, custom domains from Container Apps are represented as separate resources
+func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Resource {
+	var derivedResources []*ux.Resource
+
+	// Extract Container App custom domain changes
+	if change.ResourceType == "Container App" {
+		for _, delta := range change.Delta {
+			// Check for custom domain deletions in Container Apps
+			if delta.Path == "properties.configuration.ingress.customDomains" &&
+				delta.ChangeType == "Delete" {
+				// Parse the before array to extract domain names
+				if beforeArray, ok := delta.Before.([]interface{}); ok {
+					for _, item := range beforeArray {
+						if domainObj, ok := item.(map[string]interface{}); ok {
+							if domainName, ok := domainObj["name"].(string); ok {
+								derivedResources = append(derivedResources, &ux.Resource{
+									Operation: ux.OperationType("Delete"),
+									Type:      "Container App custom domain",
+									Name:      domainName + output.WithGrayFormat(" (%s)", change.Name),
+								})
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return derivedResources
 }
 
 func GetCmdProvisionHelpDescription(c *cobra.Command) string {
