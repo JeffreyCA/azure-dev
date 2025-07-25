@@ -23,6 +23,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
@@ -680,6 +681,47 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 	}, nil
 }
 
+// convertWhatIfPropertyChanges converts ARM WhatIfPropertyChange to DeploymentPreviewPropertyChange
+func convertWhatIfPropertyChanges(changes []*armresources.WhatIfPropertyChange) []provisioning.DeploymentPreviewPropertyChange {
+	if changes == nil {
+		return nil
+	}
+
+	result := make([]provisioning.DeploymentPreviewPropertyChange, len(changes))
+	for i, change := range changes {
+		result[i] = provisioning.DeploymentPreviewPropertyChange{
+			ChangeType: convertPropertyChangeType(change.PropertyChangeType),
+			Path:       convert.ToValueWithDefault(change.Path, ""),
+			Before:     change.Before,
+			After:      change.After,
+			Children:   convertWhatIfPropertyChanges(change.Children),
+		}
+	}
+	return result
+}
+
+// convertPropertyChangeType converts ARM PropertyChangeType to our PropertyChangeType
+func convertPropertyChangeType(changeType *armresources.PropertyChangeType) provisioning.PropertyChangeType {
+	if changeType == nil {
+		return ""
+	}
+
+	switch *changeType {
+	case armresources.PropertyChangeTypeCreate:
+		return provisioning.PropertyChangeTypeCreate
+	case armresources.PropertyChangeTypeDelete:
+		return provisioning.PropertyChangeTypeDelete
+	case armresources.PropertyChangeTypeModify:
+		return provisioning.PropertyChangeTypeModify
+	case armresources.PropertyChangeTypeArray:
+		return provisioning.PropertyChangeTypeArray
+	case armresources.PropertyChangeTypeNoEffect:
+		return provisioning.PropertyChangeTypeNoEffect
+	default:
+		return provisioning.PropertyChangeType(*changeType)
+	}
+}
+
 // Preview runs deploy using the what-if argument
 func (p *BicepProvider) Preview(ctx context.Context) (*provisioning.DeployPreviewResult, error) {
 	planned, err := p.plan(ctx)
@@ -737,6 +779,7 @@ func (p *BicepProvider) Preview(ctx context.Context) (*provisioning.DeployPrevie
 			},
 			ResourceType: resourceAfter["type"].(string),
 			Name:         resourceAfter["name"].(string),
+			Delta:        convertWhatIfPropertyChanges(change.Delta),
 		})
 	}
 
