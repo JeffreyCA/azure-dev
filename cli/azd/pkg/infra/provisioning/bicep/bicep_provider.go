@@ -769,7 +769,25 @@ func (p *BicepProvider) Preview(ctx context.Context) (*provisioning.DeployPrevie
 	}
 
 	var changes []*provisioning.DeploymentPreviewChange
-	for _, change := range deployPreviewResult.Properties.Changes {
+	for i, change := range deployPreviewResult.Properties.Changes {
+		log.Printf("Processing change #%d:", i+1)
+		log.Printf("  Change Type: %s", convert.ToValueWithDefault(change.ChangeType, "unknown"))
+		log.Printf("  Resource ID: %s", convert.ToValueWithDefault(change.ResourceID, "unknown"))
+
+		// Log Delta changes
+		if len(change.Delta) > 0 {
+			for j, delta := range change.Delta {
+				deltaBytes, err := json.MarshalIndent(delta, "    ", "  ")
+				if err != nil {
+					log.Printf("  Delta #%d: <failed to marshal: %v>", j+1, err)
+				} else {
+					log.Printf("  Delta #%d: %s", j+1, string(deltaBytes))
+				}
+			}
+		} else {
+			log.Printf("  Delta: <none>")
+		}
+
 		resourceAfter := change.After.(map[string]interface{})
 
 		changes = append(changes, &provisioning.DeploymentPreviewChange{
