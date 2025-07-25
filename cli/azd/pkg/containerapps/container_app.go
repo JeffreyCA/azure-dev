@@ -38,7 +38,7 @@ const (
 	pathConfigurationSecrets               = "properties.configuration.secrets"
 	pathConfigurationIngressTraffic        = "properties.configuration.ingress.traffic"
 	pathConfigurationIngressFqdn           = "properties.configuration.ingress.fqdn"
-	pathConfigurationIngressCustomDomains  = "properties.configuration.ingress.customDomains"
+	PathConfigurationIngressCustomDomains  = "properties.configuration.ingress.customDomains"
 	pathConfigurationIngressStickySessions = "properties.configuration.ingress.stickySessions"
 )
 
@@ -160,9 +160,9 @@ func (cas *containerAppService) persistSettings(
 	objConfig := config.NewConfig(obj)
 
 	if shouldPersistDomains {
-		customDomains, has := aca.GetSlice(pathConfigurationIngressCustomDomains)
+		customDomains, has := aca.GetSlice(PathConfigurationIngressCustomDomains)
 		if has {
-			if err := objConfig.Set(pathConfigurationIngressCustomDomains, customDomains); err != nil {
+			if err := objConfig.Set(PathConfigurationIngressCustomDomains, customDomains); err != nil {
 				return nil, fmt.Errorf("setting custom domains: %w", err)
 			}
 		}

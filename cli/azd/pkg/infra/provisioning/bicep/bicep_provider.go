@@ -682,7 +682,9 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 }
 
 // convertWhatIfPropertyChanges converts ARM WhatIfPropertyChange to DeploymentPreviewPropertyChange
-func convertWhatIfPropertyChanges(changes []*armresources.WhatIfPropertyChange) []provisioning.DeploymentPreviewPropertyChange {
+func convertWhatIfPropertyChanges(
+	changes []*armresources.WhatIfPropertyChange,
+) []provisioning.DeploymentPreviewPropertyChange {
 	if changes == nil {
 		return nil
 	}
