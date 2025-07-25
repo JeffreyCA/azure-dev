@@ -19,6 +19,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/alpha"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
+	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
@@ -255,6 +256,16 @@ func (p *ProvisionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		if previewMode {
 			deployPreviewResult, err = p.provisionManager.Preview(ctx)
 		} else {
+			// For non-preview mode, first check for potential custom domain deletions
+			previewResult, previewErr := p.provisionManager.Preview(ctx) // Ignore errors
+			if previewErr == nil && previewResult != nil {
+				if confirmed, confirmErr := p.checkAndConfirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
+					return confirmErr
+				} else if !confirmed {
+					return fmt.Errorf("operation cancelled by user")
+				}
+			}
+
 			deployResult, err = p.provisionManager.Deploy(ctx)
 		}
 		return err
@@ -417,6 +428,28 @@ func deployResultToUx(previewResult *provisioning.DeployPreviewResult) ux.UxItem
 	}
 }
 
+// extractCustomDomainsFromDelta extracts custom domain names from a WhatIf delta
+func extractCustomDomainsFromDelta(delta provisioning.DeploymentPreviewPropertyChange) []string {
+	if delta.Path != containerapps.PathConfigurationIngressCustomDomains || delta.ChangeType != "Delete" {
+		return nil
+	}
+
+	beforeArray, ok := delta.Before.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	var domains []string
+	for _, item := range beforeArray {
+		if domainObj, ok := item.(map[string]interface{}); ok {
+			if domainName, ok := domainObj["name"].(string); ok {
+				domains = append(domains, domainName)
+			}
+		}
+	}
+	return domains
+}
+
 // addDerivedResources extracts derived resource changes from a main resource change
 // For example, custom domains from Container Apps are represented as separate resources
 func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Resource {
@@ -425,28 +458,68 @@ func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Res
 	// Extract Container App custom domain changes
 	if change.ResourceType == "Container App" {
 		for _, delta := range change.Delta {
-			// Check for custom domain deletions in Container Apps
-			if delta.Path == "properties.configuration.ingress.customDomains" &&
-				delta.ChangeType == "Delete" {
-				// Parse the before array to extract domain names
-				if beforeArray, ok := delta.Before.([]interface{}); ok {
-					for _, item := range beforeArray {
-						if domainObj, ok := item.(map[string]interface{}); ok {
-							if domainName, ok := domainObj["name"].(string); ok {
-								derivedResources = append(derivedResources, &ux.Resource{
-									Operation: ux.OperationType("Delete"),
-									Type:      "Container App custom domain",
-									Name:      domainName + output.WithGrayFormat(" (%s)", change.Name),
-								})
-							}
-						}
-					}
-				}
+			domains := extractCustomDomainsFromDelta(delta)
+			for _, domainName := range domains {
+				derivedResources = append(derivedResources, &ux.Resource{
+					Operation: ux.OperationType("Delete"),
+					Type:      "Container App custom domain",
+					Name:      domainName + output.WithGrayFormat(" (%s)", change.Name),
+				})
 			}
 		}
 	}
 
 	return derivedResources
+}
+
+// checkAndConfirmCustomDomainDeletions checks if there are any Container App custom domain deletions
+// and prompts the user for confirmation if found
+func (p *ProvisionAction) checkAndConfirmCustomDomainDeletions(
+	ctx context.Context,
+	previewResult *provisioning.DeployPreviewResult,
+) (bool, error) {
+	// Map of Container App service name to list of custom domains to be deleted
+	serviceDomains := make(map[string][]string)
+
+	// Extract all operations including derived resources
+	for _, change := range previewResult.Preview.Properties.Changes {
+		// Check for Container App custom domain changes
+		if change.ResourceType == "Container App" {
+			for _, delta := range change.Delta {
+				domains := extractCustomDomainsFromDelta(delta)
+				if len(domains) > 0 {
+					serviceDomains[change.Name] = domains
+				}
+			}
+		}
+	}
+
+	// If no custom domain deletions found, proceed without confirmation
+	if len(serviceDomains) == 0 {
+		return true, nil
+	}
+
+	// Display warning about custom domain deletions
+	p.console.MessageUxItem(ctx, &ux.MessageTitle{
+		Title: output.WithWarningFormat(
+			"Warning: This operation will result in Container App custom domain(s) being deleted"),
+		TitleNote: "The following custom domains will be deleted during provisioning. " +
+			"Update your Container App IaC to preserve these custom domains.",
+	})
+
+	// Display the custom domains that will be deleted using our new UX item
+	p.console.MessageUxItem(ctx, &ux.ContainerAppCustomDomains{
+		ServiceDomains: serviceDomains,
+	})
+
+	p.console.Message(ctx, "")
+
+	confirmed, err := p.console.Confirm(ctx, input.ConsoleOptions{
+		Message:      "Continue provisioning?",
+		DefaultValue: false,
+	})
+
+	return confirmed, err
 }
 
 func GetCmdProvisionHelpDescription(c *cobra.Command) string {
