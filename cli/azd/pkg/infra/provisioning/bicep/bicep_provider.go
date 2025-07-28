@@ -600,20 +600,31 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 	}
 
 	// Check for potential custom domain deletions before proceeding with deployment
-	previewStart := time.Now()
-	p.console.Message(ctx, output.WithGrayFormat("Preview operation start: %s", previewStart.Format("15:04:05")))
+	// Skip this check for first-time deployments since there are no existing resources
+	scope, err := p.scopeForTemplate(planned.Template)
+	if err != nil {
+		return nil, fmt.Errorf("computing deployment scope: %w", err)
+	}
 
-	previewResult, previewErr := p.Preview(ctx)
+	_, deploymentExistsErr := p.latestDeploymentResult(ctx, scope)
+	firstDeploy := deploymentExistsErr != nil && errors.Is(deploymentExistsErr, infra.ErrDeploymentsNotFound)
 
-	previewDuration := time.Since(previewStart)
-	p.console.Message(ctx, output.WithGrayFormat("Preview operation end: %s", previewStart.Add(previewDuration).Format("15:04:05")))
-	p.console.Message(ctx, output.WithWarningFormat("Preview operation took %s", ux.DurationAsText(previewDuration)))
+	if !firstDeploy {
+		previewStart := time.Now()
+		p.console.Message(ctx, output.WithGrayFormat("Preview operation start: %s", previewStart.Format("15:04:05")))
 
-	if previewErr == nil && previewResult != nil {
-		if confirmed, confirmErr := p.checkAndConfirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
-			return nil, confirmErr
-		} else if !confirmed {
-			return nil, fmt.Errorf("operation cancelled by user")
+		previewResult, previewErr := p.Preview(ctx)
+
+		previewDuration := time.Since(previewStart)
+		p.console.Message(ctx, output.WithGrayFormat("Preview operation end: %s", previewStart.Add(previewDuration).Format("15:04:05")))
+		p.console.Message(ctx, output.WithWarningFormat("Preview operation took %s", ux.DurationAsText(previewDuration)))
+
+		if previewErr == nil && previewResult != nil {
+			if confirmed, confirmErr := p.confirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
+				return nil, confirmErr
+			} else if !confirmed {
+				return nil, fmt.Errorf("operation cancelled by user")
+			}
 		}
 	}
 
@@ -2424,8 +2435,8 @@ func (p *BicepProvider) Parameters(ctx context.Context) ([]provisioning.Paramete
 	return provisionParameters, nil
 }
 
-// extractCustomDomainsFromDelta extracts custom domain names from a WhatIf delta
-func extractCustomDomainsFromDelta(delta provisioning.DeploymentPreviewPropertyChange) []string {
+// getDeletedCustomDomains extracts custom domain names from a WhatIf delta
+func getDeletedCustomDomains(delta provisioning.DeploymentPreviewPropertyChange) []string {
 	if delta.Path != containerapps.PathConfigurationIngressCustomDomains ||
 		delta.ChangeType != provisioning.PropertyChangeTypeDelete {
 		return nil
@@ -2447,9 +2458,9 @@ func extractCustomDomainsFromDelta(delta provisioning.DeploymentPreviewPropertyC
 	return domains
 }
 
-// checkAndConfirmCustomDomainDeletions checks if there are any Container App custom domain deletions
+// confirmCustomDomainDeletions checks if there are any Container App custom domain deletions
 // and prompts the user for confirmation if found
-func (p *BicepProvider) checkAndConfirmCustomDomainDeletions(
+func (p *BicepProvider) confirmCustomDomainDeletions(
 	ctx context.Context,
 	previewResult *provisioning.DeployPreviewResult,
 ) (bool, error) {
@@ -2461,7 +2472,7 @@ func (p *BicepProvider) checkAndConfirmCustomDomainDeletions(
 		// Check for Container App custom domain changes
 		if change.ResourceType == string(azapi.AzureResourceTypeContainerApp) {
 			for _, delta := range change.Delta {
-				domains := extractCustomDomainsFromDelta(delta)
+				domains := getDeletedCustomDomains(delta)
 				if len(domains) > 0 {
 					serviceDomains[change.Name] = domains
 				}
