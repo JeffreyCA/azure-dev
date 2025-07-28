@@ -256,16 +256,6 @@ func (p *ProvisionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		if previewMode {
 			deployPreviewResult, err = p.provisionManager.Preview(ctx)
 		} else {
-			// For non-preview mode, first check for potential custom domain deletions
-			previewResult, previewErr := p.provisionManager.Preview(ctx) // Ignore errors
-			if previewErr == nil && previewResult != nil {
-				if confirmed, confirmErr := p.checkAndConfirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
-					return confirmErr
-				} else if !confirmed {
-					return fmt.Errorf("operation cancelled by user")
-				}
-			}
-
 			deployResult, err = p.provisionManager.Deploy(ctx)
 		}
 		return err
@@ -470,56 +460,6 @@ func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Res
 	}
 
 	return derivedResources
-}
-
-// checkAndConfirmCustomDomainDeletions checks if there are any Container App custom domain deletions
-// and prompts the user for confirmation if found
-func (p *ProvisionAction) checkAndConfirmCustomDomainDeletions(
-	ctx context.Context,
-	previewResult *provisioning.DeployPreviewResult,
-) (bool, error) {
-	// Map of Container App service name to list of custom domains to be deleted
-	serviceDomains := make(map[string][]string)
-
-	// Extract all operations including derived resources
-	for _, change := range previewResult.Preview.Properties.Changes {
-		// Check for Container App custom domain changes
-		if change.ResourceType == "Container App" {
-			for _, delta := range change.Delta {
-				domains := extractCustomDomainsFromDelta(delta)
-				if len(domains) > 0 {
-					serviceDomains[change.Name] = domains
-				}
-			}
-		}
-	}
-
-	// If no custom domain deletions found, proceed without confirmation
-	if len(serviceDomains) == 0 {
-		return true, nil
-	}
-
-	// Display warning about custom domain deletions
-	p.console.MessageUxItem(ctx, &ux.MessageTitle{
-		Title: output.WithWarningFormat(
-			"Warning: This operation will result in Container App custom domain(s) being deleted"),
-		TitleNote: "The following custom domains will be deleted during provisioning. " +
-			"Update your Container App IaC to preserve these custom domains.",
-	})
-
-	// Display the custom domains that will be deleted using our new UX item
-	p.console.MessageUxItem(ctx, &ux.ContainerAppCustomDomains{
-		ServiceDomains: serviceDomains,
-	})
-
-	p.console.Message(ctx, "")
-
-	confirmed, err := p.console.Confirm(ctx, input.ConsoleOptions{
-		Message:      "Continue provisioning?",
-		DefaultValue: false,
-	})
-
-	return confirmed, err
 }
 
 func GetCmdProvisionHelpDescription(c *cobra.Command) string {

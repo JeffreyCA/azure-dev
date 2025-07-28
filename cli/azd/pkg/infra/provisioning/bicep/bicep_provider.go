@@ -31,6 +31,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
 	"github.com/azure/azure-dev/cli/azd/pkg/cmdsubst"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
+	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
 	"github.com/azure/azure-dev/cli/azd/pkg/convert"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra"
@@ -596,6 +597,24 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 			}, nil
 		}
 		logDS("%s", err.Error())
+	}
+
+	// Check for potential custom domain deletions before proceeding with deployment
+	previewStart := time.Now()
+	p.console.Message(ctx, output.WithGrayFormat("Preview operation start: %s", previewStart.Format("15:04:05")))
+
+	previewResult, previewErr := p.Preview(ctx)
+
+	previewDuration := time.Since(previewStart)
+	p.console.Message(ctx, output.WithGrayFormat("Preview operation end: %s", previewStart.Add(previewDuration).Format("15:04:05")))
+	p.console.Message(ctx, output.WithWarningFormat("Preview operation took %s", ux.DurationAsText(previewDuration)))
+
+	if previewErr == nil && previewResult != nil {
+		if confirmed, confirmErr := p.checkAndConfirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
+			return nil, confirmErr
+		} else if !confirmed {
+			return nil, fmt.Errorf("operation cancelled by user")
+		}
 	}
 
 	deploymentTags := map[string]*string{
@@ -2403,4 +2422,77 @@ func (p *BicepProvider) Parameters(ctx context.Context) ([]provisioning.Paramete
 	}
 
 	return provisionParameters, nil
+}
+
+// extractCustomDomainsFromDelta extracts custom domain names from a WhatIf delta
+func extractCustomDomainsFromDelta(delta provisioning.DeploymentPreviewPropertyChange) []string {
+	if delta.Path != containerapps.PathConfigurationIngressCustomDomains ||
+		delta.ChangeType != provisioning.PropertyChangeTypeDelete {
+		return nil
+	}
+
+	beforeArray, ok := delta.Before.([]any)
+	if !ok {
+		return nil
+	}
+
+	var domains []string
+	for _, item := range beforeArray {
+		if domainObj, ok := item.(map[string]any); ok {
+			if domainName, ok := domainObj["name"].(string); ok {
+				domains = append(domains, domainName)
+			}
+		}
+	}
+	return domains
+}
+
+// checkAndConfirmCustomDomainDeletions checks if there are any Container App custom domain deletions
+// and prompts the user for confirmation if found
+func (p *BicepProvider) checkAndConfirmCustomDomainDeletions(
+	ctx context.Context,
+	previewResult *provisioning.DeployPreviewResult,
+) (bool, error) {
+	// Map of Container App service name to list of custom domains to be deleted
+	serviceDomains := make(map[string][]string)
+
+	// Extract all operations including derived resources
+	for _, change := range previewResult.Preview.Properties.Changes {
+		// Check for Container App custom domain changes
+		if change.ResourceType == string(azapi.AzureResourceTypeContainerApp) {
+			for _, delta := range change.Delta {
+				domains := extractCustomDomainsFromDelta(delta)
+				if len(domains) > 0 {
+					serviceDomains[change.Name] = domains
+				}
+			}
+		}
+	}
+
+	// If no custom domain deletions found, proceed without confirmation
+	if len(serviceDomains) == 0 {
+		return true, nil
+	}
+
+	// Display warning about custom domain deletions
+	p.console.MessageUxItem(ctx, &ux.MessageTitle{
+		Title: output.WithWarningFormat(
+			"Warning: This operation will result in Container App custom domain(s) being deleted"),
+		TitleNote: "The following custom domains will be deleted during provisioning. " +
+			"Update your Container App IaC to preserve these custom domains.",
+	})
+
+	// Display the custom domains that will be deleted using our new UX item
+	p.console.MessageUxItem(ctx, &ux.ContainerAppCustomDomains{
+		ServiceDomains: serviceDomains,
+	})
+
+	p.console.Message(ctx, "")
+
+	confirmed, err := p.console.Confirm(ctx, input.ConsoleOptions{
+		Message:      "Continue provisioning?",
+		DefaultValue: false,
+	})
+
+	return confirmed, err
 }
