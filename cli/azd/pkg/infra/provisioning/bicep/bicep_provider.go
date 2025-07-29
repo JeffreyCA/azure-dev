@@ -600,31 +600,22 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 	}
 
 	// Check for potential custom domain deletions before proceeding with deployment
-	// Skip this check for first-time deployments since there are no existing resources
-	scope, err := p.scopeForTemplate(planned.Template)
-	if err != nil {
-		return nil, fmt.Errorf("computing deployment scope: %w", err)
-	}
 
-	_, deploymentExistsErr := p.latestDeploymentResult(ctx, scope)
-	firstDeploy := deploymentExistsErr != nil && errors.Is(deploymentExistsErr, infra.ErrDeploymentsNotFound)
+	previewStart := time.Now()
+	p.console.Message(ctx, output.WithGrayFormat("Preview operation start: %s", previewStart.Format("15:04:05")))
 
-	if !firstDeploy {
-		previewStart := time.Now()
-		p.console.Message(ctx, output.WithGrayFormat("Preview operation start: %s", previewStart.Format("15:04:05")))
+	previewResult, previewErr := p.Preview(ctx)
+	p.console.StopSpinner(ctx, "", input.StepDone)
 
-		previewResult, previewErr := p.Preview(ctx)
+	previewDuration := time.Since(previewStart)
+	p.console.Message(ctx, output.WithGrayFormat("Preview operation end: %s", previewStart.Add(previewDuration).Format("15:04:05")))
+	p.console.Message(ctx, output.WithWarningFormat("Preview operation took %s", ux.DurationAsText(previewDuration)))
 
-		previewDuration := time.Since(previewStart)
-		p.console.Message(ctx, output.WithGrayFormat("Preview operation end: %s", previewStart.Add(previewDuration).Format("15:04:05")))
-		p.console.Message(ctx, output.WithWarningFormat("Preview operation took %s", ux.DurationAsText(previewDuration)))
-
-		if previewErr == nil && previewResult != nil {
-			if confirmed, confirmErr := p.confirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
-				return nil, confirmErr
-			} else if !confirmed {
-				return nil, fmt.Errorf("operation cancelled by user")
-			}
+	if previewErr == nil && previewResult != nil {
+		if confirmed, confirmErr := p.confirmCustomDomainDeletions(ctx, previewResult); confirmErr != nil {
+			return nil, confirmErr
+		} else if !confirmed {
+			return nil, fmt.Errorf("operation cancelled by user")
 		}
 	}
 
