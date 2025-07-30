@@ -3,6 +3,10 @@
 
 package provisioning
 
+import (
+	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
+)
+
 // DeploymentPreview defines the general structure for a deployment preview regardless of the deployment provider.
 type DeploymentPreview struct {
 	Status     string
@@ -58,3 +62,43 @@ const (
 	PropertyChangeTypeModify   PropertyChangeType = "Modify"
 	PropertyChangeTypeNoEffect PropertyChangeType = "NoEffect"
 )
+
+// GetDeletedAcaCustomDomains extracts custom domain names from a WhatIf delta
+func GetDeletedAcaCustomDomains(delta DeploymentPreviewPropertyChange) []string {
+	if delta.Path != containerapps.PathConfigurationIngressCustomDomains {
+		return nil
+	}
+
+	var domains []string
+
+	switch delta.ChangeType {
+	case PropertyChangeTypeDelete:
+		// Case 1: Entire custom domains array is being deleted
+		beforeArray, ok := delta.Before.([]any)
+		if !ok {
+			return nil
+		}
+
+		for _, item := range beforeArray {
+			if domainObj, ok := item.(map[string]any); ok {
+				if domainName, ok := domainObj["name"].(string); ok {
+					domains = append(domains, domainName)
+				}
+			}
+		}
+
+	case PropertyChangeTypeArray:
+		// Case 2: Array is being modified, check children for deletions
+		for _, child := range delta.Children {
+			if child.ChangeType == PropertyChangeTypeDelete {
+				if beforeObj, ok := child.Before.(map[string]any); ok {
+					if domainName, ok := beforeObj["name"].(string); ok {
+						domains = append(domains, domainName)
+					}
+				}
+			}
+		}
+	}
+
+	return domains
+}

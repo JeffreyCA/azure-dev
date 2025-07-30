@@ -31,7 +31,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
 	"github.com/azure/azure-dev/cli/azd/pkg/cmdsubst"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
-	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
 	"github.com/azure/azure-dev/cli/azd/pkg/convert"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra"
@@ -2426,29 +2425,6 @@ func (p *BicepProvider) Parameters(ctx context.Context) ([]provisioning.Paramete
 	return provisionParameters, nil
 }
 
-// getDeletedCustomDomains extracts custom domain names from a WhatIf delta
-func getDeletedCustomDomains(delta provisioning.DeploymentPreviewPropertyChange) []string {
-	if delta.Path != containerapps.PathConfigurationIngressCustomDomains ||
-		delta.ChangeType != provisioning.PropertyChangeTypeDelete {
-		return nil
-	}
-
-	beforeArray, ok := delta.Before.([]any)
-	if !ok {
-		return nil
-	}
-
-	var domains []string
-	for _, item := range beforeArray {
-		if domainObj, ok := item.(map[string]any); ok {
-			if domainName, ok := domainObj["name"].(string); ok {
-				domains = append(domains, domainName)
-			}
-		}
-	}
-	return domains
-}
-
 // confirmCustomDomainDeletions checks if there are any Container App custom domain deletions
 // and prompts the user for confirmation if found
 func (p *BicepProvider) confirmCustomDomainDeletions(
@@ -2463,7 +2439,7 @@ func (p *BicepProvider) confirmCustomDomainDeletions(
 		// Check for Container App custom domain changes
 		if change.ResourceType == string(azapi.AzureResourceTypeContainerApp) {
 			for _, delta := range change.Delta {
-				domains := getDeletedCustomDomains(delta)
+				domains := provisioning.GetDeletedAcaCustomDomains(delta)
 				if len(domains) > 0 {
 					serviceDomains[change.Name] = domains
 				}

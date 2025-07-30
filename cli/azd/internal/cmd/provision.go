@@ -19,7 +19,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/alpha"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
-	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
@@ -418,28 +417,6 @@ func deployResultToUx(previewResult *provisioning.DeployPreviewResult) ux.UxItem
 	}
 }
 
-// extractCustomDomainsFromDelta extracts custom domain names from a WhatIf delta
-func extractCustomDomainsFromDelta(delta provisioning.DeploymentPreviewPropertyChange) []string {
-	if delta.Path != containerapps.PathConfigurationIngressCustomDomains || delta.ChangeType != "Delete" {
-		return nil
-	}
-
-	beforeArray, ok := delta.Before.([]interface{})
-	if !ok {
-		return nil
-	}
-
-	var domains []string
-	for _, item := range beforeArray {
-		if domainObj, ok := item.(map[string]interface{}); ok {
-			if domainName, ok := domainObj["name"].(string); ok {
-				domains = append(domains, domainName)
-			}
-		}
-	}
-	return domains
-}
-
 // addDerivedResources extracts derived resource changes from a main resource change
 // For example, custom domains from Container Apps are represented as separate resources
 func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Resource {
@@ -448,10 +425,10 @@ func addDerivedResources(change *provisioning.DeploymentPreviewChange) []*ux.Res
 	// Extract Container App custom domain changes
 	if change.ResourceType == "Container App" {
 		for _, delta := range change.Delta {
-			domains := extractCustomDomainsFromDelta(delta)
+			domains := provisioning.GetDeletedAcaCustomDomains(delta)
 			for _, domainName := range domains {
 				derivedResources = append(derivedResources, &ux.Resource{
-					Operation: ux.OperationType("Delete"),
+					Operation: ux.OperationType(ux.OperationTypeDelete),
 					Type:      "Container App custom domain",
 					Name:      domainName + output.WithGrayFormat(" (%s)", change.Name),
 				})
