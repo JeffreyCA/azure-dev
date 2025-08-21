@@ -13,12 +13,14 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	azruntime "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/containers/azcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
@@ -26,6 +28,16 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/httputil"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/docker"
 )
+
+// RepositoryTag represents a container registry repository tag with metadata
+type RepositoryTag struct {
+	// Name is the tag name
+	Name string
+	// CreatedOn is when the tag was created
+	CreatedOn time.Time
+	// LastUpdatedOn is when the tag was last updated
+	LastUpdatedOn time.Time
+}
 
 // Credentials for authenticating with a docker registry,
 // can be both username/password or access token based.
@@ -50,6 +62,8 @@ type ContainerRegistryService interface {
 	Credentials(ctx context.Context, subscriptionId string, loginServer string) (*DockerCredentials, error)
 	// Gets a list of container registries for the specified subscription
 	GetContainerRegistries(ctx context.Context, subscriptionId string) ([]*armcontainerregistry.Registry, error)
+	// Gets a list of tags for the specified repository
+	GetRemoteTags(ctx context.Context, subscriptionId string, loginServer string, repositoryName string) ([]RepositoryTag, error)
 }
 
 type containerRegistryService struct {
@@ -253,6 +267,47 @@ func (crs *containerRegistryService) createRegistriesClient(
 	}
 
 	return client, nil
+}
+
+// Gets a list of tags for the specified repository
+func (crs *containerRegistryService) GetRemoteTags(
+	ctx context.Context,
+	subscriptionId string,
+	loginServer string,
+	repositoryName string,
+) ([]RepositoryTag, error) {
+	cred, err := crs.credentialProvider.CredentialForSubscription(ctx, subscriptionId)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := azcontainerregistry.NewClient(fmt.Sprintf("https://%s", loginServer), cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	var tags []RepositoryTag
+	pager := client.NewListTagsPager(repositoryName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to advance page: %w", err)
+		}
+		for _, v := range page.Tags {
+			// Skip tags with missing required fields
+			if v.Name == nil || v.CreatedOn == nil || v.LastUpdatedOn == nil {
+				continue
+			}
+			tag := RepositoryTag{
+				Name:          *v.Name,
+				CreatedOn:     *v.CreatedOn,
+				LastUpdatedOn: *v.LastUpdatedOn,
+			}
+			tags = append(tags, tag)
+		}
+	}
+
+	return tags, nil
 }
 
 // Exchanges an AAD token for an ACR refresh token

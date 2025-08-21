@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -115,6 +116,28 @@ func (ch *ContainerHelper) RegistryName(ctx context.Context, serviceConfig *Serv
 	return registryName, nil
 }
 
+func (ch *ContainerHelper) getRepositoryName(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+) (string, error) {
+	// Parse the image from azure.yaml configuration when available
+	configuredImage, err := serviceConfig.Docker.Image.Envsubst(ch.env.Getenv)
+	if err != nil {
+		return "", fmt.Errorf("failed parsing 'image' from docker configuration, %w", err)
+	}
+
+	// Set default image name if not configured
+	if configuredImage == "" {
+		configuredImage = ch.DefaultImageName(serviceConfig)
+	}
+
+	parsedImage, err := docker.ParseContainerImage(configuredImage)
+	if err != nil {
+		return "", fmt.Errorf("failed parsing configured image, %w", err)
+	}
+	return parsedImage.Repository, nil
+}
+
 // GeneratedImage returns the configured image from the service configuration
 // or a default image name generated from the service name and environment name.
 func (ch *ContainerHelper) GeneratedImage(
@@ -194,6 +217,52 @@ func (ch *ContainerHelper) LocalImageTag(ctx context.Context, serviceConfig *Ser
 	}
 
 	return configuredImage.Local(), nil
+}
+
+// GetMostRecentRemoteImage retrieves the most recent remote image from a container registry.
+// It lists all tags for the repository using the Azure Container Registry service and returns the most recent one.
+func (ch *ContainerHelper) GetMostRecentRemoteImage(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+) (string, error) {
+	registryName, err := ch.RegistryName(ctx, serviceConfig)
+	if err != nil {
+		return "", fmt.Errorf("getting registry name: %w", err)
+	}
+
+	if registryName == "" {
+		return "", fmt.Errorf("no registry configured for service %s", serviceConfig.Name)
+	}
+
+	// Get repository name (image name without registry)
+	repositoryName, err := ch.getRepositoryName(ctx, serviceConfig)
+	if err != nil {
+		return "", fmt.Errorf("getting repository name: %w", err)
+	}
+
+	// List all tags for this repository using the ACR service
+	tags, err := ch.containerRegistryService.GetRemoteTags(ctx, ch.env.GetSubscriptionId(), registryName, repositoryName)
+	if err != nil {
+		return "", fmt.Errorf("listing tags for repository %s: %w", repositoryName, err)
+	}
+
+	if len(tags) == 0 {
+		return "", fmt.Errorf("no tags found for repository %s in registry %s", repositoryName, registryName)
+	}
+
+	// Return tag with most recent create date/time
+	mostRecentTag := slices.MaxFunc(tags, func(a, b azapi.RepositoryTag) int {
+		return a.CreatedOn.Compare(b.CreatedOn)
+	})
+
+	// Return the full remote image name
+	remoteImageTag := fmt.Sprintf("%s/%s:%s",
+		strings.ToLower(registryName),
+		strings.ToLower(repositoryName),
+		strings.ToLower(mostRecentTag.Name))
+
+	log.Printf("Most recent remote image for %s: %s\n", repositoryName, remoteImageTag)
+	return remoteImageTag, nil
 }
 
 func (ch *ContainerHelper) RequiredExternalTools(ctx context.Context, serviceConfig *ServiceConfig) []tools.ExternalTool {
@@ -299,6 +368,12 @@ func (ch *ContainerHelper) Deploy(
 			return nil, fmt.Errorf("saving image name to environment: %w", err)
 		}
 	}
+
+	recentImage, err := ch.GetMostRecentRemoteImage(ctx, serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(recentImage)
 
 	return &ServiceDeployResult{
 		Package: packageOutput,
