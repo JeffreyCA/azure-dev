@@ -31,6 +31,7 @@ const (
 	ServiceEventBuild      ext.Event = "build"
 	ServiceEventPackage    ext.Event = "package"
 	ServiceEventDeploy     ext.Event = "deploy"
+	ServiceEventPublish    ext.Event = "publish"
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 		ServiceEventRestore,
 		ServiceEventPackage,
 		ServiceEventDeploy,
+		ServiceEventPublish,
 	}
 )
 
@@ -95,6 +97,14 @@ type ServiceManager interface {
 		packageOutput *ServicePackageResult,
 		progress *async.Progress[ServiceProgress],
 	) (*ServiceDeployResult, error)
+
+	// Publishes the prepared artifacts without deployment, returning publish result
+	Publish(
+		ctx context.Context,
+		serviceConfig *ServiceConfig,
+		packageResult *ServicePackageResult,
+		progress *async.Progress[ServiceProgress],
+	) (*ServicePublishResult, error)
 
 	// Gets the framework service for the specified service config
 	// The framework service performs the restoration and building of the service app code
@@ -500,6 +510,51 @@ func (sm *serviceManager) Deploy(
 
 	sm.setOperationResult(serviceConfig, string(ServiceEventDeploy), deployResult)
 	return deployResult, nil
+}
+
+// Publishes the prepared artifacts without deployment, returning publish result
+func (sm *serviceManager) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	packageResult *ServicePackageResult,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	cachedResult, ok := sm.getOperationResult(serviceConfig, string(ServiceEventPublish))
+	if ok && cachedResult != nil {
+		return cachedResult.(*ServicePublishResult), nil
+	}
+
+	// retrieving service target
+	serviceTarget, err := sm.GetServiceTarget(ctx, serviceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("getting service target: %w", err)
+	}
+
+	if serviceConfig.Host != ContainerAppTarget {
+		return nil, fmt.Errorf("publishing is only supported for container app services")
+	}
+
+	// retrieving target resource
+	targetResource, err := sm.resourceManager.GetTargetResource(ctx, sm.env.GetSubscriptionId(), serviceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("getting target resource: %w", err)
+	}
+
+	publishResult, err := runCommand(
+		ctx,
+		ServiceEventPublish,
+		serviceConfig,
+		func() (*ServicePublishResult, error) {
+			return serviceTarget.Publish(ctx, serviceConfig, packageResult, targetResource, progress)
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed publishing service '%s': %w", serviceConfig.Name, err)
+	}
+
+	sm.setOperationResult(serviceConfig, string(ServiceEventPublish), publishResult)
+	return publishResult, nil
 }
 
 // GetServiceTarget constructs a ServiceTarget from the underlying service configuration

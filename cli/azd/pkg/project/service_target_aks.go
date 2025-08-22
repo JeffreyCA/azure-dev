@@ -522,6 +522,17 @@ func (t *aksTarget) validateTargetResource(
 	return nil
 }
 
+// Publish is not implemented for AKS target.
+func (t *aksTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for AksTarget")
+}
+
 func (t *aksTarget) ensureClusterContext(
 	ctx context.Context,
 	serviceConfig *ServiceConfig,

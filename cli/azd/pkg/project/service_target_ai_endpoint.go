@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v3"
+	armml "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v3"
 	"github.com/azure/azure-dev/cli/azd/pkg/ai"
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
@@ -37,10 +37,10 @@ func NewAiEndpointTarget(
 
 // AiEndpointDeploymentResult is a struct to hold the result of an online endpoint deployment
 type AiEndpointDeploymentResult struct {
-	Environment *armmachinelearning.EnvironmentVersion
-	Model       *armmachinelearning.ModelVersion
+	Environment *armml.EnvironmentVersion
+	Model       *armml.ModelVersion
 	Flow        *ai.Flow
-	Deployment  *armmachinelearning.OnlineDeployment
+	Deployment  *armml.OnlineDeployment
 }
 
 // Initialize initializes the aiEndpointTarget
@@ -62,6 +62,17 @@ func (m *aiEndpointTarget) Package(
 	progress *async.Progress[ServiceProgress],
 ) (*ServicePackageResult, error) {
 	return &ServicePackageResult{}, nil
+}
+
+// Publish is not implemented for AI endpoint target.
+func (m *aiEndpointTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for AiEndpointTarget")
 }
 
 // Deploy deploys the service to an Azure ML online endpoint

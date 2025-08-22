@@ -576,6 +576,17 @@ func (at *dotnetContainerAppTarget) validateTargetResource(
 	return nil
 }
 
+// Publish is not implemented for .NET Container App target.
+func (at *dotnetContainerAppTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for DotnetContainerAppTarget")
+}
+
 // containerAppTemplateManifestFuncs contains all the functions that are callable while evaluating the manifest template.
 type containerAppTemplateManifestFuncs struct {
 	ctx                 context.Context

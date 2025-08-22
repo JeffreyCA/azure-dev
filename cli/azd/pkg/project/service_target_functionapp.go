@@ -23,6 +23,17 @@ type functionAppTarget struct {
 	cli *azapi.AzureClient
 }
 
+// Publish is not implemented for Function App target.
+func (f *functionAppTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for AzureFunctionTarget")
+}
+
 // NewFunctionAppTarget creates a new instance of the Function App target
 func NewFunctionAppTarget(
 	env *environment.Environment,

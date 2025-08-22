@@ -139,3 +139,24 @@ func (spr *ServiceDeployResult) ToString(currentIndentation string) string {
 func (spr *ServiceDeployResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(*spr)
 }
+
+// ServicePublishResult is the result of a successful Publish operation for services.
+type ServicePublishResult struct {
+	// ImageName is the fully qualified image name that was pushed (including registry if present).
+	ImageName string `json:"imageName"`
+	// Registry is the registry endpoint extracted from the image name, if available.
+	Registry string `json:"registry,omitempty"`
+}
+
+// Supports rendering messages for UX items
+func (spr *ServicePublishResult) ToString(currentIndentation string) string {
+	if spr.ImageName != "" {
+		return fmt.Sprintf("%s- Image Name: %s", currentIndentation, output.WithLinkFormat(spr.ImageName))
+	}
+
+	return ""
+}
+
+func (spr *ServicePublishResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(*spr)
+}

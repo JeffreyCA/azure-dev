@@ -141,6 +141,17 @@ func (st *appServiceTarget) Endpoints(
 	return endpoints, nil
 }
 
+// Publish is not implemented for App Service target.
+func (st *appServiceTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for AppServiceTarget")
+}
+
 func (st *appServiceTarget) validateTargetResource(
 	targetResource *environment.TargetResource,
 ) error {

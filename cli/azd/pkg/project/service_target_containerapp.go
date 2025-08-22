@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
@@ -119,6 +120,36 @@ func (at *containerAppTarget) Deploy(
 		),
 		Kind:      ContainerAppTarget,
 		Endpoints: endpoints,
+	}, nil
+}
+
+// Publish pushes the container image and returns the image details.
+func (at *containerAppTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	packageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	// Login, tag & push container image to ACR
+	_, err := at.containerHelper.Deploy(ctx, serviceConfig, packageOutput, targetResource, true, progress)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retrieve pushed image name
+	imageName := at.env.GetServiceProperty(serviceConfig.Name, "IMAGE_NAME")
+
+	// Extract registry if present
+	var registry string
+	parts := strings.Split(imageName, "/")
+	if len(parts) > 1 && strings.Contains(parts[0], ".") {
+		registry = parts[0]
+	}
+
+	return &ServicePublishResult{
+		ImageName: imageName,
+		Registry:  registry,
 	}, nil
 }
 

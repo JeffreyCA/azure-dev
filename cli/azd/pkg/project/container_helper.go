@@ -369,11 +369,11 @@ func (ch *ContainerHelper) Deploy(
 		}
 	}
 
-	recentImage, err := ch.GetMostRecentRemoteImage(ctx, serviceConfig)
+	_, err = ch.GetMostRecentRemoteImage(ctx, serviceConfig)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(recentImage)
+	// fmt.Println(recentImage)
 
 	return &ServiceDeployResult{
 		Package: packageOutput,

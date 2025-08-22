@@ -275,6 +275,20 @@ func NewRootCmd(
 		UseMiddleware("extensions", middleware.NewExtensionsMiddleware)
 
 	root.
+		Add("publish", &actions.ActionDescriptorOptions{
+			Command:        cmd.NewPublishCmd(),
+			FlagsResolver:  cmd.NewPublishFlags,
+			ActionResolver: cmd.NewPublishAction,
+			OutputFormats:  []output.Format{output.JsonFormat, output.NoneFormat},
+			DefaultFormat:  output.NoneFormat,
+			HelpOptions: actions.ActionHelpOptions{
+				Description: cmd.GetCmdPublishHelpDescription,
+				Footer:      cmd.GetCmdPublishHelpFooter,
+			},
+			RequireLogin: true,
+		})
+
+	root.
 		Add("deploy", &actions.ActionDescriptorOptions{
 			Command:        cmd.NewDeployCmd(),
 			FlagsResolver:  cmd.NewDeployFlags,

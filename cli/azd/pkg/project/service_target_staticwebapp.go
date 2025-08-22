@@ -213,6 +213,17 @@ func (at *staticWebAppTarget) validateTargetResource(
 	return nil
 }
 
+// Publish is not implemented for StaticWebApp target.
+func (at *staticWebAppTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for StaticWebAppTarget")
+}
+
 func (at *staticWebAppTarget) verifyDeployment(ctx context.Context, targetResource *environment.TargetResource) error {
 	retries := 0
 	const maxRetries = 10

@@ -92,6 +92,15 @@ type ServiceTarget interface {
 		serviceConfig *ServiceConfig,
 		targetResource *environment.TargetResource,
 	) ([]string, error)
+
+	// Publish pushes the prepared artifacts without performing deployment.
+	Publish(
+		ctx context.Context,
+		serviceConfig *ServiceConfig,
+		frameworkPackageOutput *ServicePackageResult,
+		targetResource *environment.TargetResource,
+		progress *async.Progress[ServiceProgress],
+	) (*ServicePublishResult, error)
 }
 
 // NewServiceDeployResult is a helper function to create a new ServiceDeployResult

@@ -6,6 +6,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -583,6 +584,7 @@ func newFakeServiceTarget(commandRunner exec.CommandRunner) ServiceTarget {
 	}
 }
 
+// Initialize is no-op for fake service target
 func (st *fakeServiceTarget) Initialize(ctx context.Context, serviceConfig *ServiceConfig) error {
 	return nil
 }
@@ -644,6 +646,17 @@ func (st *fakeServiceTarget) Endpoints(
 	targetResource *environment.TargetResource,
 ) ([]string, error) {
 	return []string{"https://test.azurewebsites.net"}, nil
+}
+
+// Publish is not implemented for fake service target.
+func (st *fakeServiceTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for FakeServiceTarget")
 }
 
 type fakeTool struct {

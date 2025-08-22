@@ -203,3 +203,14 @@ func (st *springAppTarget) validateTargetResource(
 
 	return nil
 }
+
+// Publish is not implemented for SpringApp target.
+func (st *springAppTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return nil, fmt.Errorf("publish not implemented for SpringAppTarget")
+}
