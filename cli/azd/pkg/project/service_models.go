@@ -144,8 +144,6 @@ func (spr *ServiceDeployResult) MarshalJSON() ([]byte, error) {
 type ServicePublishResult struct {
 	// ImageName is the fully qualified image name that was pushed (including registry if present).
 	ImageName string `json:"imageName"`
-	// Registry is the registry endpoint extracted from the image name, if available.
-	Registry string `json:"registry,omitempty"`
 }
 
 // Supports rendering messages for UX items

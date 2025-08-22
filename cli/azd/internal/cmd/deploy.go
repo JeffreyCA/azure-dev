@@ -8,9 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
@@ -226,81 +223,42 @@ func (da *DeployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 
 	startTime := time.Now()
 
-	deployResults := map[string]*project.ServiceDeployResult{}
-	stableServices, err := da.importManager.ServiceStable(ctx, da.projectConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, svc := range stableServices {
-		stepMessage := fmt.Sprintf("Deploying service %s", svc.Name)
-		da.console.ShowSpinner(ctx, stepMessage, input.Step)
-
-		// Skip this service if both cases are true:
-		// 1. The user specified a service name
-		// 2. This service is not the one the user specified
-		if targetServiceName != "" && targetServiceName != svc.Name {
-			da.console.StopSpinner(ctx, stepMessage, input.StepSkipped)
-			continue
-		}
-
-		if alphaFeatureId, isAlphaFeature := alpha.IsFeatureKey(string(svc.Host)); isAlphaFeature {
-			// alpha feature on/off detection for host is done during initialization.
-			// This is just for displaying the warning during deployment.
-			da.console.WarnForFeature(ctx, alphaFeatureId)
-		}
-
-		var packageResult *project.ServicePackageResult
-		if da.flags.fromPackage != "" {
-			// --from-package set, skip packaging
-			packageResult = &project.ServicePackageResult{
-				PackagePath: da.flags.fromPackage,
-			}
-		} else {
-			//  --from-package not set, automatically package the application
-			packageResult, err = async.RunWithProgress(
-				func(packageProgress project.ServiceProgress) {
-					progressMessage := fmt.Sprintf("Deploying service %s (%s)", svc.Name, packageProgress.Message)
-					da.console.ShowSpinner(ctx, progressMessage, input.Step)
-				},
-				func(progress *async.Progress[project.ServiceProgress]) (*project.ServicePackageResult, error) {
-					return da.serviceManager.Package(ctx, svc, nil, progress, nil)
-				},
-			)
-
-			// do not stop progress here as next step is to deploy
-			if err != nil {
-				da.console.StopSpinner(ctx, stepMessage, input.StepFailed)
-				return nil, err
-			}
-		}
-
-		deployResult, err := async.RunWithProgress(
+	// Use the shared service iteration helper
+	helper := NewServiceIterationHelper(da.serviceManager, da.importManager, da.console)
+	results, err := helper.IterateServices(ctx, ServiceIterationConfig{
+		ProjectConfig:     da.projectConfig,
+		TargetServiceName: targetServiceName,
+		FromPackage:       da.flags.fromPackage,
+		AllServices:       da.flags.All,
+		OperationName:     "Deploying",
+		ServiceFilter:     nil, // Deploy supports all service types
+	}, func(
+		ctx context.Context,
+		svc *project.ServiceConfig,
+		packageResult *project.ServicePackageResult,
+	) (interface{}, error) {
+		// Execute the deploy operation
+		return async.RunWithProgress(
 			func(deployProgress project.ServiceProgress) {
 				progressMessage := fmt.Sprintf("Deploying service %s (%s)", svc.Name, deployProgress.Message)
 				da.console.ShowSpinner(ctx, progressMessage, input.Step)
 			},
-			func(progress *async.Progress[project.ServiceProgress]) (*project.ServiceDeployResult, error) {
+			func(progress *async.Progress[project.ServiceProgress]) (interface{}, error) {
 				return da.serviceManager.Deploy(ctx, svc, packageResult, progress)
 			},
 		)
+	})
 
-		// clean up for packages automatically created in temp dir
-		if da.flags.fromPackage == "" && strings.HasPrefix(packageResult.PackagePath, os.TempDir()) {
-			if err := os.RemoveAll(packageResult.PackagePath); err != nil {
-				log.Printf("failed to remove temporary package: %s : %s", packageResult.PackagePath, err)
-			}
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert results to the expected type for deploy-specific processing
+	deployResults := make(map[string]*project.ServiceDeployResult)
+	for serviceName, result := range results {
+		if deployResult, ok := result.(*project.ServiceDeployResult); ok {
+			deployResults[serviceName] = deployResult
 		}
-
-		da.console.StopSpinner(ctx, stepMessage, input.GetStepResultFormat(err))
-		if err != nil {
-			return nil, err
-		}
-
-		deployResults[svc.Name] = deployResult
-
-		// report deploy outputs
-		da.console.MessageUxItem(ctx, deployResult)
 	}
 
 	aspireDashboardUrl := apphost.AspireDashboardUrl(ctx, da.env, da.alphaFeatureManager)

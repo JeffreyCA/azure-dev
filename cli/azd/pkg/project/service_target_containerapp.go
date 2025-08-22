@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
@@ -69,6 +68,26 @@ func (at *containerAppTarget) Package(
 	return packageOutput, nil
 }
 
+// publishToRegistry handles the common container registry operations for both Deploy and Publish.
+// It pushes the container image to ACR and returns the image name.
+func (at *containerAppTarget) publishToRegistry(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	packageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (string, error) {
+	// Login, tag & push container image to ACR
+	_, err := at.containerHelper.Deploy(ctx, serviceConfig, packageOutput, targetResource, true, progress)
+	if err != nil {
+		return "", err
+	}
+
+	// Retrieve pushed image name
+	imageName := at.env.GetServiceProperty(serviceConfig.Name, "IMAGE_NAME")
+	return imageName, nil
+}
+
 // Deploys service container images to ACR and provisions the container app service.
 func (at *containerAppTarget) Deploy(
 	ctx context.Context,
@@ -81,8 +100,8 @@ func (at *containerAppTarget) Deploy(
 		return nil, fmt.Errorf("validating target resource: %w", err)
 	}
 
-	// Login, tag & push container image to ACR
-	_, err := at.containerHelper.Deploy(ctx, serviceConfig, packageOutput, targetResource, true, progress)
+	// Push container image to registry
+	imageName, err := at.publishToRegistry(ctx, serviceConfig, packageOutput, targetResource, progress)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +110,6 @@ func (at *containerAppTarget) Deploy(
 		ApiVersion: serviceConfig.ApiVersion,
 	}
 
-	imageName := at.env.GetServiceProperty(serviceConfig.Name, "IMAGE_NAME")
 	progress.SetProgress(NewServiceProgress("Updating container app revision"))
 	err = at.containerAppService.AddRevision(
 		ctx,
@@ -131,25 +149,14 @@ func (at *containerAppTarget) Publish(
 	targetResource *environment.TargetResource,
 	progress *async.Progress[ServiceProgress],
 ) (*ServicePublishResult, error) {
-	// Login, tag & push container image to ACR
-	_, err := at.containerHelper.Deploy(ctx, serviceConfig, packageOutput, targetResource, true, progress)
+	// Push container image to registry
+	imageName, err := at.publishToRegistry(ctx, serviceConfig, packageOutput, targetResource, progress)
 	if err != nil {
 		return nil, err
 	}
 
-	// Retrieve pushed image name
-	imageName := at.env.GetServiceProperty(serviceConfig.Name, "IMAGE_NAME")
-
-	// Extract registry if present
-	var registry string
-	parts := strings.Split(imageName, "/")
-	if len(parts) > 1 && strings.Contains(parts[0], ".") {
-		registry = parts[0]
-	}
-
 	return &ServicePublishResult{
 		ImageName: imageName,
-		Registry:  registry,
 	}, nil
 }
 

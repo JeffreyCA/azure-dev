@@ -8,9 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
@@ -196,91 +193,45 @@ func (pa *PublishAction) Run(ctx context.Context) (*actions.ActionResult, error)
 
 	startTime := time.Now()
 
-	publishResults := map[string]*project.ServicePublishResult{}
-	stableServices, err := pa.importManager.ServiceStable(ctx, pa.projectConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, svc := range stableServices {
-		stepMessage := fmt.Sprintf("Publishing service %s", svc.Name)
-		pa.console.ShowSpinner(ctx, stepMessage, input.Step)
-
-		// Skip this service if both cases are true:
-		// 1. The user specified a service name
-		// 2. This service is not the one the user specified
-		if targetServiceName != "" && targetServiceName != svc.Name {
-			pa.console.StopSpinner(ctx, stepMessage, input.StepSkipped)
-			continue
-		}
-
-		if svc.Host != project.ContainerAppTarget {
-			pa.console.StopSpinner(ctx, stepMessage, input.StepSkipped)
-			continue
-		}
-
-		if alphaFeatureId, isAlphaFeature := alpha.IsFeatureKey(string(svc.Host)); isAlphaFeature {
-			// alpha feature on/off detection for host is done during initialization.
-			// This is just for displaying the warning during deployment.
-			pa.console.WarnForFeature(ctx, alphaFeatureId)
-		}
-
-		var packageResult *project.ServicePackageResult
-		if pa.flags.fromPackage != "" {
-			// --from-package set, skip packaging
-			packageResult = &project.ServicePackageResult{
-				PackagePath: pa.flags.fromPackage,
-			}
-		} else {
-			//  --from-package not set, automatically package the application
-			packageResult, err = async.RunWithProgress(
-				func(packageProgress project.ServiceProgress) {
-					progressMessage := fmt.Sprintf("Publishing service %s (%s)", svc.Name, packageProgress.Message)
-					pa.console.ShowSpinner(ctx, progressMessage, input.Step)
-				},
-				func(progress *async.Progress[project.ServiceProgress]) (*project.ServicePackageResult, error) {
-					return pa.serviceManager.Package(ctx, svc, nil, progress, nil)
-				},
-			)
-
-			// do not stop progress here as next step is to deploy
-			if err != nil {
-				pa.console.StopSpinner(ctx, stepMessage, input.StepFailed)
-				return nil, err
-			}
-		}
-
-		publishResult, err := async.RunWithProgress(
+	// Use the shared service iteration helper
+	helper := NewServiceIterationHelper(pa.serviceManager, pa.importManager, pa.console)
+	_, err = helper.IterateServices(ctx, ServiceIterationConfig{
+		ProjectConfig:     pa.projectConfig,
+		TargetServiceName: targetServiceName,
+		FromPackage:       pa.flags.fromPackage,
+		AllServices:       pa.flags.All,
+		OperationName:     "Publishing",
+		ServiceFilter: func(svc *project.ServiceConfig) bool {
+			// Publish only supports ContainerAppTarget services
+			return svc.Host == project.ContainerAppTarget
+		},
+	}, func(
+		ctx context.Context,
+		svc *project.ServiceConfig,
+		packageResult *project.ServicePackageResult,
+	) (interface{}, error) {
+		// Execute the publish operation
+		return async.RunWithProgress(
 			func(publishProgress project.ServiceProgress) {
 				progressMessage := fmt.Sprintf("Publishing service %s (%s)", svc.Name, publishProgress.Message)
 				pa.console.ShowSpinner(ctx, progressMessage, input.Step)
 			},
-			func(progress *async.Progress[project.ServiceProgress]) (*project.ServicePublishResult, error) {
+			func(progress *async.Progress[project.ServiceProgress]) (interface{}, error) {
 				return pa.serviceManager.Publish(ctx, svc, packageResult, progress)
 			},
 		)
+	})
 
-		// clean up for packages automatically created in temp dir
-		if pa.flags.fromPackage == "" && strings.HasPrefix(packageResult.PackagePath, os.TempDir()) {
-			if err := os.RemoveAll(packageResult.PackagePath); err != nil {
-				log.Printf("failed to remove temporary package: %s : %s", packageResult.PackagePath, err)
-			}
-		}
-
-		pa.console.StopSpinner(ctx, stepMessage, input.GetStepResultFormat(err))
-		if err != nil {
-			return nil, err
-		}
-
-		publishResults[svc.Name] = publishResult
-
-		// report deploy outputs
-		pa.console.MessageUxItem(ctx, publishResult)
+	if err != nil {
+		return nil, err
 	}
 
 	return &actions.ActionResult{
 		Message: &actions.ResultMessage{
-			Header: fmt.Sprintf("Your application was published to Azure Container Registry in %s.", ux.DurationAsText(since(startTime))),
+			Header: fmt.Sprintf(
+				"Your application was published to Azure Container Registry in %s.",
+				ux.DurationAsText(since(startTime)),
+			),
 		},
 	}, nil
 }
@@ -293,8 +244,14 @@ func GetCmdPublishHelpDescription(*cobra.Command) string {
 // GetCmdPublishHelpFooter returns help footer samples
 func GetCmdPublishHelpFooter(*cobra.Command) string {
 	return generateCmdHelpSamplesBlock(map[string]string{
-		"Publish all services in the current project to Azure.":                output.WithHighLightFormat("azd publish --all"),
-		"Publish the service named 'api' to Azure.":                            output.WithHighLightFormat("azd publish api"),
-		"Publish the service named 'api' from a previously generated package.": output.WithHighLightFormat("azd publish api --from-package <package-path>"),
+		"Publish all services in the current project to Azure.": output.WithHighLightFormat(
+			"azd publish --all",
+		),
+		"Publish the service named 'api' to Azure.": output.WithHighLightFormat(
+			"azd publish api",
+		),
+		"Publish the service named 'api' from a previously generated package.": output.WithHighLightFormat(
+			"azd publish api --from-package <package-path>",
+		),
 	})
 }
