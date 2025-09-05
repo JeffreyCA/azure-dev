@@ -28,6 +28,7 @@ import (
 
 type upFlags struct {
 	cmd.ProvisionFlags
+	cmd.PublishFlags
 	cmd.DeployFlags
 	global *internal.GlobalCommandOptions
 	internal.EnvFlag
@@ -39,6 +40,10 @@ func (u *upFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptio
 
 	u.ProvisionFlags.BindNonCommon(local, global)
 	u.ProvisionFlags.SetCommon(&u.EnvFlag)
+
+	u.PublishFlags.BindNonCommon(local, global)
+	// u.PublishFlags.SetCommon(&u.EnvFlag)
+
 	u.DeployFlags.BindNonCommon(local, global)
 	u.DeployFlags.SetCommon(&u.EnvFlag)
 }
@@ -74,6 +79,7 @@ var defaultUpWorkflow = &workflow.Workflow{
 	Steps: []*workflow.Step{
 		{AzdCommand: workflow.Command{Args: []string{"package", "--all"}}},
 		{AzdCommand: workflow.Command{Args: []string{"provision"}}},
+		{AzdCommand: workflow.Command{Args: []string{"publish", "--all"}}},
 		{AzdCommand: workflow.Command{Args: []string{"deploy", "--all"}}},
 	},
 }
@@ -163,12 +169,14 @@ func getCmdUpHelpDescription(c *cobra.Command) string {
 			  up:
 			    - azd: provision
 			    - azd: package --all
+			    - azd: publish --all
 			    - azd: deploy --all
 			-------------------------
 
 			Any azd command and flags are supported in the workflow steps.`,
 			output.WithHighLightFormat("package"),
 			output.WithHighLightFormat("provision"),
+			output.WithHighLightFormat("publish"),
 			output.WithHighLightFormat("deploy"),
 			output.WithHighLightFormat("up"),
 			output.WithHighLightFormat("workflows"),

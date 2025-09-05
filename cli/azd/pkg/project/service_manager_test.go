@@ -612,6 +612,16 @@ func (st *fakeServiceTarget) Package(
 	}, nil
 }
 
+func (st *fakeServiceTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	packageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+) (*ServicePublishResult, error) {
+	return &ServicePublishResult{}, nil
+}
+
 func (st *fakeServiceTarget) Deploy(
 	ctx context.Context,
 	serviceConfig *ServiceConfig,

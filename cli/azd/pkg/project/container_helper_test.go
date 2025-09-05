@@ -374,10 +374,10 @@ func Test_ContainerHelper_Deploy(t *testing.T) {
 				PackagePath: tt.packagePath,
 			}
 
-			deployResult, err := logProgress(
-				t, func(progress *async.Progress[ServiceProgress]) (*ServiceDeployResult, error) {
-					return containerHelper.Deploy(
-						*mockContext.Context, serviceConfig, packageOutput, targetResource, true, progress)
+			publishResult, err := logProgress(
+				t, func(progress *async.Progress[ServiceProgress]) (*ServicePublishResult, error) {
+					return containerHelper.Publish(
+						*mockContext.Context, serviceConfig, packageOutput, targetResource, progress)
 				},
 			)
 
@@ -385,13 +385,7 @@ func Test_ContainerHelper_Deploy(t *testing.T) {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.Same(t, packageOutput, deployResult.Package)
-
-				if deployResult.Details != nil {
-					dockerDeployResult, ok := deployResult.Details.(*dockerDeployResult)
-					require.True(t, ok)
-					require.Equal(t, tt.expectedRemoteImage, dockerDeployResult.RemoteImageTag)
-				}
+				require.Equal(t, tt.expectedRemoteImage, publishResult.ImageName)
 			}
 
 			_, dockerPullCalled := mockResults["docker-pull"]

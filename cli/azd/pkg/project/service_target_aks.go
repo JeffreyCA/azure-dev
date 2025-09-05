@@ -184,11 +184,45 @@ func (t *aksTarget) Package(
 	return packageOutput, nil
 }
 
+// Publish pushes the container image to ACR for AKS targets
+func (t *aksTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	packageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+	publishOptions *PublishOptions,
+) (*ServicePublishResult, error) {
+	// Only publish the container image if a package output has been defined
+	// Empty package details is a valid scenario for any AKS deployment that does not build any containers
+	// Ex) Helm charts, or other manifests that reference external images
+	if serviceConfig.Docker.RemoteBuild || packageOutput.Details != nil || packageOutput.PackagePath != "" {
+		// Login, tag & push container image to ACR
+		publishResult, err := t.containerHelper.Publish(ctx, serviceConfig, packageOutput, targetResource, progress, publishOptions)
+		if err != nil {
+			return nil, err
+		}
+
+		// Save the name of the image we pushed into the environment with a well known key.
+		log.Printf("writing image name to environment")
+		t.env.SetServiceProperty(serviceConfig.Name, "IMAGE_NAME", publishResult.ImageName)
+
+		if err := t.envManager.Save(ctx, t.env); err != nil {
+			return nil, fmt.Errorf("saving image name to environment: %w", err)
+		}
+
+		return publishResult, nil
+	}
+
+	return &ServicePublishResult{}, nil
+}
+
 // Deploys service container images to ACR and AKS resources to the AKS cluster
 func (t *aksTarget) Deploy(
 	ctx context.Context,
 	serviceConfig *ServiceConfig,
 	packageOutput *ServicePackageResult,
+	servicePublishResult *ServicePublishResult,
 	targetResource *environment.TargetResource,
 	progress *async.Progress[ServiceProgress],
 ) (*ServiceDeployResult, error) {
@@ -200,14 +234,19 @@ func (t *aksTarget) Deploy(
 		return nil, errors.New("missing package output")
 	}
 
-	// Only deploy the container image if a package output has been defined
+	// Only deploy to AKS if a package output has been defined
 	// Empty package details is a valid scenario for any AKS deployment that does not build any containers
 	// Ex) Helm charts, or other manifests that reference external images
 	if serviceConfig.Docker.RemoteBuild || packageOutput.Details != nil || packageOutput.PackagePath != "" {
-		// Login, tag & push container image to ACR
-		_, err := t.containerHelper.Deploy(ctx, serviceConfig, packageOutput, targetResource, true, progress)
-		if err != nil {
-			return nil, err
+		// Verify that the image has been published
+		imageName := ""
+		if servicePublishResult != nil && servicePublishResult.ImageName != "" {
+			imageName = servicePublishResult.ImageName
+		} else {
+			imageName = t.env.GetServiceProperty(serviceConfig.Name, "IMAGE_NAME")
+			if imageName == "" {
+				return nil, fmt.Errorf("image name not found for service '%s'. Ensure the service has been published first", serviceConfig.Name)
+			}
 		}
 	}
 

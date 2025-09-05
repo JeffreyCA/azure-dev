@@ -96,6 +96,25 @@ func (spr *ServicePackageResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(*spr)
 }
 
+// ServicePublishResult is the result of a successful Publish operation for services.
+type ServicePublishResult struct {
+	// ImageName is the fully qualified image name that was pushed (including registry if present).
+	ImageName string `json:"imageName"`
+}
+
+// Supports rendering messages for UX items
+func (spr *ServicePublishResult) ToString(currentIndentation string) string {
+	if spr.ImageName != "" {
+		return fmt.Sprintf("%s- Image Name: %s", currentIndentation, output.WithLinkFormat(spr.ImageName))
+	}
+
+	return ""
+}
+
+func (spr *ServicePublishResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(*spr)
+}
+
 // ServiceDeployResult is the result of a successful Deploy operation
 type ServiceDeployResult struct {
 	Package *ServicePackageResult `json:"package"`
