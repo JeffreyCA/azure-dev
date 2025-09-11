@@ -698,6 +698,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.MustRegisterSingleton(createClock)
 
 	// Service Targets
+	// Built-in service targets are registered here as scoped dependencies
 	serviceTargetMap := map[project.ServiceTargetKind]any{
 		project.NonSpecifiedTarget:       project.NewAppServiceTarget,
 		project.AppServiceTarget:         project.NewAppServiceTarget,
@@ -713,6 +714,11 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	for target, constructor := range serviceTargetMap {
 		container.MustRegisterNamedScoped(string(target), constructor)
 	}
+
+	// Note: External service targets are registered dynamically as transient dependencies
+	// from the gRPC ServiceTargetService.Stream function when extensions connect.
+	// They use project.NewExternalServiceTarget and are registered with the provider name
+	// as the service target kind.
 
 	// Languages
 	frameworkServiceMap := map[project.ServiceLanguageKind]any{
@@ -863,6 +869,9 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.MustRegisterSingleton(grpcserver.NewUserConfigService)
 	container.MustRegisterSingleton(grpcserver.NewComposeService)
 	container.MustRegisterSingleton(grpcserver.NewWorkflowService)
+	container.MustRegisterSingleton(grpcserver.NewExtensionService)
+	container.MustRegisterSingleton(grpcserver.NewProvisioningService)
+	container.MustRegisterSingleton(grpcserver.NewServiceTargetService)
 
 	// Required for nested actions called from composite actions like 'up'
 	registerAction[*cmd.ProvisionAction](container, "azd-provision-action")

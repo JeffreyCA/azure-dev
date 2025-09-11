@@ -19,6 +19,14 @@ import (
 	"github.com/fatih/color"
 )
 
+var (
+	listenCapabilities = []extensions.CapabilityType{
+		extensions.LifecycleEventsCapability,
+		extensions.ProvisionProviderCapability,
+		extensions.ServiceTargetProviderCapability,
+	}
+)
+
 type ExtensionsMiddleware struct {
 	extensionManager *extensions.Manager
 	extensionRunner  *extensions.Runner
@@ -57,11 +65,14 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 	requireLifecycleEvents := false
 	extensionList := []*extensions.Extension{}
 
-	// Find extensions that require lifecycle events
+	// Find extensions that require listen capabilities
 	for _, extension := range installedExtensions {
-		if slices.Contains(extension.Capabilities, extensions.LifecycleEventsCapability) {
-			extensionList = append(extensionList, extension)
-			requireLifecycleEvents = true
+		for _, cap := range listenCapabilities {
+			if slices.Contains(extension.Capabilities, cap) {
+				extensionList = append(extensionList, extension)
+				requireLifecycleEvents = true
+				break
+			}
 		}
 	}
 
@@ -124,7 +135,7 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 			}()
 
 			// Wait for the extension to signal readiness or failure.
-			readyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			readyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			if err := extension.WaitUntilReady(readyCtx); err != nil {
 				log.Printf("extension '%s' failed to become ready: %v\n", extension.Id, err)

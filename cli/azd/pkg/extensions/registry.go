@@ -24,6 +24,10 @@ const (
 	CustomCommandCapability CapabilityType = "custom-commands"
 	// Lifecycle events enable extensions to subscribe to AZD project & service lifecycle events
 	LifecycleEventsCapability CapabilityType = "lifecycle-events"
+	// Provision provider enables extensions to provide a custom provisioning experience
+	ProvisionProviderCapability CapabilityType = "provisioning-provider"
+
+	ServiceTargetProviderCapability CapabilityType = "service-target-provider"
 )
 
 // Extension represents an extension in the registry

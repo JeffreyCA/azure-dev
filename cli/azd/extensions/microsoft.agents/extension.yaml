@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../extension.schema.json
+id: microsoft.agents
+namespace: agent
+displayName: Agent Extension
+description: This extension provides examples of the AZD extension framework.
+usage: azd agent <command> [options]
+version: 0.1.0
+language: go
+capabilities:
+    - custom-commands
+    - lifecycle-events
+    - service-target-provider
+examples:
+  - name: context
+    description: Displays the current `azd` project & environment context.
+    usage: azd agent context

@@ -17,15 +17,18 @@ type AzdClientOption func(*AzdClient) error
 
 // AzdClient is the client for the `azd` gRPC server.
 type AzdClient struct {
-	connection        *grpc.ClientConn
-	projectClient     ProjectServiceClient
-	environmentClient EnvironmentServiceClient
-	userConfigClient  UserConfigServiceClient
-	promptClient      PromptServiceClient
-	deploymentClient  DeploymentServiceClient
-	eventsClient      EventServiceClient
-	composeClient     ComposeServiceClient
-	workflowClient    WorkflowServiceClient
+	connection          *grpc.ClientConn
+	projectClient       ProjectServiceClient
+	environmentClient   EnvironmentServiceClient
+	userConfigClient    UserConfigServiceClient
+	promptClient        PromptServiceClient
+	deploymentClient    DeploymentServiceClient
+	eventsClient        EventServiceClient
+	composeClient       ComposeServiceClient
+	workflowClient      WorkflowServiceClient
+	provisioningClient  ProvisioningServiceClient
+	extensionClient     ExtensionServiceClient
+	serviceTargetClient ServiceTargetServiceClient
 }
 
 // WithAddress sets the address of the `azd` gRPC server.
@@ -144,4 +147,28 @@ func (c *AzdClient) Workflow() WorkflowServiceClient {
 	}
 
 	return c.workflowClient
+}
+
+// Provisioning returns the provisioning service client.
+func (c *AzdClient) Provisioning() ProvisioningServiceClient {
+	if c.provisioningClient == nil {
+		c.provisioningClient = NewProvisioningServiceClient(c.connection)
+	}
+	return c.provisioningClient
+}
+
+// Extension returns the extension service client.
+func (c *AzdClient) Extension() ExtensionServiceClient {
+	if c.extensionClient == nil {
+		c.extensionClient = NewExtensionServiceClient(c.connection)
+	}
+	return c.extensionClient
+}
+
+// ServiceTarget returns the service target service client.
+func (c *AzdClient) ServiceTarget() ServiceTargetServiceClient {
+	if c.serviceTargetClient == nil {
+		c.serviceTargetClient = NewServiceTargetServiceClient(c.connection)
+	}
+	return c.serviceTargetClient
 }

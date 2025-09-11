@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package azdext;
+
+option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext";
+
+import "include/google/protobuf/struct.proto";
+
+service ServiceTargetService {
+  // Bidirectional stream for service target requests and responses
+  rpc Stream(stream ServiceTargetMessage) returns (stream ServiceTargetMessage);
+}
+
+// Envelope for all possible service target messages (requests and responses)
+message ServiceTargetMessage {
+  string request_id = 1;
+  ServiceTargetErrorMessage error = 99;
+  oneof message_type {
+    ServiceTargetRegisterProviderRequest register_provider_request = 2;
+    ServiceTargetRegisterProviderResponse register_provider_response = 3;
+    ServiceTargetNameRequest name_request = 4;
+    ServiceTargetNameResponse name_response = 5;
+    ServiceTargetInitializeRequest initialize_request = 6;
+    ServiceTargetInitializeResponse initialize_response = 7;
+    ServiceTargetStateRequest state_request = 8;
+    ServiceTargetStateResponse state_response = 9;
+  }
+}
+
+// State
+message ServiceTargetState {
+  map<string, ServiceTargetOutputParameter> outputs = 1;
+  repeated ServiceTargetResource resources = 2;
+}
+
+// InputParameter
+message ServiceTargetInputParameter {
+  string type = 1;
+  string default_value = 2;
+  string value = 3;
+}
+
+// OutputParameter
+message ServiceTargetOutputParameter {
+  string type = 1;
+  string value = 2;
+}
+
+// Resource
+message ServiceTargetResource {
+  string id = 1;
+}
+
+// --- Request and response messages for each Provider method ---
+
+message ServiceTargetNameRequest {}
+message ServiceTargetNameResponse {
+  string name = 1;
+}
+
+message ServiceTargetInitializeRequest {
+  string project_path = 1;
+  ServiceTargetOptions options = 2;
+}
+message ServiceTargetInitializeResponse {}
+
+message ServiceTargetStateRequest {
+  ServiceTargetStateOptions options = 1;
+}
+message ServiceTargetStateResponse {
+  ServiceTargetStateResult state_result = 1;
+}
+
+// Core options and result wrappers
+message ServiceTargetOptions {
+  string provider = 1;
+  string path = 2;
+  string module = 3;
+  map<string, string> deployment_stacks = 4;
+  bool ignore_deployment_state = 5;
+  google.protobuf.Struct config = 6;
+}
+
+message ServiceTargetStateOptions {
+  // Add fields as needed
+  string hint = 1;
+}
+
+message ServiceTargetStateResult {
+  ServiceTargetState state = 1;
+}
+
+message ServiceTargetRegisterProviderRequest {
+  string name = 1;// unique identifier for the provider
+  string display_name = 2;
+}
+
+message ServiceTargetRegisterProviderResponse {
+  // Add fields as needed (empty for now)
+}
+
+message ServiceTargetErrorMessage {
+  string message = 2;
+  string details = 3;
+}
+
+
