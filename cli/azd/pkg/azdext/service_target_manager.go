@@ -19,6 +19,7 @@ type ServiceTargetProvider interface {
 	Name(ctx context.Context) (string, error)
 	Initialize(ctx context.Context, projectPath string, options *ServiceTargetOptions) error
 	State(ctx context.Context, options *ServiceTargetStateOptions) (*ServiceTargetStateResult, error)
+	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -35,7 +36,7 @@ func NewServiceTargetManager(client *AzdClient) *ServiceTargetManager {
 }
 
 // Register registers the provider with the server, waits for the response, then starts background handling of provisioning requests.
-func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTargetProvider, name string, displayName string) error {
+func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTargetProvider, hostType string, displayName string) error {
 	stream, err := m.client.ServiceTarget().Stream(ctx)
 	if err != nil {
 		return err
@@ -45,10 +46,10 @@ func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTar
 
 	registerReq := &ServiceTargetMessage{
 		RequestId: uuid.NewString(),
-		MessageType: &ServiceTargetMessage_RegisterProviderRequest{
-			RegisterProviderRequest: &ServiceTargetRegisterProviderRequest{
-				Name:        name,
-				DisplayName: displayName,
+		MessageType: &ServiceTargetMessage_RegisterServiceTargetRequest{
+			RegisterServiceTargetRequest: &RegisterServiceTargetRequest{
+				Host: hostType,
+				// DisplayName: displayName,
 			},
 		},
 	}
@@ -65,8 +66,8 @@ func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTar
 		return err
 	}
 
-	initResponse := msg.GetRegisterProviderResponse()
-	if initResponse != nil {
+	regResponse := msg.GetRegisterServiceTargetResponse()
+	if regResponse != nil {
 		go m.handleServiceTargetStream(ctx, provider)
 		return nil
 	}
@@ -95,33 +96,46 @@ func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, pr
 func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetProvider, msg *ServiceTargetMessage) *ServiceTargetMessage {
 	var resp *ServiceTargetMessage
 	switch r := msg.MessageType.(type) {
-	case *ServiceTargetMessage_NameRequest:
-		name, _ := provider.Name(ctx)
+	// case *ServiceTargetMessage_NameRequest:
+	// 	name, _ := provider.Name(ctx)
+	// 	resp = &ServiceTargetMessage{
+	// 		RequestId: msg.RequestId,
+	// 		MessageType: &ServiceTargetMessage_NameResponse{
+	// 			NameResponse: &ServiceTargetNameResponse{Name: name},
+	// 		},
+	// 	}
+	// case *ServiceTargetMessage_InitializeRequest:
+	// 	err := provider.Initialize(ctx, r.InitializeRequest.ProjectPath, r.InitializeRequest.Options)
+	// 	resp = &ServiceTargetMessage{
+	// 		RequestId: msg.RequestId,
+	// 		MessageType: &ServiceTargetMessage_InitializeResponse{
+	// 			InitializeResponse: &ServiceTargetInitializeResponse{},
+	// 		},
+	// 	}
+	// 	if err != nil {
+	// 		resp.Error = &ServiceTargetErrorMessage{
+	// 			Message: err.Error(),
+	// 		}
+	// 	}
+	// case *ServiceTargetMessage_StateRequest:
+	// 	result, err := provider.State(ctx, r.StateRequest.Options)
+	// 	resp = &ServiceTargetMessage{
+	// 		RequestId: msg.RequestId,
+	// 		MessageType: &ServiceTargetMessage_StateResponse{
+	// 			StateResponse: &ServiceTargetStateResponse{StateResult: result},
+	// 		},
+	// 	}
+	// 	if err != nil {
+	// 		resp.Error = &ServiceTargetErrorMessage{
+	// 			Message: err.Error(),
+	// 		}
+	// 	}
+	case *ServiceTargetMessage_GetTargetResourceRequest:
+		result, err := provider.GetTargetResource(ctx, r.GetTargetResourceRequest.SubscriptionId, r.GetTargetResourceRequest.ServiceConfig)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
-			MessageType: &ServiceTargetMessage_NameResponse{
-				NameResponse: &ServiceTargetNameResponse{Name: name},
-			},
-		}
-	case *ServiceTargetMessage_InitializeRequest:
-		err := provider.Initialize(ctx, r.InitializeRequest.ProjectPath, r.InitializeRequest.Options)
-		resp = &ServiceTargetMessage{
-			RequestId: msg.RequestId,
-			MessageType: &ServiceTargetMessage_InitializeResponse{
-				InitializeResponse: &ServiceTargetInitializeResponse{},
-			},
-		}
-		if err != nil {
-			resp.Error = &ServiceTargetErrorMessage{
-				Message: err.Error(),
-			}
-		}
-	case *ServiceTargetMessage_StateRequest:
-		result, err := provider.State(ctx, r.StateRequest.Options)
-		resp = &ServiceTargetMessage{
-			RequestId: msg.RequestId,
-			MessageType: &ServiceTargetMessage_StateResponse{
-				StateResponse: &ServiceTargetStateResponse{StateResult: result},
+			MessageType: &ServiceTargetMessage_GetTargetResourceResponse{
+				GetTargetResourceResponse: &GetTargetResourceResponse{TargetResource: result},
 			},
 		}
 		if err != nil {

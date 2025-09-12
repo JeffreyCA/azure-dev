@@ -71,32 +71,38 @@ func (s *ServiceTargetService) Stream(
 		return err
 	}
 
-	regRequest := msg.GetRegisterProviderRequest()
+	regRequest := msg.GetRegisterServiceTargetRequest()
 	if regRequest == nil {
 		return status.Errorf(codes.FailedPrecondition, "expected RegisterProviderRequest, got %T", msg.GetMessageType())
 	}
 
-	providerName := regRequest.Name
-	if _, has := s.providerMap[providerName]; has {
-		return status.Errorf(codes.AlreadyExists, "provider %s already registered", providerName)
+	hostType := regRequest.GetHost()
+	if _, has := s.providerMap[hostType]; has {
+		return status.Errorf(codes.AlreadyExists, "provider %s already registered", hostType)
 	}
 
 	// Register external service target with DI container
-	err = s.container.RegisterNamedTransient(providerName, func(
+	err = s.container.RegisterNamedTransient(hostType, func(
 		console input.Console,
 		prompter prompt.Prompter,
 	) project.ServiceTarget {
-		return project.NewExternalServiceTarget(providerName, project.ServiceTargetKind(providerName), extension, stream, console, prompter)
+		return project.NewExternalServiceTarget(hostType, project.ServiceTargetKind(hostType), extension, stream, console, prompter)
 	})
 
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to register service target: %s", err.Error())
 	}
 
+	// Also register with the external target resource provider if available
+	var externalProvider *project.ExternalTargetResourceProvider
+	if err := s.container.Resolve(&externalProvider); err == nil {
+		externalProvider.RegisterExtension(project.ServiceTargetKind(hostType), extension, stream)
+	}
+
 	resp := &azdext.ServiceTargetMessage{
 		RequestId: msg.RequestId,
-		MessageType: &azdext.ServiceTargetMessage_RegisterProviderResponse{
-			RegisterProviderResponse: &azdext.ServiceTargetRegisterProviderResponse{},
+		MessageType: &azdext.ServiceTargetMessage_RegisterServiceTargetResponse{
+			RegisterServiceTargetResponse: &azdext.RegisterServiceTargetResponse{},
 		},
 	}
 
@@ -104,11 +110,18 @@ func (s *ServiceTargetService) Stream(
 		return status.Errorf(codes.Internal, "failed to send response: %s", err.Error())
 	}
 
-	s.providerMap[providerName] = stream
-	log.Printf("Registered service target: %s", providerName)
+	s.providerMap[hostType] = stream
+	log.Printf("Registered service target: %s", hostType)
 
 	// Wait for the stream context to be done (client disconnects or server shutdown)
 	<-stream.Context().Done()
-	log.Printf("Stream closed for provider: %s", providerName)
+	log.Printf("Stream closed for provider: %s", hostType)
+
+	// Cleanup: unregister from external target resource provider
+	if err := s.container.Resolve(&externalProvider); err == nil {
+		externalProvider.UnregisterExtension(project.ServiceTargetKind(hostType))
+	}
+
+	delete(s.providerMap, hostType)
 	return nil
 }

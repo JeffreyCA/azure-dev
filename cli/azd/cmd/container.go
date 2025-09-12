@@ -521,6 +521,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.MustRegisterSingleton(templates.NewTemplateManager)
 	container.MustRegisterSingleton(templates.NewSourceManager)
 	container.MustRegisterScoped(project.NewResourceManager)
+	container.MustRegisterSingleton(project.NewExternalTargetResourceProvider)
 	container.MustRegisterScoped(func(serviceLocator ioc.ServiceLocator) *lazy.Lazy[project.ResourceManager] {
 		return lazy.NewLazy(func() (project.ResourceManager, error) {
 			var resourceManager project.ResourceManager

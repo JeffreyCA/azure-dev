@@ -87,13 +87,22 @@ func (est *ExternalServiceTarget) Deploy(
 ) (*ServiceDeployResult, error) {
 	// No-op implementation - ServiceTarget proto doesn't support Deploy operation yet
 	// TODO: Implement gRPC call when ServiceTarget proto supports Deploy
+
 	// Construct resource ID from available methods
 	resourceId := "/subscriptions/" + targetResource.SubscriptionId() + "/resourceGroups/" + targetResource.ResourceGroupName() + "/providers/" + targetResource.ResourceType() + "/" + targetResource.ResourceName()
+
+	// For now, include target resource details in endpoints
+	endpoints := []string{resourceId}
+	if rt := targetResource.ResourceType(); rt != "" {
+		rn := targetResource.ResourceName()
+		endpoints = append(endpoints, rt+"/"+rn)
+	}
+
 	return &ServiceDeployResult{
 		Package:          servicePackage,
 		TargetResourceId: resourceId,
 		Kind:             est.targetKind,
-		Endpoints:        []string{},
+		Endpoints:        endpoints,
 		Details:          "External service target (no-op)",
 	}, nil
 }

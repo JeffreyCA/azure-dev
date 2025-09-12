@@ -61,6 +61,7 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("ExtensionsMiddleware: found %d installed extension(s)\n", len(installedExtensions))
 
 	requireLifecycleEvents := false
 	extensionList := []*extensions.Extension{}
@@ -76,6 +77,7 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 		}
 	}
 
+	fmt.Printf("ExtensionsMiddleware: %d extension(s) require lifecycle events\n", len(extensionList))
 	if !requireLifecycleEvents {
 		return next(ctx)
 	}
@@ -89,8 +91,10 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("ExtensionsMiddleware: started gRPC server at %s\n", serverInfo.Address)
 
 	defer func() {
+		fmt.Printf("ExtensionsMiddleware: stopping gRPC server\n")
 		if err := grpcServer.Stop(); err != nil {
 			log.Printf("failed to stop gRPC server: %v\n", err)
 		}
@@ -129,16 +133,20 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 					StdErr: extension.StdErr(),
 				}
 
+				fmt.Printf("ExtensionsMiddleware: invoking extension '%s'\n", extension.Id)
 				if _, err := m.extensionRunner.Invoke(ctx, extension, options); err != nil {
+					fmt.Printf("ExtensionsMiddleware: invocation failed for extension '%s': %v\n", extension.Id, err)
 					extension.Fail(err)
 				}
 			}()
 
 			// Wait for the extension to signal readiness or failure.
-			readyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			readyCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
 			defer cancel()
 			if err := extension.WaitUntilReady(readyCtx); err != nil {
 				log.Printf("extension '%s' failed to become ready: %v\n", extension.Id, err)
+			} else {
+				fmt.Printf("ExtensionsMiddleware: extension '%s' signaled ready\n", extension.Id)
 			}
 		}(extension, jwtToken)
 	}

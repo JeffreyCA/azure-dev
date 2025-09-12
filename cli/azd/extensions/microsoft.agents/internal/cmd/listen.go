@@ -28,7 +28,7 @@ func newListenCommand() *cobra.Command {
 
 			provider := project.NewAgentServiceTargetProvider(azdClient)
 			provisioningManager := azdext.NewServiceTargetManager(azdClient)
-			if err := provisioningManager.Register(ctx, provider, "scripts", "Custom Scripts"); err != nil {
+			if err := provisioningManager.Register(ctx, provider, "agents", "Agents Provider"); err != nil {
 				return fmt.Errorf("failed to register provider: %w", err)
 			}
 

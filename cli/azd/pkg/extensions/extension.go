@@ -23,6 +23,7 @@ type Extension struct {
 	Usage        string           `json:"usage"`
 	Path         string           `json:"path"`
 	Source       string           `json:"source"`
+	HostKinds    []string         `json:"hostKinds,omitempty"`
 
 	stdin  *bytes.Buffer
 	stdout *output.DynamicMultiWriter

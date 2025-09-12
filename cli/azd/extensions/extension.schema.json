@@ -94,6 +94,12 @@
             "const": "lifecycle-events",
             "title": "Lifecycle Events",
             "description": "Lifecycle events enable extensions to subscribe to AZD project and service lifecycle events."
+          },
+          {
+            "type": "string",
+            "const": "service-target-provider",
+            "title": "Service Target Provider",
+            "description": "Service target provider enables extensions to provide custom service deployment targets."
           }
         ]
       }
@@ -120,6 +126,17 @@
       "items": {
         "$ref": "#/definitions/ExtensionExample"
       }
+    },
+    "hostKinds": {
+      "type": "array",
+      "title": "Host Kinds",
+      "description": "List of host kinds that this extension provides. Only applicable when the extension has the 'service-target-provider' capability.",
+      "items": {
+        "type": "string",
+        "title": "Host Kind",
+        "description": "A unique identifier for the host kind (e.g., 'agents', 'custom-runtime')."
+      },
+      "uniqueItems": true
     },
     "tags": {
       "type": "array",

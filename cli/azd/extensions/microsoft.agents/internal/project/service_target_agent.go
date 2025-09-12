@@ -55,3 +55,23 @@ func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.
 		State: state,
 	}, nil
 }
+
+// GetTargetResource returns a custom target resource for the agent service
+func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *azdext.ServiceTargetConfig) (*azdext.TargetResource, error) {
+	fmt.Printf("AgentServiceTargetProvider.GetTargetResource called for service: %s\n", serviceConfig.Name)
+
+	// This is a sample implementation that creates a mock target resource
+	// In a real implementation, this would contain the custom logic for resolving
+	// the target resource based on the extension's specific requirements
+
+	// For demonstration, create a mock Container App target resource
+	targetResource := &azdext.TargetResource{
+		SubscriptionId:    subscriptionId,
+		ResourceGroupName: "rg-agent-demo",
+		ResourceName:      "ca-" + serviceConfig.Name + "-agent",
+		ResourceType:      "Microsoft.App/containerApps",
+	}
+
+	fmt.Printf("AgentServiceTargetProvider returning target resource: %+v\n", targetResource)
+	return targetResource, nil
+}

@@ -16,14 +16,16 @@ message ServiceTargetMessage {
   string request_id = 1;
   ServiceTargetErrorMessage error = 99;
   oneof message_type {
-    ServiceTargetRegisterProviderRequest register_provider_request = 2;
-    ServiceTargetRegisterProviderResponse register_provider_response = 3;
-    ServiceTargetNameRequest name_request = 4;
-    ServiceTargetNameResponse name_response = 5;
-    ServiceTargetInitializeRequest initialize_request = 6;
-    ServiceTargetInitializeResponse initialize_response = 7;
-    ServiceTargetStateRequest state_request = 8;
-    ServiceTargetStateResponse state_response = 9;
+    RegisterServiceTargetRequest register_service_target_request = 2;
+    RegisterServiceTargetResponse register_service_target_response = 3;
+    // ServiceTargetNameRequest name_request = 4;
+    // ServiceTargetNameResponse name_response = 5;
+    // ServiceTargetInitializeRequest initialize_request = 6;
+    // ServiceTargetInitializeResponse initialize_response = 7;
+    // ServiceTargetStateRequest state_request = 8;
+    // ServiceTargetStateResponse state_response = 9;
+    GetTargetResourceRequest get_target_resource_request = 10;
+    GetTargetResourceResponse get_target_resource_response = 11;
   }
 }
 
@@ -90,18 +92,51 @@ message ServiceTargetStateResult {
   ServiceTargetState state = 1;
 }
 
-message ServiceTargetRegisterProviderRequest {
-  string name = 1;// unique identifier for the provider
-  string display_name = 2;
+message RegisterServiceTargetRequest {
+  string host = 1;// unique identifier for the provider
+  // string display_name = 2;
 }
 
-message ServiceTargetRegisterProviderResponse {
+message RegisterServiceTargetResponse {
   // Add fields as needed (empty for now)
 }
 
 message ServiceTargetErrorMessage {
   string message = 2;
   string details = 3;
+}
+
+// GetTargetResource request and response
+message GetTargetResourceRequest {
+  string subscription_id = 1;
+  ServiceTargetConfig service_config = 2;
+}
+
+message GetTargetResourceResponse {
+  TargetResource target_resource = 1;
+}
+
+// ServiceTargetConfig represents the service configuration needed for target resource resolution
+message ServiceTargetConfig {
+  string name = 1;
+  string host = 2;
+  string project_name = 3;
+  ResourceGroupNameTemplate resource_group_name = 4;
+  ResourceGroupNameTemplate project_resource_group_name = 5;
+}
+
+// ResourceGroupNameTemplate represents a resource group name template
+message ResourceGroupNameTemplate {
+  string template = 1;
+  bool is_empty = 2;
+}
+
+// TargetResource represents the resolved target resource
+message TargetResource {
+  string subscription_id = 1;
+  string resource_group_name = 2;
+  string resource_name = 3;
+  string resource_type = 4;
 }
 
 

@@ -10,6 +10,8 @@ capabilities:
     - custom-commands
     - lifecycle-events
     - service-target-provider
+hostKinds:
+    - agents
 examples:
   - name: context
     description: Displays the current `azd` project & environment context.
