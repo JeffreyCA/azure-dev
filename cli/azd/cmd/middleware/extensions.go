@@ -79,7 +79,35 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 		return nil, err
 	}
 
+	extensionContexts := make([]context.CancelFunc, len(extensionList))
+
+	// Track extension goroutines for proper cleanup
+	var extensionWg sync.WaitGroup
+
+	// Set up cleanup with proper goroutine synchronization
 	defer func() {
+		// 1. First signal extensions to shutdown gracefully
+		for _, cancel := range extensionContexts {
+			if cancel != nil {
+				cancel()
+			}
+		}
+
+		// 2. Wait for extension invoke goroutines to complete (with timeout)
+		done := make(chan struct{})
+		go func() {
+			extensionWg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// Extensions terminated gracefully
+		case <-time.After(1 * time.Second):
+			// Extension shutdown timeout reached
+		}
+
+		// 3. Then stop the gRPC server
 		if err := grpcServer.Stop(); err != nil {
 			log.Printf("failed to stop gRPC server: %v\n", err)
 		}
@@ -89,18 +117,25 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 
 	var wg sync.WaitGroup
 
-	for _, extension := range extensionList {
+	for i, extension := range extensionList {
 		jwtToken, err := grpcserver.GenerateExtensionToken(extension, serverInfo)
 		if err != nil {
 			return nil, err
 		}
 
+		// Create extension context before starting goroutine to avoid race
+		extensionCtx, extensionCancel := context.WithCancel(ctx)
+		extensionContexts[i] = extensionCancel
+
 		wg.Add(1)
-		go func(extension *extensions.Extension, jwtToken string) {
+		go func(extension *extensions.Extension, jwtToken string, extensionCtx context.Context) {
 			defer wg.Done()
 
 			// Invoke the extension in a separate goroutine so that we can proceed to waiting for readiness.
+			extensionWg.Add(1)
 			go func() {
+				defer extensionWg.Done()
+
 				allEnv := []string{
 					fmt.Sprintf("AZD_SERVER=%s", serverInfo.Address),
 					fmt.Sprintf("AZD_ACCESS_TOKEN=%s", jwtToken),
@@ -118,18 +153,18 @@ func (m *ExtensionsMiddleware) Run(ctx context.Context, next NextFn) (*actions.A
 					StdErr: extension.StdErr(),
 				}
 
-				if _, err := m.extensionRunner.Invoke(ctx, extension, options); err != nil {
+				if _, err := m.extensionRunner.Invoke(extensionCtx, extension, options); err != nil {
 					extension.Fail(err)
 				}
 			}()
 
 			// Wait for the extension to signal readiness or failure.
-			readyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			readyCtx, cancel := context.WithTimeout(extensionCtx, 2*time.Second)
 			defer cancel()
 			if err := extension.WaitUntilReady(readyCtx); err != nil {
 				log.Printf("extension '%s' failed to become ready: %v\n", extension.Id, err)
 			}
-		}(extension, jwtToken)
+		}(extension, jwtToken, extensionCtx)
 	}
 
 	// Wait for all extensions to reach a terminal state (ready or failed)
