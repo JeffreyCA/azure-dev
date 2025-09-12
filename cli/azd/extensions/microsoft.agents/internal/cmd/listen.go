@@ -36,7 +36,9 @@ func newListenCommand() *cobra.Command {
 				return fmt.Errorf("failed to signal readiness: %w", err)
 			}
 
-			select {}
+			// Block until context is cancelled (graceful shutdown)
+			<-ctx.Done()
+			return nil
 		},
 	}
 }

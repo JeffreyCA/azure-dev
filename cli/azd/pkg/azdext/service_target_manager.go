@@ -78,19 +78,25 @@ func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTar
 
 func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, provider ServiceTargetProvider) {
 	for {
-		msg, err := m.stream.Recv()
-		if err != nil {
-			log.Printf("service target stream closed: %v", err)
+		select {
+		case <-ctx.Done():
+			log.Println("Context cancelled by caller, exiting service target stream")
 			return
-		}
-		go func(msg *ServiceTargetMessage) {
-			resp := buildServiceTargetResponseMsg(ctx, provider, msg)
-			if resp != nil {
-				if err := m.stream.Send(resp); err != nil {
-					log.Printf("failed to send service target response: %v", err)
-				}
+		default:
+			msg, err := m.stream.Recv()
+			if err != nil {
+				log.Printf("service target stream closed: %v", err)
+				return
 			}
-		}(msg)
+			go func(msg *ServiceTargetMessage) {
+				resp := buildServiceTargetResponseMsg(ctx, provider, msg)
+				if resp != nil {
+					if err := m.stream.Send(resp); err != nil {
+						log.Printf("failed to send service target response: %v", err)
+					}
+				}
+			}(msg)
+		}
 	}
 }
 
