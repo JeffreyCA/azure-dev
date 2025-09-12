@@ -15,6 +15,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
+	"github.com/google/uuid"
 )
 
 type ExternalServiceTarget struct {
@@ -85,25 +86,72 @@ func (est *ExternalServiceTarget) Deploy(
 	targetResource *environment.TargetResource,
 	progress *async.Progress[ServiceProgress],
 ) (*ServiceDeployResult, error) {
-	// No-op implementation - ServiceTarget proto doesn't support Deploy operation yet
-	// TODO: Implement gRPC call when ServiceTarget proto supports Deploy
-
-	// Construct resource ID from available methods
-	resourceId := "/subscriptions/" + targetResource.SubscriptionId() + "/resourceGroups/" + targetResource.ResourceGroupName() + "/providers/" + targetResource.ResourceType() + "/" + targetResource.ResourceName()
-
-	// For now, include target resource details in endpoints
-	endpoints := []string{resourceId}
-	if rt := targetResource.ResourceType(); rt != "" {
-		rn := targetResource.ResourceName()
-		endpoints = append(endpoints, rt+"/"+rn)
+	// Convert project types to protobuf types
+	protoServiceConfig := &azdext.ServiceTargetConfig{
+		Name:        serviceConfig.Name,
+		Host:        string(serviceConfig.Host),
+		ProjectName: serviceConfig.Project.Name,
 	}
+
+	protoServicePackage := &azdext.ServiceTargetPackageResult{
+		PackagePath: servicePackage.PackagePath,
+		Details:     make(map[string]string),
+	}
+
+	// Convert details to string map if possible
+	if servicePackage.Details != nil {
+		if detailsMap, ok := servicePackage.Details.(map[string]interface{}); ok {
+			for k, v := range detailsMap {
+				if str, ok := v.(string); ok {
+					protoServicePackage.Details[k] = str
+				}
+			}
+		}
+	}
+
+	protoTargetResource := &azdext.TargetResource{
+		SubscriptionId:    targetResource.SubscriptionId(),
+		ResourceGroupName: targetResource.ResourceGroupName(),
+		ResourceName:      targetResource.ResourceName(),
+		ResourceType:      targetResource.ResourceType(),
+	}
+
+	// Create Deploy request message
+	requestId := uuid.NewString()
+	deployReq := &azdext.ServiceTargetMessage{
+		RequestId: requestId,
+		MessageType: &azdext.ServiceTargetMessage_DeployRequest{
+			DeployRequest: &azdext.ServiceTargetDeployRequest{
+				ServiceConfig:  protoServiceConfig,
+				ServicePackage: protoServicePackage,
+				TargetResource: protoTargetResource,
+			},
+		},
+	}
+
+	// Send request and wait for response
+	resp, err := est.sendAndWait(ctx, deployReq, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetDeployResponse() != nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	deployResponse := resp.GetDeployResponse()
+	if deployResponse == nil || deployResponse.DeployResult == nil {
+		return nil, errors.New("invalid deploy response: missing deploy result")
+	}
+
+	// Convert protobuf result back to project types
+	result := deployResponse.DeployResult
 
 	return &ServiceDeployResult{
 		Package:          servicePackage,
-		TargetResourceId: resourceId,
-		Kind:             est.targetKind,
-		Endpoints:        endpoints,
-		Details:          "External service target (no-op)",
+		TargetResourceId: result.TargetResourceId,
+		Kind:             ServiceTargetKind(result.Kind),
+		Endpoints:        result.Endpoints,
+		Details:          result.Details,
 	}, nil
 }
 

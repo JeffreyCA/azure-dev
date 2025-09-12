@@ -36,6 +36,8 @@ type ServiceTargetMessage struct {
 	//	*ServiceTargetMessage_RegisterServiceTargetResponse
 	//	*ServiceTargetMessage_GetTargetResourceRequest
 	//	*ServiceTargetMessage_GetTargetResourceResponse
+	//	*ServiceTargetMessage_DeployRequest
+	//	*ServiceTargetMessage_DeployResponse
 	MessageType   isServiceTargetMessage_MessageType `protobuf_oneof:"message_type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -128,6 +130,24 @@ func (x *ServiceTargetMessage) GetGetTargetResourceResponse() *GetTargetResource
 	return nil
 }
 
+func (x *ServiceTargetMessage) GetDeployRequest() *ServiceTargetDeployRequest {
+	if x != nil {
+		if x, ok := x.MessageType.(*ServiceTargetMessage_DeployRequest); ok {
+			return x.DeployRequest
+		}
+	}
+	return nil
+}
+
+func (x *ServiceTargetMessage) GetDeployResponse() *ServiceTargetDeployResponse {
+	if x != nil {
+		if x, ok := x.MessageType.(*ServiceTargetMessage_DeployResponse); ok {
+			return x.DeployResponse
+		}
+	}
+	return nil
+}
+
 type isServiceTargetMessage_MessageType interface {
 	isServiceTargetMessage_MessageType()
 }
@@ -154,6 +174,14 @@ type ServiceTargetMessage_GetTargetResourceResponse struct {
 	GetTargetResourceResponse *GetTargetResourceResponse `protobuf:"bytes,11,opt,name=get_target_resource_response,json=getTargetResourceResponse,proto3,oneof"`
 }
 
+type ServiceTargetMessage_DeployRequest struct {
+	DeployRequest *ServiceTargetDeployRequest `protobuf:"bytes,12,opt,name=deploy_request,json=deployRequest,proto3,oneof"`
+}
+
+type ServiceTargetMessage_DeployResponse struct {
+	DeployResponse *ServiceTargetDeployResponse `protobuf:"bytes,13,opt,name=deploy_response,json=deployResponse,proto3,oneof"`
+}
+
 func (*ServiceTargetMessage_RegisterServiceTargetRequest) isServiceTargetMessage_MessageType() {}
 
 func (*ServiceTargetMessage_RegisterServiceTargetResponse) isServiceTargetMessage_MessageType() {}
@@ -161,6 +189,10 @@ func (*ServiceTargetMessage_RegisterServiceTargetResponse) isServiceTargetMessag
 func (*ServiceTargetMessage_GetTargetResourceRequest) isServiceTargetMessage_MessageType() {}
 
 func (*ServiceTargetMessage_GetTargetResourceResponse) isServiceTargetMessage_MessageType() {}
+
+func (*ServiceTargetMessage_DeployRequest) isServiceTargetMessage_MessageType() {}
+
+func (*ServiceTargetMessage_DeployResponse) isServiceTargetMessage_MessageType() {}
 
 // State
 type ServiceTargetState struct {
@@ -1232,11 +1264,246 @@ func (x *TargetResource) GetResourceType() string {
 	return ""
 }
 
+// Deploy request and response
+type ServiceTargetDeployRequest struct {
+	state          protoimpl.MessageState      `protogen:"open.v1"`
+	ServiceConfig  *ServiceTargetConfig        `protobuf:"bytes,1,opt,name=service_config,json=serviceConfig,proto3" json:"service_config,omitempty"`
+	ServicePackage *ServiceTargetPackageResult `protobuf:"bytes,2,opt,name=service_package,json=servicePackage,proto3" json:"service_package,omitempty"`
+	TargetResource *TargetResource             `protobuf:"bytes,3,opt,name=target_resource,json=targetResource,proto3" json:"target_resource,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ServiceTargetDeployRequest) Reset() {
+	*x = ServiceTargetDeployRequest{}
+	mi := &file_service_target_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceTargetDeployRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceTargetDeployRequest) ProtoMessage() {}
+
+func (x *ServiceTargetDeployRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceTargetDeployRequest.ProtoReflect.Descriptor instead.
+func (*ServiceTargetDeployRequest) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ServiceTargetDeployRequest) GetServiceConfig() *ServiceTargetConfig {
+	if x != nil {
+		return x.ServiceConfig
+	}
+	return nil
+}
+
+func (x *ServiceTargetDeployRequest) GetServicePackage() *ServiceTargetPackageResult {
+	if x != nil {
+		return x.ServicePackage
+	}
+	return nil
+}
+
+func (x *ServiceTargetDeployRequest) GetTargetResource() *TargetResource {
+	if x != nil {
+		return x.TargetResource
+	}
+	return nil
+}
+
+type ServiceTargetDeployResponse struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	DeployResult  *ServiceTargetDeployResult `protobuf:"bytes,1,opt,name=deploy_result,json=deployResult,proto3" json:"deploy_result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceTargetDeployResponse) Reset() {
+	*x = ServiceTargetDeployResponse{}
+	mi := &file_service_target_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceTargetDeployResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceTargetDeployResponse) ProtoMessage() {}
+
+func (x *ServiceTargetDeployResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceTargetDeployResponse.ProtoReflect.Descriptor instead.
+func (*ServiceTargetDeployResponse) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ServiceTargetDeployResponse) GetDeployResult() *ServiceTargetDeployResult {
+	if x != nil {
+		return x.DeployResult
+	}
+	return nil
+}
+
+// ServiceTargetPackageResult represents the package result for deployment
+type ServiceTargetPackageResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PackagePath   string                 `protobuf:"bytes,1,opt,name=package_path,json=packagePath,proto3" json:"package_path,omitempty"`
+	Details       map[string]string      `protobuf:"bytes,2,rep,name=details,proto3" json:"details,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceTargetPackageResult) Reset() {
+	*x = ServiceTargetPackageResult{}
+	mi := &file_service_target_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceTargetPackageResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceTargetPackageResult) ProtoMessage() {}
+
+func (x *ServiceTargetPackageResult) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceTargetPackageResult.ProtoReflect.Descriptor instead.
+func (*ServiceTargetPackageResult) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ServiceTargetPackageResult) GetPackagePath() string {
+	if x != nil {
+		return x.PackagePath
+	}
+	return ""
+}
+
+func (x *ServiceTargetPackageResult) GetDetails() map[string]string {
+	if x != nil {
+		return x.Details
+	}
+	return nil
+}
+
+// ServiceTargetDeployResult represents the result of a deployment operation
+type ServiceTargetDeployResult struct {
+	state            protoimpl.MessageState      `protogen:"open.v1"`
+	Package          *ServiceTargetPackageResult `protobuf:"bytes,1,opt,name=package,proto3" json:"package,omitempty"`
+	TargetResourceId string                      `protobuf:"bytes,2,opt,name=target_resource_id,json=targetResourceId,proto3" json:"target_resource_id,omitempty"`
+	Kind             string                      `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Endpoints        []string                    `protobuf:"bytes,4,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	Details          string                      `protobuf:"bytes,5,opt,name=details,proto3" json:"details,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ServiceTargetDeployResult) Reset() {
+	*x = ServiceTargetDeployResult{}
+	mi := &file_service_target_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceTargetDeployResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceTargetDeployResult) ProtoMessage() {}
+
+func (x *ServiceTargetDeployResult) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceTargetDeployResult.ProtoReflect.Descriptor instead.
+func (*ServiceTargetDeployResult) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ServiceTargetDeployResult) GetPackage() *ServiceTargetPackageResult {
+	if x != nil {
+		return x.Package
+	}
+	return nil
+}
+
+func (x *ServiceTargetDeployResult) GetTargetResourceId() string {
+	if x != nil {
+		return x.TargetResourceId
+	}
+	return ""
+}
+
+func (x *ServiceTargetDeployResult) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ServiceTargetDeployResult) GetEndpoints() []string {
+	if x != nil {
+		return x.Endpoints
+	}
+	return nil
+}
+
+func (x *ServiceTargetDeployResult) GetDetails() string {
+	if x != nil {
+		return x.Details
+	}
+	return ""
+}
+
 var File_service_target_proto protoreflect.FileDescriptor
 
 const file_service_target_proto_rawDesc = "" +
 	"\n" +
-	"\x14service_target.proto\x12\x06azdext\x1a$include/google/protobuf/struct.proto\"\xa8\x04\n" +
+	"\x14service_target.proto\x12\x06azdext\x1a$include/google/protobuf/struct.proto\"\xc5\x05\n" +
 	"\x14ServiceTargetMessage\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x127\n" +
@@ -1245,7 +1512,9 @@ const file_service_target_proto_rawDesc = "" +
 	" register_service_target_response\x18\x03 \x01(\v2%.azdext.RegisterServiceTargetResponseH\x00R\x1dregisterServiceTargetResponse\x12a\n" +
 	"\x1bget_target_resource_request\x18\n" +
 	" \x01(\v2 .azdext.GetTargetResourceRequestH\x00R\x18getTargetResourceRequest\x12d\n" +
-	"\x1cget_target_resource_response\x18\v \x01(\v2!.azdext.GetTargetResourceResponseH\x00R\x19getTargetResourceResponseB\x0e\n" +
+	"\x1cget_target_resource_response\x18\v \x01(\v2!.azdext.GetTargetResourceResponseH\x00R\x19getTargetResourceResponse\x12K\n" +
+	"\x0edeploy_request\x18\f \x01(\v2\".azdext.ServiceTargetDeployRequestH\x00R\rdeployRequest\x12N\n" +
+	"\x0fdeploy_response\x18\r \x01(\v2#.azdext.ServiceTargetDeployResponseH\x00R\x0edeployResponseB\x0e\n" +
 	"\fmessage_type\"\xf6\x01\n" +
 	"\x12ServiceTargetState\x12A\n" +
 	"\aoutputs\x18\x01 \x03(\v2'.azdext.ServiceTargetState.OutputsEntryR\aoutputs\x12;\n" +
@@ -1311,7 +1580,25 @@ const file_service_target_proto_rawDesc = "" +
 	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionId\x12.\n" +
 	"\x13resource_group_name\x18\x02 \x01(\tR\x11resourceGroupName\x12#\n" +
 	"\rresource_name\x18\x03 \x01(\tR\fresourceName\x12#\n" +
-	"\rresource_type\x18\x04 \x01(\tR\fresourceType2`\n" +
+	"\rresource_type\x18\x04 \x01(\tR\fresourceType\"\xee\x01\n" +
+	"\x1aServiceTargetDeployRequest\x12B\n" +
+	"\x0eservice_config\x18\x01 \x01(\v2\x1b.azdext.ServiceTargetConfigR\rserviceConfig\x12K\n" +
+	"\x0fservice_package\x18\x02 \x01(\v2\".azdext.ServiceTargetPackageResultR\x0eservicePackage\x12?\n" +
+	"\x0ftarget_resource\x18\x03 \x01(\v2\x16.azdext.TargetResourceR\x0etargetResource\"e\n" +
+	"\x1bServiceTargetDeployResponse\x12F\n" +
+	"\rdeploy_result\x18\x01 \x01(\v2!.azdext.ServiceTargetDeployResultR\fdeployResult\"\xc6\x01\n" +
+	"\x1aServiceTargetPackageResult\x12!\n" +
+	"\fpackage_path\x18\x01 \x01(\tR\vpackagePath\x12I\n" +
+	"\adetails\x18\x02 \x03(\v2/.azdext.ServiceTargetPackageResult.DetailsEntryR\adetails\x1a:\n" +
+	"\fDetailsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd3\x01\n" +
+	"\x19ServiceTargetDeployResult\x12<\n" +
+	"\apackage\x18\x01 \x01(\v2\".azdext.ServiceTargetPackageResultR\apackage\x12,\n" +
+	"\x12target_resource_id\x18\x02 \x01(\tR\x10targetResourceId\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x1c\n" +
+	"\tendpoints\x18\x04 \x03(\tR\tendpoints\x12\x18\n" +
+	"\adetails\x18\x05 \x01(\tR\adetails2`\n" +
 	"\x14ServiceTargetService\x12H\n" +
 	"\x06Stream\x12\x1c.azdext.ServiceTargetMessage\x1a\x1c.azdext.ServiceTargetMessage(\x010\x01B/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
 
@@ -1327,7 +1614,7 @@ func file_service_target_proto_rawDescGZIP() []byte {
 	return file_service_target_proto_rawDescData
 }
 
-var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetMessage)(nil),            // 0: azdext.ServiceTargetMessage
 	(*ServiceTargetState)(nil),              // 1: azdext.ServiceTargetState
@@ -1351,9 +1638,14 @@ var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetConfig)(nil),             // 19: azdext.ServiceTargetConfig
 	(*ResourceGroupNameTemplate)(nil),       // 20: azdext.ResourceGroupNameTemplate
 	(*TargetResource)(nil),                  // 21: azdext.TargetResource
-	nil,                                     // 22: azdext.ServiceTargetState.OutputsEntry
-	nil,                                     // 23: azdext.ServiceTargetOptions.DeploymentStacksEntry
-	(*structpb.Struct)(nil),                 // 24: google.protobuf.Struct
+	(*ServiceTargetDeployRequest)(nil),      // 22: azdext.ServiceTargetDeployRequest
+	(*ServiceTargetDeployResponse)(nil),     // 23: azdext.ServiceTargetDeployResponse
+	(*ServiceTargetPackageResult)(nil),      // 24: azdext.ServiceTargetPackageResult
+	(*ServiceTargetDeployResult)(nil),       // 25: azdext.ServiceTargetDeployResult
+	nil,                                     // 26: azdext.ServiceTargetState.OutputsEntry
+	nil,                                     // 27: azdext.ServiceTargetOptions.DeploymentStacksEntry
+	nil,                                     // 28: azdext.ServiceTargetPackageResult.DetailsEntry
+	(*structpb.Struct)(nil),                 // 29: google.protobuf.Struct
 }
 var file_service_target_proto_depIdxs = []int32{
 	16, // 0: azdext.ServiceTargetMessage.error:type_name -> azdext.ServiceTargetErrorMessage
@@ -1361,26 +1653,34 @@ var file_service_target_proto_depIdxs = []int32{
 	15, // 2: azdext.ServiceTargetMessage.register_service_target_response:type_name -> azdext.RegisterServiceTargetResponse
 	17, // 3: azdext.ServiceTargetMessage.get_target_resource_request:type_name -> azdext.GetTargetResourceRequest
 	18, // 4: azdext.ServiceTargetMessage.get_target_resource_response:type_name -> azdext.GetTargetResourceResponse
-	22, // 5: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
-	4,  // 6: azdext.ServiceTargetState.resources:type_name -> azdext.ServiceTargetResource
-	11, // 7: azdext.ServiceTargetInitializeRequest.options:type_name -> azdext.ServiceTargetOptions
-	12, // 8: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
-	13, // 9: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
-	23, // 10: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
-	24, // 11: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
-	1,  // 12: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
-	19, // 13: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
-	21, // 14: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
-	20, // 15: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	20, // 16: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	3,  // 17: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
-	0,  // 18: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
-	0,  // 19: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
-	19, // [19:20] is the sub-list for method output_type
-	18, // [18:19] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	22, // 5: azdext.ServiceTargetMessage.deploy_request:type_name -> azdext.ServiceTargetDeployRequest
+	23, // 6: azdext.ServiceTargetMessage.deploy_response:type_name -> azdext.ServiceTargetDeployResponse
+	26, // 7: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
+	4,  // 8: azdext.ServiceTargetState.resources:type_name -> azdext.ServiceTargetResource
+	11, // 9: azdext.ServiceTargetInitializeRequest.options:type_name -> azdext.ServiceTargetOptions
+	12, // 10: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
+	13, // 11: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
+	27, // 12: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
+	29, // 13: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
+	1,  // 14: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
+	19, // 15: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
+	21, // 16: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
+	20, // 17: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
+	20, // 18: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
+	19, // 19: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
+	24, // 20: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServiceTargetPackageResult
+	21, // 21: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
+	25, // 22: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceTargetDeployResult
+	28, // 23: azdext.ServiceTargetPackageResult.details:type_name -> azdext.ServiceTargetPackageResult.DetailsEntry
+	24, // 24: azdext.ServiceTargetDeployResult.package:type_name -> azdext.ServiceTargetPackageResult
+	3,  // 25: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
+	0,  // 26: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
+	0,  // 27: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
+	27, // [27:28] is the sub-list for method output_type
+	26, // [26:27] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_service_target_proto_init() }
@@ -1393,6 +1693,8 @@ func file_service_target_proto_init() {
 		(*ServiceTargetMessage_RegisterServiceTargetResponse)(nil),
 		(*ServiceTargetMessage_GetTargetResourceRequest)(nil),
 		(*ServiceTargetMessage_GetTargetResourceResponse)(nil),
+		(*ServiceTargetMessage_DeployRequest)(nil),
+		(*ServiceTargetMessage_DeployResponse)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1400,7 +1702,7 @@ func file_service_target_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_target_proto_rawDesc), len(file_service_target_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

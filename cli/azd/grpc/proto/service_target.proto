@@ -26,6 +26,8 @@ message ServiceTargetMessage {
     // ServiceTargetStateResponse state_response = 9;
     GetTargetResourceRequest get_target_resource_request = 10;
     GetTargetResourceResponse get_target_resource_response = 11;
+    ServiceTargetDeployRequest deploy_request = 12;
+    ServiceTargetDeployResponse deploy_response = 13;
   }
 }
 
@@ -137,6 +139,32 @@ message TargetResource {
   string resource_group_name = 2;
   string resource_name = 3;
   string resource_type = 4;
+}
+
+// Deploy request and response
+message ServiceTargetDeployRequest {
+  ServiceTargetConfig service_config = 1;
+  ServiceTargetPackageResult service_package = 2;
+  TargetResource target_resource = 3;
+}
+
+message ServiceTargetDeployResponse {
+  ServiceTargetDeployResult deploy_result = 1;
+}
+
+// ServiceTargetPackageResult represents the package result for deployment
+message ServiceTargetPackageResult {
+  string package_path = 1;
+  map<string, string> details = 2;
+}
+
+// ServiceTargetDeployResult represents the result of a deployment operation
+message ServiceTargetDeployResult {
+  ServiceTargetPackageResult package = 1;
+  string target_resource_id = 2;
+  string kind = 3;
+  repeated string endpoints = 4;
+  string details = 5;
 }
 
 

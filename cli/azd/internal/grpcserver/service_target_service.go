@@ -82,7 +82,7 @@ func (s *ServiceTargetService) Stream(
 	}
 
 	// Register external service target with DI container
-	err = s.container.RegisterNamedTransient(hostType, func(
+	err = s.container.RegisterNamedSingleton(hostType, func(
 		console input.Console,
 		prompter prompt.Prompter,
 	) project.ServiceTarget {

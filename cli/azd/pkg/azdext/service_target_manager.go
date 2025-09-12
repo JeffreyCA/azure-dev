@@ -20,6 +20,7 @@ type ServiceTargetProvider interface {
 	Initialize(ctx context.Context, projectPath string, options *ServiceTargetOptions) error
 	State(ctx context.Context, options *ServiceTargetStateOptions) (*ServiceTargetStateResult, error)
 	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
+	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServiceTargetPackageResult, targetResource *TargetResource) (*ServiceTargetDeployResult, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -136,6 +137,19 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_GetTargetResourceResponse{
 				GetTargetResourceResponse: &GetTargetResourceResponse{TargetResource: result},
+			},
+		}
+		if err != nil {
+			resp.Error = &ServiceTargetErrorMessage{
+				Message: err.Error(),
+			}
+		}
+	case *ServiceTargetMessage_DeployRequest:
+		result, err := provider.Deploy(ctx, r.DeployRequest.ServiceConfig, r.DeployRequest.ServicePackage, r.DeployRequest.TargetResource)
+		resp = &ServiceTargetMessage{
+			RequestId: msg.RequestId,
+			MessageType: &ServiceTargetMessage_DeployResponse{
+				DeployResponse: &ServiceTargetDeployResponse{DeployResult: result},
 			},
 		}
 		if err != nil {
