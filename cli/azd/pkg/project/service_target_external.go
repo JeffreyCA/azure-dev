@@ -129,8 +129,8 @@ func (est *ExternalServiceTarget) Deploy(
 		},
 	}
 
-	// Send request and wait for response
-	resp, err := est.sendAndWait(ctx, deployReq, func(r *azdext.ServiceTargetMessage) bool {
+	// Send request and wait for response, handling progress messages
+	resp, err := est.sendAndWaitWithProgress(ctx, deployReq, progress, func(r *azdext.ServiceTargetMessage) bool {
 		return r.GetDeployResponse() != nil
 	})
 
@@ -180,6 +180,41 @@ func (est *ExternalServiceTarget) sendAndWait(ctx context.Context, req *azdext.S
 	for {
 		select {
 		case resp := <-ch:
+			if match(resp) {
+				if resp.Error != nil && resp.Error.Message != "" {
+					return nil, errors.New(resp.Error.Message)
+				}
+				return resp, nil
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// helper to send a request, handle progress updates, and wait for the matching response
+func (est *ExternalServiceTarget) sendAndWaitWithProgress(ctx context.Context, req *azdext.ServiceTargetMessage, progress *async.Progress[ServiceProgress], match func(*azdext.ServiceTargetMessage) bool) (*azdext.ServiceTargetMessage, error) {
+	// Use a larger buffer to handle multiple progress messages without blocking the dispatcher
+	ch := make(chan *azdext.ServiceTargetMessage, 50)
+	est.responseChans.Store(req.RequestId, ch)
+	defer est.responseChans.Delete(req.RequestId)
+
+	if err := est.stream.Send(req); err != nil {
+		return nil, err
+	}
+
+	for {
+		select {
+		case resp := <-ch:
+			// Check if this is a progress message
+			if progressMsg := resp.GetProgressMessage(); progressMsg != nil && progressMsg.RequestId == req.RequestId {
+				// Forward progress to core azd
+				progress.SetProgress(NewServiceProgress(progressMsg.Message))
+				// Continue waiting for more messages
+				continue
+			}
+
+			// Check if this is the final response we're waiting for
 			if match(resp) {
 				if resp.Error != nil && resp.Error.Message != "" {
 					return nil, errors.New(resp.Error.Message)

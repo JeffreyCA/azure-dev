@@ -28,6 +28,7 @@ message ServiceTargetMessage {
     GetTargetResourceResponse get_target_resource_response = 11;
     ServiceTargetDeployRequest deploy_request = 12;
     ServiceTargetDeployResponse deploy_response = 13;
+    ServiceTargetProgressMessage progress_message = 14;
   }
 }
 
@@ -165,6 +166,13 @@ message ServiceTargetDeployResult {
   string kind = 3;
   repeated string endpoints = 4;
   string details = 5;
+}
+
+// ServiceTargetProgressMessage represents a progress update from an extension
+message ServiceTargetProgressMessage {
+  string request_id = 1;
+  string message = 2;
+  int64 timestamp = 3; // Unix timestamp in milliseconds
 }
 
 

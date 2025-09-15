@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 )
@@ -99,14 +100,38 @@ func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subs
 }
 
 // Deploy performs the deployment operation for the agent service
-func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *azdext.ServiceTargetConfig, servicePackage *azdext.ServiceTargetPackageResult, targetResource *azdext.TargetResource) (*azdext.ServiceTargetDeployResult, error) {
+func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *azdext.ServiceTargetConfig, servicePackage *azdext.ServiceTargetPackageResult, targetResource *azdext.TargetResource, progress azdext.ProgressReporter) (*azdext.ServiceTargetDeployResult, error) {
 	p.logger.Printf("Deploy() called for service: %s", serviceConfig.Name)
 	p.logger.Printf("Package path: %s", servicePackage.PackagePath)
 	p.logger.Printf("Target resource: %s", targetResource.ResourceName)
 
-	// This is a sample implementation that simulates a deployment
+	// This is a sample implementation that simulates a deployment with progress updates
 	// In a real implementation, this would contain the custom logic for deploying
 	// the service to the target resource (e.g., uploading container image, updating configuration, etc.)
+
+	// Step 1: Validate configuration
+	progress("Validating service configuration")
+	time.Sleep(500 * time.Millisecond) // Simulate work
+
+	// Step 2: Prepare deployment artifacts
+	progress("Preparing deployment artifacts")
+	time.Sleep(800 * time.Millisecond) // Simulate work
+
+	// Step 3: Upload artifacts
+	progress("Uploading artifacts to Azure")
+	time.Sleep(1200 * time.Millisecond) // Simulate work
+
+	// Step 4: Configure target resource
+	progress("Configuring target resource")
+	time.Sleep(600 * time.Millisecond) // Simulate work
+
+	// Step 5: Deploy to target
+	progress("Deploying service to target resource")
+	time.Sleep(1000 * time.Millisecond) // Simulate work
+
+	// Step 6: Verify deployment
+	progress("Verifying deployment health")
+	time.Sleep(400 * time.Millisecond) // Simulate work
 
 	// Construct resource ID
 	resourceId := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/%s/%s",
@@ -114,11 +139,6 @@ func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *
 		targetResource.ResourceGroupName,
 		targetResource.ResourceType,
 		targetResource.ResourceName)
-
-	// Mock endpoint generation
-	endpoints := []string{
-		fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
-	}
 
 	// Return deployment result
 	deployResult := &azdext.ServiceTargetDeployResult{
@@ -128,8 +148,11 @@ func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *
 		},
 		TargetResourceId: resourceId,
 		Kind:             "agent",
-		Endpoints:        endpoints,
-		Details:          "Agent service deployed successfully using custom extension logic",
+		Endpoints: []string{
+			// fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
+			"https://foo.bar.azurecontainerapps.io",
+		},
+		Details: "Agent service deployed successfully using custom extension logic",
 	}
 
 	p.logger.Printf("Returning deploy result: %+v", deployResult)

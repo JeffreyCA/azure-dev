@@ -38,6 +38,7 @@ type ServiceTargetMessage struct {
 	//	*ServiceTargetMessage_GetTargetResourceResponse
 	//	*ServiceTargetMessage_DeployRequest
 	//	*ServiceTargetMessage_DeployResponse
+	//	*ServiceTargetMessage_ProgressMessage
 	MessageType   isServiceTargetMessage_MessageType `protobuf_oneof:"message_type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -148,6 +149,15 @@ func (x *ServiceTargetMessage) GetDeployResponse() *ServiceTargetDeployResponse 
 	return nil
 }
 
+func (x *ServiceTargetMessage) GetProgressMessage() *ServiceTargetProgressMessage {
+	if x != nil {
+		if x, ok := x.MessageType.(*ServiceTargetMessage_ProgressMessage); ok {
+			return x.ProgressMessage
+		}
+	}
+	return nil
+}
+
 type isServiceTargetMessage_MessageType interface {
 	isServiceTargetMessage_MessageType()
 }
@@ -182,6 +192,10 @@ type ServiceTargetMessage_DeployResponse struct {
 	DeployResponse *ServiceTargetDeployResponse `protobuf:"bytes,13,opt,name=deploy_response,json=deployResponse,proto3,oneof"`
 }
 
+type ServiceTargetMessage_ProgressMessage struct {
+	ProgressMessage *ServiceTargetProgressMessage `protobuf:"bytes,14,opt,name=progress_message,json=progressMessage,proto3,oneof"`
+}
+
 func (*ServiceTargetMessage_RegisterServiceTargetRequest) isServiceTargetMessage_MessageType() {}
 
 func (*ServiceTargetMessage_RegisterServiceTargetResponse) isServiceTargetMessage_MessageType() {}
@@ -193,6 +207,8 @@ func (*ServiceTargetMessage_GetTargetResourceResponse) isServiceTargetMessage_Me
 func (*ServiceTargetMessage_DeployRequest) isServiceTargetMessage_MessageType() {}
 
 func (*ServiceTargetMessage_DeployResponse) isServiceTargetMessage_MessageType() {}
+
+func (*ServiceTargetMessage_ProgressMessage) isServiceTargetMessage_MessageType() {}
 
 // State
 type ServiceTargetState struct {
@@ -1499,11 +1515,72 @@ func (x *ServiceTargetDeployResult) GetDetails() string {
 	return ""
 }
 
+// ServiceTargetProgressMessage represents a progress update from an extension
+type ServiceTargetProgressMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Unix timestamp in milliseconds
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceTargetProgressMessage) Reset() {
+	*x = ServiceTargetProgressMessage{}
+	mi := &file_service_target_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceTargetProgressMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceTargetProgressMessage) ProtoMessage() {}
+
+func (x *ServiceTargetProgressMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceTargetProgressMessage.ProtoReflect.Descriptor instead.
+func (*ServiceTargetProgressMessage) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ServiceTargetProgressMessage) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *ServiceTargetProgressMessage) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ServiceTargetProgressMessage) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
 var File_service_target_proto protoreflect.FileDescriptor
 
 const file_service_target_proto_rawDesc = "" +
 	"\n" +
-	"\x14service_target.proto\x12\x06azdext\x1a$include/google/protobuf/struct.proto\"\xc5\x05\n" +
+	"\x14service_target.proto\x12\x06azdext\x1a$include/google/protobuf/struct.proto\"\x98\x06\n" +
 	"\x14ServiceTargetMessage\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x127\n" +
@@ -1514,7 +1591,8 @@ const file_service_target_proto_rawDesc = "" +
 	" \x01(\v2 .azdext.GetTargetResourceRequestH\x00R\x18getTargetResourceRequest\x12d\n" +
 	"\x1cget_target_resource_response\x18\v \x01(\v2!.azdext.GetTargetResourceResponseH\x00R\x19getTargetResourceResponse\x12K\n" +
 	"\x0edeploy_request\x18\f \x01(\v2\".azdext.ServiceTargetDeployRequestH\x00R\rdeployRequest\x12N\n" +
-	"\x0fdeploy_response\x18\r \x01(\v2#.azdext.ServiceTargetDeployResponseH\x00R\x0edeployResponseB\x0e\n" +
+	"\x0fdeploy_response\x18\r \x01(\v2#.azdext.ServiceTargetDeployResponseH\x00R\x0edeployResponse\x12Q\n" +
+	"\x10progress_message\x18\x0e \x01(\v2$.azdext.ServiceTargetProgressMessageH\x00R\x0fprogressMessageB\x0e\n" +
 	"\fmessage_type\"\xf6\x01\n" +
 	"\x12ServiceTargetState\x12A\n" +
 	"\aoutputs\x18\x01 \x03(\v2'.azdext.ServiceTargetState.OutputsEntryR\aoutputs\x12;\n" +
@@ -1598,7 +1676,12 @@ const file_service_target_proto_rawDesc = "" +
 	"\x12target_resource_id\x18\x02 \x01(\tR\x10targetResourceId\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x1c\n" +
 	"\tendpoints\x18\x04 \x03(\tR\tendpoints\x12\x18\n" +
-	"\adetails\x18\x05 \x01(\tR\adetails2`\n" +
+	"\adetails\x18\x05 \x01(\tR\adetails\"u\n" +
+	"\x1cServiceTargetProgressMessage\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1c\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2`\n" +
 	"\x14ServiceTargetService\x12H\n" +
 	"\x06Stream\x12\x1c.azdext.ServiceTargetMessage\x1a\x1c.azdext.ServiceTargetMessage(\x010\x01B/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
 
@@ -1614,7 +1697,7 @@ func file_service_target_proto_rawDescGZIP() []byte {
 	return file_service_target_proto_rawDescData
 }
 
-var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetMessage)(nil),            // 0: azdext.ServiceTargetMessage
 	(*ServiceTargetState)(nil),              // 1: azdext.ServiceTargetState
@@ -1642,10 +1725,11 @@ var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetDeployResponse)(nil),     // 23: azdext.ServiceTargetDeployResponse
 	(*ServiceTargetPackageResult)(nil),      // 24: azdext.ServiceTargetPackageResult
 	(*ServiceTargetDeployResult)(nil),       // 25: azdext.ServiceTargetDeployResult
-	nil,                                     // 26: azdext.ServiceTargetState.OutputsEntry
-	nil,                                     // 27: azdext.ServiceTargetOptions.DeploymentStacksEntry
-	nil,                                     // 28: azdext.ServiceTargetPackageResult.DetailsEntry
-	(*structpb.Struct)(nil),                 // 29: google.protobuf.Struct
+	(*ServiceTargetProgressMessage)(nil),    // 26: azdext.ServiceTargetProgressMessage
+	nil,                                     // 27: azdext.ServiceTargetState.OutputsEntry
+	nil,                                     // 28: azdext.ServiceTargetOptions.DeploymentStacksEntry
+	nil,                                     // 29: azdext.ServiceTargetPackageResult.DetailsEntry
+	(*structpb.Struct)(nil),                 // 30: google.protobuf.Struct
 }
 var file_service_target_proto_depIdxs = []int32{
 	16, // 0: azdext.ServiceTargetMessage.error:type_name -> azdext.ServiceTargetErrorMessage
@@ -1655,32 +1739,33 @@ var file_service_target_proto_depIdxs = []int32{
 	18, // 4: azdext.ServiceTargetMessage.get_target_resource_response:type_name -> azdext.GetTargetResourceResponse
 	22, // 5: azdext.ServiceTargetMessage.deploy_request:type_name -> azdext.ServiceTargetDeployRequest
 	23, // 6: azdext.ServiceTargetMessage.deploy_response:type_name -> azdext.ServiceTargetDeployResponse
-	26, // 7: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
-	4,  // 8: azdext.ServiceTargetState.resources:type_name -> azdext.ServiceTargetResource
-	11, // 9: azdext.ServiceTargetInitializeRequest.options:type_name -> azdext.ServiceTargetOptions
-	12, // 10: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
-	13, // 11: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
-	27, // 12: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
-	29, // 13: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
-	1,  // 14: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
-	19, // 15: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
-	21, // 16: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
-	20, // 17: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	20, // 18: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	19, // 19: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
-	24, // 20: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServiceTargetPackageResult
-	21, // 21: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
-	25, // 22: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceTargetDeployResult
-	28, // 23: azdext.ServiceTargetPackageResult.details:type_name -> azdext.ServiceTargetPackageResult.DetailsEntry
-	24, // 24: azdext.ServiceTargetDeployResult.package:type_name -> azdext.ServiceTargetPackageResult
-	3,  // 25: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
-	0,  // 26: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
-	0,  // 27: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
-	27, // [27:28] is the sub-list for method output_type
-	26, // [26:27] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	26, // 7: azdext.ServiceTargetMessage.progress_message:type_name -> azdext.ServiceTargetProgressMessage
+	27, // 8: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
+	4,  // 9: azdext.ServiceTargetState.resources:type_name -> azdext.ServiceTargetResource
+	11, // 10: azdext.ServiceTargetInitializeRequest.options:type_name -> azdext.ServiceTargetOptions
+	12, // 11: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
+	13, // 12: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
+	28, // 13: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
+	30, // 14: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
+	1,  // 15: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
+	19, // 16: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
+	21, // 17: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
+	20, // 18: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
+	20, // 19: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
+	19, // 20: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
+	24, // 21: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServiceTargetPackageResult
+	21, // 22: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
+	25, // 23: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceTargetDeployResult
+	29, // 24: azdext.ServiceTargetPackageResult.details:type_name -> azdext.ServiceTargetPackageResult.DetailsEntry
+	24, // 25: azdext.ServiceTargetDeployResult.package:type_name -> azdext.ServiceTargetPackageResult
+	3,  // 26: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
+	0,  // 27: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
+	0,  // 28: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
+	28, // [28:29] is the sub-list for method output_type
+	27, // [27:28] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_service_target_proto_init() }
@@ -1695,6 +1780,7 @@ func file_service_target_proto_init() {
 		(*ServiceTargetMessage_GetTargetResourceResponse)(nil),
 		(*ServiceTargetMessage_DeployRequest)(nil),
 		(*ServiceTargetMessage_DeployResponse)(nil),
+		(*ServiceTargetMessage_ProgressMessage)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1702,7 +1788,7 @@ func file_service_target_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_target_proto_rawDesc), len(file_service_target_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

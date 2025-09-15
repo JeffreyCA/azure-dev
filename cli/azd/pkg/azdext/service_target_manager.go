@@ -8,11 +8,15 @@ import (
 	"errors"
 	"io"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 )
+
+// ProgressReporter defines a function type for reporting progress updates from extensions
+type ProgressReporter func(message string)
 
 // ServiceTargetProvider defines the interface for service target logic.
 type ServiceTargetProvider interface {
@@ -20,7 +24,7 @@ type ServiceTargetProvider interface {
 	Initialize(ctx context.Context, projectPath string, options *ServiceTargetOptions) error
 	State(ctx context.Context, options *ServiceTargetStateOptions) (*ServiceTargetStateResult, error)
 	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
-	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServiceTargetPackageResult, targetResource *TargetResource) (*ServiceTargetDeployResult, error)
+	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServiceTargetPackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceTargetDeployResult, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -89,7 +93,7 @@ func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, pr
 				return
 			}
 			go func(msg *ServiceTargetMessage) {
-				resp := buildServiceTargetResponseMsg(ctx, provider, msg)
+				resp := buildServiceTargetResponseMsg(ctx, provider, msg, m.stream)
 				if resp != nil {
 					if err := m.stream.Send(resp); err != nil {
 						log.Printf("failed to send service target response: %v", err)
@@ -100,7 +104,7 @@ func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, pr
 	}
 }
 
-func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetProvider, msg *ServiceTargetMessage) *ServiceTargetMessage {
+func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetProvider, msg *ServiceTargetMessage, stream ServiceTargetService_StreamClient) *ServiceTargetMessage {
 	var resp *ServiceTargetMessage
 	switch r := msg.MessageType.(type) {
 	// case *ServiceTargetMessage_NameRequest:
@@ -151,7 +155,24 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 	case *ServiceTargetMessage_DeployRequest:
-		result, err := provider.Deploy(ctx, r.DeployRequest.ServiceConfig, r.DeployRequest.ServicePackage, r.DeployRequest.TargetResource)
+		// Create a progress reporter that sends progress messages back to core
+		progressReporter := func(message string) {
+			progressMsg := &ServiceTargetMessage{
+				RequestId: msg.RequestId,
+				MessageType: &ServiceTargetMessage_ProgressMessage{
+					ProgressMessage: &ServiceTargetProgressMessage{
+						RequestId: msg.RequestId,
+						Message:   message,
+						Timestamp: time.Now().UnixMilli(),
+					},
+				},
+			}
+			if err := stream.Send(progressMsg); err != nil {
+				log.Printf("failed to send progress message: %v", err)
+			}
+		}
+
+		result, err := provider.Deploy(ctx, r.DeployRequest.ServiceConfig, r.DeployRequest.ServicePackage, r.DeployRequest.TargetResource, progressReporter)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_DeployResponse{
