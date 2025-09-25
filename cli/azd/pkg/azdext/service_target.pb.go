@@ -2024,6 +2024,199 @@ func (x *ServiceTargetProgressMessage) GetTimestamp() int64 {
 	return 0
 }
 
+// Requests for delegating to built-in service target behaviors
+type CoreServiceTargetPackageRequest struct {
+	state          protoimpl.MessageState       `protogen:"open.v1"`
+	BuiltinKind    string                       `protobuf:"bytes,1,opt,name=builtin_kind,json=builtinKind,proto3" json:"builtin_kind,omitempty"`
+	PackageRequest *ServiceTargetPackageRequest `protobuf:"bytes,2,opt,name=package_request,json=packageRequest,proto3" json:"package_request,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CoreServiceTargetPackageRequest) Reset() {
+	*x = CoreServiceTargetPackageRequest{}
+	mi := &file_service_target_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoreServiceTargetPackageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoreServiceTargetPackageRequest) ProtoMessage() {}
+
+func (x *CoreServiceTargetPackageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoreServiceTargetPackageRequest.ProtoReflect.Descriptor instead.
+func (*CoreServiceTargetPackageRequest) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *CoreServiceTargetPackageRequest) GetBuiltinKind() string {
+	if x != nil {
+		return x.BuiltinKind
+	}
+	return ""
+}
+
+func (x *CoreServiceTargetPackageRequest) GetPackageRequest() *ServiceTargetPackageRequest {
+	if x != nil {
+		return x.PackageRequest
+	}
+	return nil
+}
+
+type CoreServiceTargetPackageResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PackageResult *ServicePackageResult  `protobuf:"bytes,1,opt,name=package_result,json=packageResult,proto3" json:"package_result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CoreServiceTargetPackageResponse) Reset() {
+	*x = CoreServiceTargetPackageResponse{}
+	mi := &file_service_target_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoreServiceTargetPackageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoreServiceTargetPackageResponse) ProtoMessage() {}
+
+func (x *CoreServiceTargetPackageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoreServiceTargetPackageResponse.ProtoReflect.Descriptor instead.
+func (*CoreServiceTargetPackageResponse) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *CoreServiceTargetPackageResponse) GetPackageResult() *ServicePackageResult {
+	if x != nil {
+		return x.PackageResult
+	}
+	return nil
+}
+
+type CoreServiceTargetPublishRequest struct {
+	state          protoimpl.MessageState       `protogen:"open.v1"`
+	BuiltinKind    string                       `protobuf:"bytes,1,opt,name=builtin_kind,json=builtinKind,proto3" json:"builtin_kind,omitempty"`
+	PublishRequest *ServiceTargetPublishRequest `protobuf:"bytes,2,opt,name=publish_request,json=publishRequest,proto3" json:"publish_request,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CoreServiceTargetPublishRequest) Reset() {
+	*x = CoreServiceTargetPublishRequest{}
+	mi := &file_service_target_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoreServiceTargetPublishRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoreServiceTargetPublishRequest) ProtoMessage() {}
+
+func (x *CoreServiceTargetPublishRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoreServiceTargetPublishRequest.ProtoReflect.Descriptor instead.
+func (*CoreServiceTargetPublishRequest) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *CoreServiceTargetPublishRequest) GetBuiltinKind() string {
+	if x != nil {
+		return x.BuiltinKind
+	}
+	return ""
+}
+
+func (x *CoreServiceTargetPublishRequest) GetPublishRequest() *ServiceTargetPublishRequest {
+	if x != nil {
+		return x.PublishRequest
+	}
+	return nil
+}
+
+type CoreServiceTargetPublishResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PublishResult *ServicePublishResult  `protobuf:"bytes,1,opt,name=publish_result,json=publishResult,proto3" json:"publish_result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CoreServiceTargetPublishResponse) Reset() {
+	*x = CoreServiceTargetPublishResponse{}
+	mi := &file_service_target_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoreServiceTargetPublishResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoreServiceTargetPublishResponse) ProtoMessage() {}
+
+func (x *CoreServiceTargetPublishResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_target_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoreServiceTargetPublishResponse.ProtoReflect.Descriptor instead.
+func (*CoreServiceTargetPublishResponse) Descriptor() ([]byte, []int) {
+	return file_service_target_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *CoreServiceTargetPublishResponse) GetPublishResult() *ServicePublishResult {
+	if x != nil {
+		return x.PublishResult
+	}
+	return nil
+}
+
 var File_service_target_proto protoreflect.FileDescriptor
 
 const file_service_target_proto_rawDesc = "" +
@@ -2164,9 +2357,22 @@ const file_service_target_proto_rawDesc = "" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2`\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\"\x92\x01\n" +
+	"\x1fCoreServiceTargetPackageRequest\x12!\n" +
+	"\fbuiltin_kind\x18\x01 \x01(\tR\vbuiltinKind\x12L\n" +
+	"\x0fpackage_request\x18\x02 \x01(\v2#.azdext.ServiceTargetPackageRequestR\x0epackageRequest\"g\n" +
+	" CoreServiceTargetPackageResponse\x12C\n" +
+	"\x0epackage_result\x18\x01 \x01(\v2\x1c.azdext.ServicePackageResultR\rpackageResult\"\x92\x01\n" +
+	"\x1fCoreServiceTargetPublishRequest\x12!\n" +
+	"\fbuiltin_kind\x18\x01 \x01(\tR\vbuiltinKind\x12L\n" +
+	"\x0fpublish_request\x18\x02 \x01(\v2#.azdext.ServiceTargetPublishRequestR\x0epublishRequest\"g\n" +
+	" CoreServiceTargetPublishResponse\x12C\n" +
+	"\x0epublish_result\x18\x01 \x01(\v2\x1c.azdext.ServicePublishResultR\rpublishResult2`\n" +
 	"\x14ServiceTargetService\x12H\n" +
-	"\x06Stream\x12\x1c.azdext.ServiceTargetMessage\x1a\x1c.azdext.ServiceTargetMessage(\x010\x01B/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
+	"\x06Stream\x12\x1c.azdext.ServiceTargetMessage\x1a\x1c.azdext.ServiceTargetMessage(\x010\x012\xd6\x01\n" +
+	"\x18CoreServiceTargetService\x12\\\n" +
+	"\aPackage\x12'.azdext.CoreServiceTargetPackageRequest\x1a(.azdext.CoreServiceTargetPackageResponse\x12\\\n" +
+	"\aPublish\x12'.azdext.CoreServiceTargetPublishRequest\x1a(.azdext.CoreServiceTargetPublishResponseB/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
 
 var (
 	file_service_target_proto_rawDescOnce sync.Once
@@ -2180,49 +2386,53 @@ func file_service_target_proto_rawDescGZIP() []byte {
 	return file_service_target_proto_rawDescData
 }
 
-var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_service_target_proto_goTypes = []any{
-	(*ServiceTargetMessage)(nil),            // 0: azdext.ServiceTargetMessage
-	(*ServiceTargetState)(nil),              // 1: azdext.ServiceTargetState
-	(*ServiceTargetInputParameter)(nil),     // 2: azdext.ServiceTargetInputParameter
-	(*ServiceTargetOutputParameter)(nil),    // 3: azdext.ServiceTargetOutputParameter
-	(*ServiceTargetResource)(nil),           // 4: azdext.ServiceTargetResource
-	(*ServiceTargetNameRequest)(nil),        // 5: azdext.ServiceTargetNameRequest
-	(*ServiceTargetNameResponse)(nil),       // 6: azdext.ServiceTargetNameResponse
-	(*ServiceTargetInitializeRequest)(nil),  // 7: azdext.ServiceTargetInitializeRequest
-	(*ServiceTargetInitializeResponse)(nil), // 8: azdext.ServiceTargetInitializeResponse
-	(*ServiceTargetStateRequest)(nil),       // 9: azdext.ServiceTargetStateRequest
-	(*ServiceTargetStateResponse)(nil),      // 10: azdext.ServiceTargetStateResponse
-	(*ServiceTargetOptions)(nil),            // 11: azdext.ServiceTargetOptions
-	(*ServiceTargetStateOptions)(nil),       // 12: azdext.ServiceTargetStateOptions
-	(*ServiceTargetStateResult)(nil),        // 13: azdext.ServiceTargetStateResult
-	(*RegisterServiceTargetRequest)(nil),    // 14: azdext.RegisterServiceTargetRequest
-	(*RegisterServiceTargetResponse)(nil),   // 15: azdext.RegisterServiceTargetResponse
-	(*ServiceTargetErrorMessage)(nil),       // 16: azdext.ServiceTargetErrorMessage
-	(*GetTargetResourceRequest)(nil),        // 17: azdext.GetTargetResourceRequest
-	(*GetTargetResourceResponse)(nil),       // 18: azdext.GetTargetResourceResponse
-	(*ServiceTargetConfig)(nil),             // 19: azdext.ServiceTargetConfig
-	(*ResourceGroupNameTemplate)(nil),       // 20: azdext.ResourceGroupNameTemplate
-	(*TargetResource)(nil),                  // 21: azdext.TargetResource
-	(*ServiceTargetDeployRequest)(nil),      // 22: azdext.ServiceTargetDeployRequest
-	(*ServiceTargetDeployResponse)(nil),     // 23: azdext.ServiceTargetDeployResponse
-	(*ServicePackageResult)(nil),            // 24: azdext.ServicePackageResult
-	(*ServicePublishResult)(nil),            // 25: azdext.ServicePublishResult
-	(*ServiceDeployResult)(nil),             // 26: azdext.ServiceDeployResult
-	(*ServiceTargetPackageRequest)(nil),     // 27: azdext.ServiceTargetPackageRequest
-	(*ServiceTargetPackageResponse)(nil),    // 28: azdext.ServiceTargetPackageResponse
-	(*ServiceTargetPublishRequest)(nil),     // 29: azdext.ServiceTargetPublishRequest
-	(*ServiceTargetPublishResponse)(nil),    // 30: azdext.ServiceTargetPublishResponse
-	(*ServiceTargetEndpointsRequest)(nil),   // 31: azdext.ServiceTargetEndpointsRequest
-	(*ServiceTargetEndpointsResponse)(nil),  // 32: azdext.ServiceTargetEndpointsResponse
-	(*ServiceTargetProgressMessage)(nil),    // 33: azdext.ServiceTargetProgressMessage
-	nil,                                     // 34: azdext.ServiceTargetState.OutputsEntry
-	nil,                                     // 35: azdext.ServiceTargetOptions.DeploymentStacksEntry
-	nil,                                     // 36: azdext.TargetResource.MetadataEntry
-	nil,                                     // 37: azdext.ServicePackageResult.DetailsEntry
-	nil,                                     // 38: azdext.ServicePublishResult.DetailsEntry
-	nil,                                     // 39: azdext.ServiceDeployResult.DetailsEntry
-	(*structpb.Struct)(nil),                 // 40: google.protobuf.Struct
+	(*ServiceTargetMessage)(nil),             // 0: azdext.ServiceTargetMessage
+	(*ServiceTargetState)(nil),               // 1: azdext.ServiceTargetState
+	(*ServiceTargetInputParameter)(nil),      // 2: azdext.ServiceTargetInputParameter
+	(*ServiceTargetOutputParameter)(nil),     // 3: azdext.ServiceTargetOutputParameter
+	(*ServiceTargetResource)(nil),            // 4: azdext.ServiceTargetResource
+	(*ServiceTargetNameRequest)(nil),         // 5: azdext.ServiceTargetNameRequest
+	(*ServiceTargetNameResponse)(nil),        // 6: azdext.ServiceTargetNameResponse
+	(*ServiceTargetInitializeRequest)(nil),   // 7: azdext.ServiceTargetInitializeRequest
+	(*ServiceTargetInitializeResponse)(nil),  // 8: azdext.ServiceTargetInitializeResponse
+	(*ServiceTargetStateRequest)(nil),        // 9: azdext.ServiceTargetStateRequest
+	(*ServiceTargetStateResponse)(nil),       // 10: azdext.ServiceTargetStateResponse
+	(*ServiceTargetOptions)(nil),             // 11: azdext.ServiceTargetOptions
+	(*ServiceTargetStateOptions)(nil),        // 12: azdext.ServiceTargetStateOptions
+	(*ServiceTargetStateResult)(nil),         // 13: azdext.ServiceTargetStateResult
+	(*RegisterServiceTargetRequest)(nil),     // 14: azdext.RegisterServiceTargetRequest
+	(*RegisterServiceTargetResponse)(nil),    // 15: azdext.RegisterServiceTargetResponse
+	(*ServiceTargetErrorMessage)(nil),        // 16: azdext.ServiceTargetErrorMessage
+	(*GetTargetResourceRequest)(nil),         // 17: azdext.GetTargetResourceRequest
+	(*GetTargetResourceResponse)(nil),        // 18: azdext.GetTargetResourceResponse
+	(*ServiceTargetConfig)(nil),              // 19: azdext.ServiceTargetConfig
+	(*ResourceGroupNameTemplate)(nil),        // 20: azdext.ResourceGroupNameTemplate
+	(*TargetResource)(nil),                   // 21: azdext.TargetResource
+	(*ServiceTargetDeployRequest)(nil),       // 22: azdext.ServiceTargetDeployRequest
+	(*ServiceTargetDeployResponse)(nil),      // 23: azdext.ServiceTargetDeployResponse
+	(*ServicePackageResult)(nil),             // 24: azdext.ServicePackageResult
+	(*ServicePublishResult)(nil),             // 25: azdext.ServicePublishResult
+	(*ServiceDeployResult)(nil),              // 26: azdext.ServiceDeployResult
+	(*ServiceTargetPackageRequest)(nil),      // 27: azdext.ServiceTargetPackageRequest
+	(*ServiceTargetPackageResponse)(nil),     // 28: azdext.ServiceTargetPackageResponse
+	(*ServiceTargetPublishRequest)(nil),      // 29: azdext.ServiceTargetPublishRequest
+	(*ServiceTargetPublishResponse)(nil),     // 30: azdext.ServiceTargetPublishResponse
+	(*ServiceTargetEndpointsRequest)(nil),    // 31: azdext.ServiceTargetEndpointsRequest
+	(*ServiceTargetEndpointsResponse)(nil),   // 32: azdext.ServiceTargetEndpointsResponse
+	(*ServiceTargetProgressMessage)(nil),     // 33: azdext.ServiceTargetProgressMessage
+	(*CoreServiceTargetPackageRequest)(nil),  // 34: azdext.CoreServiceTargetPackageRequest
+	(*CoreServiceTargetPackageResponse)(nil), // 35: azdext.CoreServiceTargetPackageResponse
+	(*CoreServiceTargetPublishRequest)(nil),  // 36: azdext.CoreServiceTargetPublishRequest
+	(*CoreServiceTargetPublishResponse)(nil), // 37: azdext.CoreServiceTargetPublishResponse
+	nil,                                      // 38: azdext.ServiceTargetState.OutputsEntry
+	nil,                                      // 39: azdext.ServiceTargetOptions.DeploymentStacksEntry
+	nil,                                      // 40: azdext.TargetResource.MetadataEntry
+	nil,                                      // 41: azdext.ServicePackageResult.DetailsEntry
+	nil,                                      // 42: azdext.ServicePublishResult.DetailsEntry
+	nil,                                      // 43: azdext.ServiceDeployResult.DetailsEntry
+	(*structpb.Struct)(nil),                  // 44: google.protobuf.Struct
 }
 var file_service_target_proto_depIdxs = []int32{
 	16, // 0: azdext.ServiceTargetMessage.error:type_name -> azdext.ServiceTargetErrorMessage
@@ -2239,27 +2449,27 @@ var file_service_target_proto_depIdxs = []int32{
 	30, // 11: azdext.ServiceTargetMessage.publish_response:type_name -> azdext.ServiceTargetPublishResponse
 	31, // 12: azdext.ServiceTargetMessage.endpoints_request:type_name -> azdext.ServiceTargetEndpointsRequest
 	32, // 13: azdext.ServiceTargetMessage.endpoints_response:type_name -> azdext.ServiceTargetEndpointsResponse
-	34, // 14: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
+	38, // 14: azdext.ServiceTargetState.outputs:type_name -> azdext.ServiceTargetState.OutputsEntry
 	4,  // 15: azdext.ServiceTargetState.resources:type_name -> azdext.ServiceTargetResource
 	11, // 16: azdext.ServiceTargetInitializeRequest.options:type_name -> azdext.ServiceTargetOptions
 	12, // 17: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
 	13, // 18: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
-	35, // 19: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
-	40, // 20: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
+	39, // 19: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
+	44, // 20: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
 	1,  // 21: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
 	19, // 22: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
 	21, // 23: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
 	20, // 24: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
 	20, // 25: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	36, // 26: azdext.TargetResource.metadata:type_name -> azdext.TargetResource.MetadataEntry
+	40, // 26: azdext.TargetResource.metadata:type_name -> azdext.TargetResource.MetadataEntry
 	19, // 27: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
 	24, // 28: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServicePackageResult
 	21, // 29: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
 	25, // 30: azdext.ServiceTargetDeployRequest.service_publish:type_name -> azdext.ServicePublishResult
 	26, // 31: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceDeployResult
-	37, // 32: azdext.ServicePackageResult.details:type_name -> azdext.ServicePackageResult.DetailsEntry
-	38, // 33: azdext.ServicePublishResult.details:type_name -> azdext.ServicePublishResult.DetailsEntry
-	39, // 34: azdext.ServiceDeployResult.details:type_name -> azdext.ServiceDeployResult.DetailsEntry
+	41, // 32: azdext.ServicePackageResult.details:type_name -> azdext.ServicePackageResult.DetailsEntry
+	42, // 33: azdext.ServicePublishResult.details:type_name -> azdext.ServicePublishResult.DetailsEntry
+	43, // 34: azdext.ServiceDeployResult.details:type_name -> azdext.ServiceDeployResult.DetailsEntry
 	19, // 35: azdext.ServiceTargetPackageRequest.service_config:type_name -> azdext.ServiceTargetConfig
 	24, // 36: azdext.ServiceTargetPackageRequest.framework_package:type_name -> azdext.ServicePackageResult
 	24, // 37: azdext.ServiceTargetPackageResponse.package_result:type_name -> azdext.ServicePackageResult
@@ -2269,14 +2479,22 @@ var file_service_target_proto_depIdxs = []int32{
 	25, // 41: azdext.ServiceTargetPublishResponse.publish_result:type_name -> azdext.ServicePublishResult
 	19, // 42: azdext.ServiceTargetEndpointsRequest.service_config:type_name -> azdext.ServiceTargetConfig
 	21, // 43: azdext.ServiceTargetEndpointsRequest.target_resource:type_name -> azdext.TargetResource
-	3,  // 44: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
-	0,  // 45: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
-	0,  // 46: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
-	46, // [46:47] is the sub-list for method output_type
-	45, // [45:46] is the sub-list for method input_type
-	45, // [45:45] is the sub-list for extension type_name
-	45, // [45:45] is the sub-list for extension extendee
-	0,  // [0:45] is the sub-list for field type_name
+	27, // 44: azdext.CoreServiceTargetPackageRequest.package_request:type_name -> azdext.ServiceTargetPackageRequest
+	24, // 45: azdext.CoreServiceTargetPackageResponse.package_result:type_name -> azdext.ServicePackageResult
+	29, // 46: azdext.CoreServiceTargetPublishRequest.publish_request:type_name -> azdext.ServiceTargetPublishRequest
+	25, // 47: azdext.CoreServiceTargetPublishResponse.publish_result:type_name -> azdext.ServicePublishResult
+	3,  // 48: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
+	0,  // 49: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
+	34, // 50: azdext.CoreServiceTargetService.Package:input_type -> azdext.CoreServiceTargetPackageRequest
+	36, // 51: azdext.CoreServiceTargetService.Publish:input_type -> azdext.CoreServiceTargetPublishRequest
+	0,  // 52: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
+	35, // 53: azdext.CoreServiceTargetService.Package:output_type -> azdext.CoreServiceTargetPackageResponse
+	37, // 54: azdext.CoreServiceTargetService.Publish:output_type -> azdext.CoreServiceTargetPublishResponse
+	52, // [52:55] is the sub-list for method output_type
+	49, // [49:52] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_service_target_proto_init() }
@@ -2305,9 +2523,9 @@ func file_service_target_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_target_proto_rawDesc), len(file_service_target_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   40,
+			NumMessages:   44,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_service_target_proto_goTypes,
 		DependencyIndexes: file_service_target_proto_depIdxs,

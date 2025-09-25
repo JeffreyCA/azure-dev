@@ -18,33 +18,42 @@ var _ azdext.ServiceTargetProvider = &AgentServiceTargetProvider{}
 
 // AgentServiceTargetProvider is a minimal implementation of ServiceTargetProvider for demonstration
 type AgentServiceTargetProvider struct {
-	azdClient   *azdext.AzdClient
-	projectPath string
-	options     *azdext.ServiceTargetOptions
+	azdClient    *azdext.AzdClient
+	projectPath  string
+	options      *azdext.ServiceTargetOptions
+	coreDelegate azdext.CoreServiceTargetDelegate
 }
 
-func agentPrintf(format string, args ...any) {
+const builtinContainerAppTargetKind = "containerapp"
+
+func logf(format string, args ...any) {
 	fmt.Printf("\n"+format+"\n", args...)
 }
 
 // NewAgentServiceTargetProvider creates a new AgentServiceTargetProvider instance
 func NewAgentServiceTargetProvider(azdClient *azdext.AzdClient) azdext.ServiceTargetProvider {
-	agentPrintf("[AgentServiceTarget] AgentServiceTargetProvider created")
+	logf("[AgentServiceTarget] AgentServiceTargetProvider created")
 
 	return &AgentServiceTargetProvider{
 		azdClient: azdClient,
 	}
 }
 
+// SetCoreDelegate wires the built-in delegation helper provided by azd core.
+func (p *AgentServiceTargetProvider) SetCoreDelegate(delegate azdext.CoreServiceTargetDelegate) {
+	logf("[AgentServiceTarget] Core delegation helper registered")
+	p.coreDelegate = delegate
+}
+
 // Name returns the name of this service target provider
 func (p *AgentServiceTargetProvider) Name(ctx context.Context) (string, error) {
-	agentPrintf("[AgentServiceTarget] Name() called")
+	logf("[AgentServiceTarget] Name() called")
 	return "agent", nil
 }
 
 // Initialize initializes the service target provider with project path and options
 func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, projectPath string, options *azdext.ServiceTargetOptions) error {
-	agentPrintf("[AgentServiceTarget] Initialize() called with projectPath: %s", projectPath)
+	logf("[AgentServiceTarget] Initialize() called with projectPath: %s", projectPath)
 	p.projectPath = projectPath
 	p.options = options
 	return nil
@@ -52,7 +61,7 @@ func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, projectPath
 
 // State returns the current state of the service target
 func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.ServiceTargetStateOptions) (*azdext.ServiceTargetStateResult, error) {
-	agentPrintf("[AgentServiceTarget] State() called")
+	logf("[AgentServiceTarget] State() called")
 
 	// Return a minimal state result
 	state := &azdext.ServiceTargetState{
@@ -67,7 +76,7 @@ func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.
 
 // GetTargetResource returns a custom target resource for the agent service
 func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *azdext.ServiceTargetConfig) (*azdext.TargetResource, error) {
-	agentPrintf("[AgentServiceTarget] GetTargetResource() called for service: %s", serviceConfig.Name)
+	logf("[AgentServiceTarget] GetTargetResource() called for service: %s", serviceConfig.Name)
 
 	targetResource := &azdext.TargetResource{
 		SubscriptionId:    subscriptionId,
@@ -80,7 +89,7 @@ func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subs
 		},
 	}
 
-	agentPrintf("[AgentServiceTarget] Returning target resource: %+v", targetResource)
+	logf("[AgentServiceTarget] Returning target resource: %+v", targetResource)
 	return targetResource, nil
 }
 
@@ -91,7 +100,26 @@ func (p *AgentServiceTargetProvider) Package(
 	frameworkPackage *azdext.ServicePackageResult,
 	progress azdext.ProgressReporter,
 ) (*azdext.ServicePackageResult, error) {
-	agentPrintf("[AgentServiceTarget] Package() called for service: %s", serviceConfig.Name)
+	if p.coreDelegate != nil {
+		if progress != nil {
+			progress("Delegating package to core container app target")
+		}
+
+		delegatedResult, err := p.coreDelegate.Package(ctx, builtinContainerAppTargetKind, serviceConfig, frameworkPackage)
+		if err == nil {
+			if delegatedResult != nil {
+				if delegatedResult.Details == nil {
+					delegatedResult.Details = map[string]string{}
+				}
+				delegatedResult.Details["delegatedBy"] = "agent-extension"
+			}
+			return delegatedResult, nil
+		}
+
+		logf("[AgentServiceTarget] Core package delegation failed, falling back: %v", err)
+	}
+
+	logf("[AgentServiceTarget] Package() called for service: %s", serviceConfig.Name)
 	progress("Validating framework package output")
 	time.Sleep(400 * time.Millisecond)
 	progress("Preparing agent package artifacts")
@@ -120,7 +148,33 @@ func (p *AgentServiceTargetProvider) Publish(
 	targetResource *azdext.TargetResource,
 	progress azdext.ProgressReporter,
 ) (*azdext.ServicePublishResult, error) {
-	agentPrintf("[AgentServiceTarget] Publish() called for service: %s", serviceConfig.Name)
+	if p.coreDelegate != nil {
+		if progress != nil {
+			progress("Delegating publish to core container app target")
+		}
+
+		delegatedResult, err := p.coreDelegate.Publish(
+			ctx,
+			builtinContainerAppTargetKind,
+			serviceConfig,
+			servicePackage,
+			targetResource,
+		)
+		if err == nil {
+			if delegatedResult != nil {
+				if delegatedResult.Details == nil {
+					delegatedResult.Details = map[string]string{}
+				}
+				delegatedResult.Details["delegatedBy"] = "agent-extension"
+				delegatedResult.Details["packagePath"] = servicePackage.GetPackagePath()
+			}
+			return delegatedResult, nil
+		}
+
+		logf("[AgentServiceTarget] Core publish delegation failed, falling back: %v", err)
+	}
+
+	logf("[AgentServiceTarget] Publish() called for service: %s", serviceConfig.Name)
 	progress("Pushing artifacts to agent registry")
 	time.Sleep(700 * time.Millisecond)
 	progress("Configuring publish metadata")
@@ -143,11 +197,11 @@ func (p *AgentServiceTargetProvider) Deploy(
 	targetResource *azdext.TargetResource,
 	progress azdext.ProgressReporter,
 ) (*azdext.ServiceDeployResult, error) {
-	agentPrintf("[AgentServiceTarget] Deploy() called for service: %s", serviceConfig.Name)
-	agentPrintf("[AgentServiceTarget] Package path: %s", servicePackage.PackagePath)
-	agentPrintf("[AgentServiceTarget] Target resource: %s", targetResource.ResourceName)
+	logf("[AgentServiceTarget] Deploy() called for service: %s", serviceConfig.Name)
+	logf("[AgentServiceTarget] Package path: %s", servicePackage.PackagePath)
+	logf("[AgentServiceTarget] Target resource: %s", targetResource.ResourceName)
 	if servicePublish != nil {
-		agentPrintf("[AgentServiceTarget] Publish details: %+v", servicePublish.Details)
+		logf("[AgentServiceTarget] Publish details: %+v", servicePublish.Details)
 	}
 
 	// This is a sample implementation that simulates a deployment with progress updates
@@ -198,7 +252,7 @@ func (p *AgentServiceTargetProvider) Deploy(
 		},
 	}
 
-	agentPrintf("\n\n[AgentServiceTarget] Returning deploy result: %+v", deployResult)
+	logf("\n\n[AgentServiceTarget] Returning deploy result: %+v", deployResult)
 	return deployResult, nil
 }
 
@@ -208,7 +262,7 @@ func (p *AgentServiceTargetProvider) Endpoints(
 	serviceConfig *azdext.ServiceTargetConfig,
 	targetResource *azdext.TargetResource,
 ) ([]string, error) {
-	agentPrintf("[AgentServiceTarget] Endpoints() called for service: %s", serviceConfig.Name)
+	logf("[AgentServiceTarget] Endpoints() called for service: %s", serviceConfig.Name)
 	return []string{
 		fmt.Sprintf("https://%s.%s.azurecontainerapps.io/api", targetResource.ResourceName, "region"),
 	}, nil

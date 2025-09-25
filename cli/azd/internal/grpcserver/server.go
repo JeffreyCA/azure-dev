@@ -24,17 +24,18 @@ type ServerInfo struct {
 }
 
 type Server struct {
-	grpcServer           *grpc.Server
-	projectService       azdext.ProjectServiceServer
-	environmentService   azdext.EnvironmentServiceServer
-	promptService        azdext.PromptServiceServer
-	userConfigService    azdext.UserConfigServiceServer
-	deploymentService    azdext.DeploymentServiceServer
-	eventService         azdext.EventServiceServer
-	composeService       azdext.ComposeServiceServer
-	workflowService      azdext.WorkflowServiceServer
-	extensionService     azdext.ExtensionServiceServer
-	serviceTargetService azdext.ServiceTargetServiceServer
+	grpcServer               *grpc.Server
+	projectService           azdext.ProjectServiceServer
+	environmentService       azdext.EnvironmentServiceServer
+	promptService            azdext.PromptServiceServer
+	userConfigService        azdext.UserConfigServiceServer
+	deploymentService        azdext.DeploymentServiceServer
+	eventService             azdext.EventServiceServer
+	composeService           azdext.ComposeServiceServer
+	workflowService          azdext.WorkflowServiceServer
+	extensionService         azdext.ExtensionServiceServer
+	serviceTargetService     azdext.ServiceTargetServiceServer
+	coreServiceTargetService azdext.CoreServiceTargetServiceServer
 }
 
 func NewServer(
@@ -48,18 +49,20 @@ func NewServer(
 	workflowService azdext.WorkflowServiceServer,
 	extensionService azdext.ExtensionServiceServer,
 	serviceTargetService azdext.ServiceTargetServiceServer,
+	coreServiceTargetService azdext.CoreServiceTargetServiceServer,
 ) *Server {
 	return &Server{
-		projectService:       projectService,
-		environmentService:   environmentService,
-		promptService:        promptService,
-		userConfigService:    userConfigService,
-		deploymentService:    deploymentService,
-		eventService:         eventService,
-		composeService:       composeService,
-		workflowService:      workflowService,
-		extensionService:     extensionService,
-		serviceTargetService: serviceTargetService,
+		projectService:           projectService,
+		environmentService:       environmentService,
+		promptService:            promptService,
+		userConfigService:        userConfigService,
+		deploymentService:        deploymentService,
+		eventService:             eventService,
+		composeService:           composeService,
+		workflowService:          workflowService,
+		extensionService:         extensionService,
+		serviceTargetService:     serviceTargetService,
+		coreServiceTargetService: coreServiceTargetService,
 	}
 }
 
@@ -96,6 +99,7 @@ func (s *Server) Start() (*ServerInfo, error) {
 	azdext.RegisterExtensionServiceServer(s.grpcServer, s.extensionService)
 	// azdext.RegisterProvisioningServiceServer(s.grpcServer, s.provisioningService)
 	azdext.RegisterServiceTargetServiceServer(s.grpcServer, s.serviceTargetService)
+	azdext.RegisterCoreServiceTargetServiceServer(s.grpcServer, s.coreServiceTargetService)
 
 	serverInfo.Address = fmt.Sprintf("localhost:%d", randomPort)
 	serverInfo.Port = randomPort

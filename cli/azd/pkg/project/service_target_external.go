@@ -42,13 +42,13 @@ func (est *ExternalServiceTarget) Publish(
 	cleanup := est.wireConsole()
 	defer cleanup()
 
-	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	protoServiceConfig, err := ToProtoServiceConfig(serviceConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	protoServicePackage := toProtoServicePackageResult(frameworkPackageOutput)
-	protoTargetResource := toProtoTargetResource(targetResource)
+	protoServicePackage := ToProtoServicePackageResult(frameworkPackageOutput)
+	protoTargetResource := ToProtoTargetResource(targetResource)
 
 	req := &azdext.ServiceTargetMessage{
 		RequestId: uuid.NewString(),
@@ -129,12 +129,12 @@ func (est *ExternalServiceTarget) Package(
 	cleanup := est.wireConsole()
 	defer cleanup()
 
-	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	protoServiceConfig, err := ToProtoServiceConfig(serviceConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	protoFrameworkPackage := toProtoServicePackageResult(frameworkPackageOutput)
+	protoFrameworkPackage := ToProtoServicePackageResult(frameworkPackageOutput)
 
 	req := &azdext.ServiceTargetMessage{
 		RequestId: uuid.NewString(),
@@ -158,7 +158,7 @@ func (est *ExternalServiceTarget) Package(
 		return frameworkPackageOutput, nil
 	}
 
-	result := fromProtoServicePackageResult(packageResp.PackageResult, frameworkPackageOutput)
+	result := FromProtoServicePackageResult(packageResp.PackageResult, frameworkPackageOutput)
 	return result, nil
 }
 
@@ -175,14 +175,14 @@ func (est *ExternalServiceTarget) Deploy(
 	defer cleanup()
 
 	// Convert project types to protobuf types
-	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	protoServiceConfig, err := ToProtoServiceConfig(serviceConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	protoServicePackage := toProtoServicePackageResult(servicePackage)
-	protoServicePublish := toProtoServicePublishResult(publishResult)
-	protoTargetResource := toProtoTargetResource(targetResource)
+	protoServicePackage := ToProtoServicePackageResult(servicePackage)
+	protoServicePublish := ToProtoServicePublishResult(publishResult)
+	protoTargetResource := ToProtoTargetResource(targetResource)
 
 	// Create Deploy request message
 	requestId := uuid.NewString()
@@ -234,12 +234,12 @@ func (est *ExternalServiceTarget) Endpoints(
 	cleanup := est.wireConsole()
 	defer cleanup()
 
-	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	protoServiceConfig, err := ToProtoServiceConfig(serviceConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	protoTargetResource := toProtoTargetResource(targetResource)
+	protoTargetResource := ToProtoTargetResource(targetResource)
 	req := &azdext.ServiceTargetMessage{
 		RequestId: uuid.NewString(),
 		MessageType: &azdext.ServiceTargetMessage_EndpointsRequest{
@@ -275,7 +275,7 @@ func (est *ExternalServiceTarget) ResolveTargetResource(
 	cleanup := est.wireConsole()
 	defer cleanup()
 
-	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	protoServiceConfig, err := ToProtoServiceConfig(serviceConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -408,126 +408,6 @@ func (est *ExternalServiceTarget) wireConsole() func() {
 		stdOut.RemoveWriter(est.console.Handles().Stdout)
 		stdErr.RemoveWriter(est.console.Handles().Stderr)
 	}
-}
-
-func (est *ExternalServiceTarget) toProtoServiceConfig(serviceConfig *ServiceConfig) (*azdext.ServiceTargetConfig, error) {
-	protoConfig := &azdext.ServiceTargetConfig{
-		Name:        serviceConfig.Name,
-		Host:        string(serviceConfig.Host),
-		ProjectName: serviceConfig.Project.Name,
-	}
-
-	if !serviceConfig.ResourceGroupName.Empty() {
-		templateValue, err := serviceConfig.ResourceGroupName.MarshalYAML()
-		if err != nil {
-			return nil, fmt.Errorf("marshalling service resource group name: %w", err)
-		}
-		template, ok := templateValue.(string)
-		if !ok {
-			return nil, fmt.Errorf("unexpected resource group template type %T", templateValue)
-		}
-
-		protoConfig.ResourceGroupName = &azdext.ResourceGroupNameTemplate{
-			Template: template,
-			IsEmpty:  false,
-		}
-	} else {
-		protoConfig.ResourceGroupName = &azdext.ResourceGroupNameTemplate{
-			IsEmpty: true,
-		}
-	}
-
-	if !serviceConfig.Project.ResourceGroupName.Empty() {
-		templateValue, err := serviceConfig.Project.ResourceGroupName.MarshalYAML()
-		if err != nil {
-			return nil, fmt.Errorf("marshalling project resource group name: %w", err)
-		}
-		template, ok := templateValue.(string)
-		if !ok {
-			return nil, fmt.Errorf("unexpected project resource group template type %T", templateValue)
-		}
-
-		protoConfig.ProjectResourceGroupName = &azdext.ResourceGroupNameTemplate{
-			Template: template,
-			IsEmpty:  false,
-		}
-	} else {
-		protoConfig.ProjectResourceGroupName = &azdext.ResourceGroupNameTemplate{
-			IsEmpty: true,
-		}
-	}
-
-	return protoConfig, nil
-}
-
-func toProtoServicePackageResult(result *ServicePackageResult) *azdext.ServicePackageResult {
-	if result == nil {
-		return nil
-	}
-
-	details := detailsInterfaceToStringMap(result.Details)
-	protoResult := &azdext.ServicePackageResult{PackagePath: result.PackagePath}
-	if len(details) > 0 {
-		protoResult.Details = copyStringMap(details)
-	}
-
-	return protoResult
-}
-
-func fromProtoServicePackageResult(protoResult *azdext.ServicePackageResult, fallback *ServicePackageResult) *ServicePackageResult {
-	if protoResult == nil {
-		return fallback
-	}
-
-	result := &ServicePackageResult{}
-	if fallback != nil {
-		result.PackagePath = fallback.PackagePath
-		result.Details = fallback.Details
-	}
-
-	if protoResult.PackagePath != "" {
-		result.PackagePath = protoResult.PackagePath
-	}
-
-	if len(protoResult.Details) > 0 {
-		result.Details = stringMapToDetailsInterface(protoResult.Details)
-	}
-
-	return result
-}
-
-func toProtoServicePublishResult(result *ServicePublishResult) *azdext.ServicePublishResult {
-	if result == nil {
-		return nil
-	}
-
-	details := detailsInterfaceToStringMap(result.Details)
-	if len(details) == 0 {
-		return nil
-	}
-
-	return &azdext.ServicePublishResult{
-		Details: copyStringMap(details),
-	}
-}
-
-func toProtoTargetResource(target *environment.TargetResource) *azdext.TargetResource {
-	if target == nil {
-		return nil
-	}
-
-	protoTarget := &azdext.TargetResource{
-		SubscriptionId:    target.SubscriptionId(),
-		ResourceGroupName: target.ResourceGroupName(),
-		ResourceName:      target.ResourceName(),
-		ResourceType:      target.ResourceType(),
-	}
-
-	if metadata := target.Metadata(); metadata != nil {
-		protoTarget.Metadata = copyStringMap(metadata)
-	}
-
-	return protoTarget
 }
 
 func detailsInterfaceToStringMap(details interface{}) map[string]string {

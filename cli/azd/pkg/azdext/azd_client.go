@@ -17,18 +17,19 @@ type AzdClientOption func(*AzdClient) error
 
 // AzdClient is the client for the `azd` gRPC server.
 type AzdClient struct {
-	connection          *grpc.ClientConn
-	projectClient       ProjectServiceClient
-	environmentClient   EnvironmentServiceClient
-	userConfigClient    UserConfigServiceClient
-	promptClient        PromptServiceClient
-	deploymentClient    DeploymentServiceClient
-	eventsClient        EventServiceClient
-	composeClient       ComposeServiceClient
-	workflowClient      WorkflowServiceClient
-	provisioningClient  ProvisioningServiceClient
-	extensionClient     ExtensionServiceClient
-	serviceTargetClient ServiceTargetServiceClient
+	connection              *grpc.ClientConn
+	projectClient           ProjectServiceClient
+	environmentClient       EnvironmentServiceClient
+	userConfigClient        UserConfigServiceClient
+	promptClient            PromptServiceClient
+	deploymentClient        DeploymentServiceClient
+	eventsClient            EventServiceClient
+	composeClient           ComposeServiceClient
+	workflowClient          WorkflowServiceClient
+	provisioningClient      ProvisioningServiceClient
+	extensionClient         ExtensionServiceClient
+	serviceTargetClient     ServiceTargetServiceClient
+	coreServiceTargetClient CoreServiceTargetServiceClient
 }
 
 // WithAddress sets the address of the `azd` gRPC server.
@@ -171,4 +172,13 @@ func (c *AzdClient) ServiceTarget() ServiceTargetServiceClient {
 		c.serviceTargetClient = NewServiceTargetServiceClient(c.connection)
 	}
 	return c.serviceTargetClient
+}
+
+// CoreServiceTarget returns the core service target delegation client.
+func (c *AzdClient) CoreServiceTarget() CoreServiceTargetServiceClient {
+	if c.coreServiceTargetClient == nil {
+		c.coreServiceTargetClient = NewCoreServiceTargetServiceClient(c.connection)
+	}
+
+	return c.coreServiceTargetClient
 }

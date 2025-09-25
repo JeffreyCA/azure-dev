@@ -118,3 +118,146 @@ var ServiceTargetService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "service_target.proto",
 }
+
+const (
+	CoreServiceTargetService_Package_FullMethodName = "/azdext.CoreServiceTargetService/Package"
+	CoreServiceTargetService_Publish_FullMethodName = "/azdext.CoreServiceTargetService/Publish"
+)
+
+// CoreServiceTargetServiceClient is the client API for CoreServiceTargetService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type CoreServiceTargetServiceClient interface {
+	// Allows extensions to invoke built-in azd service target behaviors.
+	Package(ctx context.Context, in *CoreServiceTargetPackageRequest, opts ...grpc.CallOption) (*CoreServiceTargetPackageResponse, error)
+	Publish(ctx context.Context, in *CoreServiceTargetPublishRequest, opts ...grpc.CallOption) (*CoreServiceTargetPublishResponse, error)
+}
+
+type coreServiceTargetServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewCoreServiceTargetServiceClient(cc grpc.ClientConnInterface) CoreServiceTargetServiceClient {
+	return &coreServiceTargetServiceClient{cc}
+}
+
+func (c *coreServiceTargetServiceClient) Package(ctx context.Context, in *CoreServiceTargetPackageRequest, opts ...grpc.CallOption) (*CoreServiceTargetPackageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CoreServiceTargetPackageResponse)
+	err := c.cc.Invoke(ctx, CoreServiceTargetService_Package_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceTargetServiceClient) Publish(ctx context.Context, in *CoreServiceTargetPublishRequest, opts ...grpc.CallOption) (*CoreServiceTargetPublishResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CoreServiceTargetPublishResponse)
+	err := c.cc.Invoke(ctx, CoreServiceTargetService_Publish_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CoreServiceTargetServiceServer is the server API for CoreServiceTargetService service.
+// All implementations must embed UnimplementedCoreServiceTargetServiceServer
+// for forward compatibility.
+type CoreServiceTargetServiceServer interface {
+	// Allows extensions to invoke built-in azd service target behaviors.
+	Package(context.Context, *CoreServiceTargetPackageRequest) (*CoreServiceTargetPackageResponse, error)
+	Publish(context.Context, *CoreServiceTargetPublishRequest) (*CoreServiceTargetPublishResponse, error)
+	mustEmbedUnimplementedCoreServiceTargetServiceServer()
+}
+
+// UnimplementedCoreServiceTargetServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedCoreServiceTargetServiceServer struct{}
+
+func (UnimplementedCoreServiceTargetServiceServer) Package(context.Context, *CoreServiceTargetPackageRequest) (*CoreServiceTargetPackageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Package not implemented")
+}
+func (UnimplementedCoreServiceTargetServiceServer) Publish(context.Context, *CoreServiceTargetPublishRequest) (*CoreServiceTargetPublishResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Publish not implemented")
+}
+func (UnimplementedCoreServiceTargetServiceServer) mustEmbedUnimplementedCoreServiceTargetServiceServer() {
+}
+func (UnimplementedCoreServiceTargetServiceServer) testEmbeddedByValue() {}
+
+// UnsafeCoreServiceTargetServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CoreServiceTargetServiceServer will
+// result in compilation errors.
+type UnsafeCoreServiceTargetServiceServer interface {
+	mustEmbedUnimplementedCoreServiceTargetServiceServer()
+}
+
+func RegisterCoreServiceTargetServiceServer(s grpc.ServiceRegistrar, srv CoreServiceTargetServiceServer) {
+	// If the following call pancis, it indicates UnimplementedCoreServiceTargetServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&CoreServiceTargetService_ServiceDesc, srv)
+}
+
+func _CoreServiceTargetService_Package_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoreServiceTargetPackageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceTargetServiceServer).Package(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreServiceTargetService_Package_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceTargetServiceServer).Package(ctx, req.(*CoreServiceTargetPackageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreServiceTargetService_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoreServiceTargetPublishRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceTargetServiceServer).Publish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreServiceTargetService_Publish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceTargetServiceServer).Publish(ctx, req.(*CoreServiceTargetPublishRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// CoreServiceTargetService_ServiceDesc is the grpc.ServiceDesc for CoreServiceTargetService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var CoreServiceTargetService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "azdext.CoreServiceTargetService",
+	HandlerType: (*CoreServiceTargetServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Package",
+			Handler:    _CoreServiceTargetService_Package_Handler,
+		},
+		{
+			MethodName: "Publish",
+			Handler:    _CoreServiceTargetService_Publish_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "service_target.proto",
+}

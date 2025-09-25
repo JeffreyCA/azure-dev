@@ -6,6 +6,7 @@ package azdext
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"time"
@@ -28,6 +29,17 @@ type ServiceTargetProvider interface {
 	Publish(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServicePublishResult, error)
 	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, servicePublish *ServicePublishResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceDeployResult, error)
 	Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error)
+}
+
+// SupportsCoreServiceTargetDelegation allows a provider to receive a core delegation helper.
+type SupportsCoreServiceTargetDelegation interface {
+	SetCoreDelegate(CoreServiceTargetDelegate)
+}
+
+// CoreServiceTargetDelegate exposes helpers for delegating to built-in azd service targets.
+type CoreServiceTargetDelegate interface {
+	Package(ctx context.Context, builtinKind string, serviceConfig *ServiceTargetConfig, frameworkPackage *ServicePackageResult) (*ServicePackageResult, error)
+	Publish(ctx context.Context, builtinKind string, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource) (*ServicePublishResult, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -76,11 +88,93 @@ func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTar
 
 	regResponse := msg.GetRegisterServiceTargetResponse()
 	if regResponse != nil {
+		if delegator, ok := provider.(SupportsCoreServiceTargetDelegation); ok {
+			delegator.SetCoreDelegate(newCoreServiceTargetDelegate(m.client.CoreServiceTarget()))
+		}
+
 		go m.handleServiceTargetStream(ctx, provider)
 		return nil
 	}
 
 	return status.Errorf(codes.FailedPrecondition, "expected RegisterProviderResponse, got %T", msg.GetMessageType())
+}
+
+func newCoreServiceTargetDelegate(client CoreServiceTargetServiceClient) CoreServiceTargetDelegate {
+	return &coreServiceTargetDelegate{client: client}
+}
+
+type coreServiceTargetDelegate struct {
+	client CoreServiceTargetServiceClient
+}
+
+func (d *coreServiceTargetDelegate) Package(
+	ctx context.Context,
+	builtinKind string,
+	serviceConfig *ServiceTargetConfig,
+	frameworkPackage *ServicePackageResult,
+) (*ServicePackageResult, error) {
+	if serviceConfig == nil {
+		return nil, fmt.Errorf("service configuration is required")
+	}
+
+	kind := builtinKind
+	if kind == "" {
+		kind = serviceConfig.GetHost()
+	}
+	if kind == "" {
+		return nil, fmt.Errorf("builtin service target kind is required")
+	}
+
+	request := &CoreServiceTargetPackageRequest{
+		BuiltinKind: kind,
+		PackageRequest: &ServiceTargetPackageRequest{
+			ServiceConfig:    serviceConfig,
+			FrameworkPackage: frameworkPackage,
+		},
+	}
+
+	response, err := d.client.Package(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetPackageResult(), nil
+}
+
+func (d *coreServiceTargetDelegate) Publish(
+	ctx context.Context,
+	builtinKind string,
+	serviceConfig *ServiceTargetConfig,
+	servicePackage *ServicePackageResult,
+	targetResource *TargetResource,
+) (*ServicePublishResult, error) {
+	if serviceConfig == nil {
+		return nil, fmt.Errorf("service configuration is required")
+	}
+
+	kind := builtinKind
+	if kind == "" {
+		kind = serviceConfig.GetHost()
+	}
+	if kind == "" {
+		return nil, fmt.Errorf("builtin service target kind is required")
+	}
+
+	request := &CoreServiceTargetPublishRequest{
+		BuiltinKind: kind,
+		PublishRequest: &ServiceTargetPublishRequest{
+			ServiceConfig:  serviceConfig,
+			ServicePackage: servicePackage,
+			TargetResource: targetResource,
+		},
+	}
+
+	response, err := d.client.Publish(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetPublishResult(), nil
 }
 
 func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, provider ServiceTargetProvider) {
