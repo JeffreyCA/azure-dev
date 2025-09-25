@@ -39,7 +39,45 @@ func (est *ExternalServiceTarget) Publish(
 	progress *async.Progress[ServiceProgress],
 	publishOptions *PublishOptions,
 ) (*ServicePublishResult, error) {
-	return nil, nil
+	cleanup := est.wireConsole()
+	defer cleanup()
+
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	protoServicePackage := toProtoServicePackageResult(frameworkPackageOutput)
+	protoTargetResource := toProtoTargetResource(targetResource)
+
+	req := &azdext.ServiceTargetMessage{
+		RequestId: uuid.NewString(),
+		MessageType: &azdext.ServiceTargetMessage_PublishRequest{
+			PublishRequest: &azdext.ServiceTargetPublishRequest{
+				ServiceConfig:  protoServiceConfig,
+				ServicePackage: protoServicePackage,
+				TargetResource: protoTargetResource,
+			},
+		},
+	}
+
+	resp, err := est.sendAndWaitWithProgress(ctx, req, progress, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetPublishResponse() != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	publishResp := resp.GetPublishResponse()
+	result := &ServicePublishResult{
+		Package: frameworkPackageOutput,
+	}
+
+	if publishResp != nil && publishResp.PublishResult != nil {
+		result.Details = stringMapToDetailsInterface(publishResp.PublishResult.Details)
+	}
+
+	return result, nil
 }
 
 // NewExternalServiceTarget creates a new external service target
@@ -88,11 +126,40 @@ func (est *ExternalServiceTarget) Package(
 	frameworkPackageOutput *ServicePackageResult,
 	progress *async.Progress[ServiceProgress],
 ) (*ServicePackageResult, error) {
-	// No-op implementation - ServiceTarget proto doesn't support Package operation yet
-	// TODO: Implement gRPC call when ServiceTarget proto supports Package
 	cleanup := est.wireConsole()
 	defer cleanup()
-	return frameworkPackageOutput, nil
+
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	protoFrameworkPackage := toProtoServicePackageResult(frameworkPackageOutput)
+
+	req := &azdext.ServiceTargetMessage{
+		RequestId: uuid.NewString(),
+		MessageType: &azdext.ServiceTargetMessage_PackageRequest{
+			PackageRequest: &azdext.ServiceTargetPackageRequest{
+				ServiceConfig:    protoServiceConfig,
+				FrameworkPackage: protoFrameworkPackage,
+			},
+		},
+	}
+
+	resp, err := est.sendAndWaitWithProgress(ctx, req, progress, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetPackageResponse() != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	packageResp := resp.GetPackageResponse()
+	if packageResp == nil || packageResp.PackageResult == nil {
+		return frameworkPackageOutput, nil
+	}
+
+	result := fromProtoServicePackageResult(packageResp.PackageResult, frameworkPackageOutput)
+	return result, nil
 }
 
 // Deploy deploys the given deployment artifact to the target resource
@@ -108,35 +175,14 @@ func (est *ExternalServiceTarget) Deploy(
 	defer cleanup()
 
 	// Convert project types to protobuf types
-	protoServiceConfig := &azdext.ServiceTargetConfig{
-		Name:        serviceConfig.Name,
-		Host:        string(serviceConfig.Host),
-		ProjectName: serviceConfig.Project.Name,
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	protoServicePackage := &azdext.ServiceTargetPackageResult{
-		PackagePath: servicePackage.PackagePath,
-		Details:     make(map[string]string),
-	}
-
-	// Convert details to string map if possible
-	if servicePackage.Details != nil {
-		if detailsMap, ok := servicePackage.Details.(map[string]interface{}); ok {
-			for k, v := range detailsMap {
-				if str, ok := v.(string); ok {
-					protoServicePackage.Details[k] = str
-				}
-			}
-		}
-	}
-
-	protoTargetResource := &azdext.TargetResource{
-		SubscriptionId:    targetResource.SubscriptionId(),
-		ResourceGroupName: targetResource.ResourceGroupName(),
-		ResourceName:      targetResource.ResourceName(),
-		ResourceType:      targetResource.ResourceType(),
-		Metadata:          targetResource.Metadata(),
-	}
+	protoServicePackage := toProtoServicePackageResult(servicePackage)
+	protoServicePublish := toProtoServicePublishResult(publishResult)
+	protoTargetResource := toProtoTargetResource(targetResource)
 
 	// Create Deploy request message
 	requestId := uuid.NewString()
@@ -147,6 +193,7 @@ func (est *ExternalServiceTarget) Deploy(
 				ServiceConfig:  protoServiceConfig,
 				ServicePackage: protoServicePackage,
 				TargetResource: protoTargetResource,
+				ServicePublish: protoServicePublish,
 			},
 		},
 	}
@@ -170,10 +217,11 @@ func (est *ExternalServiceTarget) Deploy(
 
 	return &ServiceDeployResult{
 		Package:          servicePackage,
+		Publish:          publishResult,
 		TargetResourceId: result.TargetResourceId,
 		Kind:             ServiceTargetKind(result.Kind),
 		Endpoints:        result.Endpoints,
-		Details:          result.Details,
+		Details:          stringMapToDetailsInterface(result.Details),
 	}, nil
 }
 
@@ -183,10 +231,39 @@ func (est *ExternalServiceTarget) Endpoints(
 	serviceConfig *ServiceConfig,
 	targetResource *environment.TargetResource,
 ) ([]string, error) {
-	// No-op implementation - return empty endpoints
 	cleanup := est.wireConsole()
 	defer cleanup()
-	return []string{}, nil
+
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	protoTargetResource := toProtoTargetResource(targetResource)
+	req := &azdext.ServiceTargetMessage{
+		RequestId: uuid.NewString(),
+		MessageType: &azdext.ServiceTargetMessage_EndpointsRequest{
+			EndpointsRequest: &azdext.ServiceTargetEndpointsRequest{
+				ServiceConfig:  protoServiceConfig,
+				TargetResource: protoTargetResource,
+			},
+		},
+	}
+
+	resp, err := est.sendAndWait(ctx, req, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetEndpointsResponse() != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	endpointsResp := resp.GetEndpointsResponse()
+	if endpointsResp == nil {
+		return []string{}, nil
+	}
+
+	return append([]string{}, endpointsResp.Endpoints...), nil
+
 }
 
 // ResolveTargetResource resolves the Azure target resource for the service configuration via the extension.
@@ -381,4 +458,133 @@ func (est *ExternalServiceTarget) toProtoServiceConfig(serviceConfig *ServiceCon
 	}
 
 	return protoConfig, nil
+}
+
+func toProtoServicePackageResult(result *ServicePackageResult) *azdext.ServicePackageResult {
+	if result == nil {
+		return nil
+	}
+
+	details := detailsInterfaceToStringMap(result.Details)
+	protoResult := &azdext.ServicePackageResult{PackagePath: result.PackagePath}
+	if len(details) > 0 {
+		protoResult.Details = copyStringMap(details)
+	}
+
+	return protoResult
+}
+
+func fromProtoServicePackageResult(protoResult *azdext.ServicePackageResult, fallback *ServicePackageResult) *ServicePackageResult {
+	if protoResult == nil {
+		return fallback
+	}
+
+	result := &ServicePackageResult{}
+	if fallback != nil {
+		result.PackagePath = fallback.PackagePath
+		result.Details = fallback.Details
+	}
+
+	if protoResult.PackagePath != "" {
+		result.PackagePath = protoResult.PackagePath
+	}
+
+	if len(protoResult.Details) > 0 {
+		result.Details = stringMapToDetailsInterface(protoResult.Details)
+	}
+
+	return result
+}
+
+func toProtoServicePublishResult(result *ServicePublishResult) *azdext.ServicePublishResult {
+	if result == nil {
+		return nil
+	}
+
+	details := detailsInterfaceToStringMap(result.Details)
+	if len(details) == 0 {
+		return nil
+	}
+
+	return &azdext.ServicePublishResult{
+		Details: copyStringMap(details),
+	}
+}
+
+func toProtoTargetResource(target *environment.TargetResource) *azdext.TargetResource {
+	if target == nil {
+		return nil
+	}
+
+	protoTarget := &azdext.TargetResource{
+		SubscriptionId:    target.SubscriptionId(),
+		ResourceGroupName: target.ResourceGroupName(),
+		ResourceName:      target.ResourceName(),
+		ResourceType:      target.ResourceType(),
+	}
+
+	if metadata := target.Metadata(); metadata != nil {
+		protoTarget.Metadata = copyStringMap(metadata)
+	}
+
+	return protoTarget
+}
+
+func detailsInterfaceToStringMap(details interface{}) map[string]string {
+	if details == nil {
+		return nil
+	}
+
+	switch v := details.(type) {
+	case map[string]string:
+		return copyStringMap(v)
+	case map[string]interface{}:
+		result := make(map[string]string)
+		for key, value := range v {
+			if str, ok := value.(string); ok {
+				result[key] = str
+			}
+		}
+		if len(result) == 0 {
+			return nil
+		}
+		return result
+	case *ContainerPublishDetails:
+		if v.RemoteImage == "" {
+			return nil
+		}
+		return map[string]string{"remoteImage": v.RemoteImage}
+	case string:
+		if v == "" {
+			return nil
+		}
+		return map[string]string{"value": v}
+	default:
+		value := fmt.Sprint(v)
+		if value == "" || value == "<nil>" {
+			return nil
+		}
+		return map[string]string{"value": value}
+	}
+}
+
+func stringMapToDetailsInterface(details map[string]string) interface{} {
+	if len(details) == 0 {
+		return nil
+	}
+
+	return copyStringMap(details)
+}
+
+func copyStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+
+	return result
 }

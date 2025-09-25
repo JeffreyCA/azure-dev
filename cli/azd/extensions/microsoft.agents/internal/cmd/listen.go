@@ -4,11 +4,16 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/azure/azure-dev/cli/azd/extensions/microsoft.agents/internal/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func newListenCommand() *cobra.Command {
@@ -33,7 +38,10 @@ func newListenCommand() *cobra.Command {
 			}
 
 			if _, err := azdClient.Extension().Ready(ctx, &azdext.ReadyRequest{}); err != nil {
-				return fmt.Errorf("failed to signal readiness: %w", err)
+				// Treat connection shutdowns as graceful termination.
+				if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("failed to signal readiness: %w (type: %T, status: %v)", err, err, status.Code(err))
+				}
 			}
 
 			// Block until context is cancelled (graceful shutdown)

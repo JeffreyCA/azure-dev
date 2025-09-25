@@ -29,6 +29,12 @@ message ServiceTargetMessage {
     ServiceTargetDeployRequest deploy_request = 12;
     ServiceTargetDeployResponse deploy_response = 13;
     ServiceTargetProgressMessage progress_message = 14;
+    ServiceTargetPackageRequest package_request = 15;
+    ServiceTargetPackageResponse package_response = 16;
+    ServiceTargetPublishRequest publish_request = 17;
+    ServiceTargetPublishResponse publish_response = 18;
+    ServiceTargetEndpointsRequest endpoints_request = 19;
+    ServiceTargetEndpointsResponse endpoints_response = 20;
   }
 }
 
@@ -146,27 +152,63 @@ message TargetResource {
 // Deploy request and response
 message ServiceTargetDeployRequest {
   ServiceTargetConfig service_config = 1;
-  ServiceTargetPackageResult service_package = 2;
+  ServicePackageResult service_package = 2;
   TargetResource target_resource = 3;
+  ServicePublishResult service_publish = 4;
 }
 
 message ServiceTargetDeployResponse {
-  ServiceTargetDeployResult deploy_result = 1;
+  ServiceDeployResult deploy_result = 1;
 }
 
-// ServiceTargetPackageResult represents the package result for deployment
-message ServiceTargetPackageResult {
+// ServicePackageResult represents the package result for deployment
+message ServicePackageResult {
   string package_path = 1;
   map<string, string> details = 2;
 }
 
-// ServiceTargetDeployResult represents the result of a deployment operation
-message ServiceTargetDeployResult {
-  ServiceTargetPackageResult package = 1;
-  string target_resource_id = 2;
-  string kind = 3;
-  repeated string endpoints = 4;
-  string details = 5;
+// ServicePublishResult represents the result of a publish operation
+message ServicePublishResult {
+  map<string, string> details = 1;
+}
+
+// ServiceDeployResult represents the result of a deployment operation
+message ServiceDeployResult {
+  string target_resource_id = 1;
+  string kind = 2;
+  repeated string endpoints = 3;
+  map<string, string> details = 4;
+}
+
+// ServiceTargetPackageRequest represents a request to package a service
+message ServiceTargetPackageRequest {
+  ServiceTargetConfig service_config = 1;
+  ServicePackageResult framework_package = 2;
+}
+
+message ServiceTargetPackageResponse {
+  ServicePackageResult package_result = 1;
+}
+
+// ServiceTargetPublishRequest represents a request to publish a service package
+message ServiceTargetPublishRequest {
+  ServiceTargetConfig service_config = 1;
+  ServicePackageResult service_package = 2;
+  TargetResource target_resource = 3;
+}
+
+message ServiceTargetPublishResponse {
+  ServicePublishResult publish_result = 1;
+}
+
+// ServiceTargetEndpointsRequest represents a request to resolve endpoints for a service target
+message ServiceTargetEndpointsRequest {
+  ServiceTargetConfig service_config = 1;
+  TargetResource target_resource = 2;
+}
+
+message ServiceTargetEndpointsResponse {
+  repeated string endpoints = 1;
 }
 
 // ServiceTargetProgressMessage represents a progress update from an extension

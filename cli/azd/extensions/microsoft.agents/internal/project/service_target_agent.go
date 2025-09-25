@@ -69,19 +69,14 @@ func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.
 func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *azdext.ServiceTargetConfig) (*azdext.TargetResource, error) {
 	agentPrintf("[AgentServiceTarget] GetTargetResource() called for service: %s", serviceConfig.Name)
 
-	// This is a sample implementation that creates a mock target resource
-	// In a real implementation, this would contain the custom logic for resolving
-	// the target resource based on the extension's specific requirements
-
-	// For demonstration, create a mock Container App target resource
 	targetResource := &azdext.TargetResource{
 		SubscriptionId:    subscriptionId,
 		ResourceGroupName: "rg-agent-demo",
 		ResourceName:      "ca-" + serviceConfig.Name + "-agent",
 		ResourceType:      "Microsoft.App/containerApps",
 		Metadata: map[string]string{
-			"agentId":       "agent-" + serviceConfig.Name,
-			"agentEndpoint": fmt.Sprintf("https://%s.agents.ai.azure.com", serviceConfig.Name),
+			"agentId":   "asst_xYZ",
+			"agentName": "Agent 007",
 		},
 	}
 
@@ -89,11 +84,71 @@ func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subs
 	return targetResource, nil
 }
 
+// Package performs packaging for the agent service
+func (p *AgentServiceTargetProvider) Package(
+	ctx context.Context,
+	serviceConfig *azdext.ServiceTargetConfig,
+	frameworkPackage *azdext.ServicePackageResult,
+	progress azdext.ProgressReporter,
+) (*azdext.ServicePackageResult, error) {
+	agentPrintf("[AgentServiceTarget] Package() called for service: %s", serviceConfig.Name)
+	progress("Validating framework package output")
+	time.Sleep(400 * time.Millisecond)
+	progress("Preparing agent package artifacts")
+	time.Sleep(600 * time.Millisecond)
+
+	// packagePath := frameworkPackage.GetPackagePath()
+	// if packagePath == "" {
+	// 	packagePath = fmt.Sprintf("/tmp/%s-agent.zip", serviceConfig.Name)
+	// }
+	packagePath := "agent-aca/app:azd-deploy-1758834482"
+
+	return &azdext.ServicePackageResult{
+		PackagePath: packagePath,
+		Details: map[string]string{
+			"packagedBy": "agent-extension",
+			"timestamp":  time.Now().Format(time.RFC3339),
+		},
+	}, nil
+}
+
+// Publish performs the publish operation for the agent service
+func (p *AgentServiceTargetProvider) Publish(
+	ctx context.Context,
+	serviceConfig *azdext.ServiceTargetConfig,
+	servicePackage *azdext.ServicePackageResult,
+	targetResource *azdext.TargetResource,
+	progress azdext.ProgressReporter,
+) (*azdext.ServicePublishResult, error) {
+	agentPrintf("[AgentServiceTarget] Publish() called for service: %s", serviceConfig.Name)
+	progress("Pushing artifacts to agent registry")
+	time.Sleep(700 * time.Millisecond)
+	progress("Configuring publish metadata")
+	time.Sleep(500 * time.Millisecond)
+
+	return &azdext.ServicePublishResult{
+		Details: map[string]string{
+			"remoteImage": fmt.Sprintf("contoso.azurecr.io/%s-agent:latest", serviceConfig.Name),
+			"packagePath": servicePackage.GetPackagePath(),
+		},
+	}, nil
+}
+
 // Deploy performs the deployment operation for the agent service
-func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *azdext.ServiceTargetConfig, servicePackage *azdext.ServiceTargetPackageResult, targetResource *azdext.TargetResource, progress azdext.ProgressReporter) (*azdext.ServiceTargetDeployResult, error) {
+func (p *AgentServiceTargetProvider) Deploy(
+	ctx context.Context,
+	serviceConfig *azdext.ServiceTargetConfig,
+	servicePackage *azdext.ServicePackageResult,
+	servicePublish *azdext.ServicePublishResult,
+	targetResource *azdext.TargetResource,
+	progress azdext.ProgressReporter,
+) (*azdext.ServiceDeployResult, error) {
 	agentPrintf("[AgentServiceTarget] Deploy() called for service: %s", serviceConfig.Name)
 	agentPrintf("[AgentServiceTarget] Package path: %s", servicePackage.PackagePath)
 	agentPrintf("[AgentServiceTarget] Target resource: %s", targetResource.ResourceName)
+	if servicePublish != nil {
+		agentPrintf("[AgentServiceTarget] Publish details: %+v", servicePublish.Details)
+	}
 
 	// This is a sample implementation that simulates a deployment with progress updates
 	// In a real implementation, this would contain the custom logic for deploying
@@ -131,20 +186,30 @@ func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *
 		targetResource.ResourceName)
 
 	// Return deployment result
-	deployResult := &azdext.ServiceTargetDeployResult{
-		Package: &azdext.ServiceTargetPackageResult{
-			PackagePath: servicePackage.PackagePath,
-			Details:     servicePackage.Details,
-		},
+	deployResult := &azdext.ServiceDeployResult{
 		TargetResourceId: resourceId,
 		Kind:             "agent",
 		Endpoints: []string{
 			fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
 			// "https://foo.bar.azurecontainerapps.io",
 		},
-		Details: "Agent service deployed successfully using custom extension logic",
+		Details: map[string]string{
+			"message": "Agent service deployed successfully using custom extension logic",
+		},
 	}
 
 	agentPrintf("\n\n[AgentServiceTarget] Returning deploy result: %+v", deployResult)
 	return deployResult, nil
+}
+
+// Endpoints returns endpoints exposed by the agent service
+func (p *AgentServiceTargetProvider) Endpoints(
+	ctx context.Context,
+	serviceConfig *azdext.ServiceTargetConfig,
+	targetResource *azdext.TargetResource,
+) ([]string, error) {
+	agentPrintf("[AgentServiceTarget] Endpoints() called for service: %s", serviceConfig.Name)
+	return []string{
+		fmt.Sprintf("https://%s.%s.azurecontainerapps.io/api", targetResource.ResourceName, "region"),
+	}, nil
 }

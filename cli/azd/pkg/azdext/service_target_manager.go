@@ -24,7 +24,10 @@ type ServiceTargetProvider interface {
 	Initialize(ctx context.Context, projectPath string, options *ServiceTargetOptions) error
 	State(ctx context.Context, options *ServiceTargetStateOptions) (*ServiceTargetStateResult, error)
 	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
-	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServiceTargetPackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceTargetDeployResult, error)
+	Package(ctx context.Context, serviceConfig *ServiceTargetConfig, frameworkPackage *ServicePackageResult, progress ProgressReporter) (*ServicePackageResult, error)
+	Publish(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServicePublishResult, error)
+	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, servicePublish *ServicePublishResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceDeployResult, error)
+	Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -154,6 +157,64 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 				Message: err.Error(),
 			}
 		}
+	case *ServiceTargetMessage_PackageRequest:
+		progressReporter := func(message string) {
+			progressMsg := &ServiceTargetMessage{
+				RequestId: msg.RequestId,
+				MessageType: &ServiceTargetMessage_ProgressMessage{
+					ProgressMessage: &ServiceTargetProgressMessage{
+						RequestId: msg.RequestId,
+						Message:   message,
+						Timestamp: time.Now().UnixMilli(),
+					},
+				},
+			}
+			if err := stream.Send(progressMsg); err != nil {
+				log.Printf("failed to send progress message: %v", err)
+			}
+		}
+
+		result, err := provider.Package(ctx, r.PackageRequest.ServiceConfig, r.PackageRequest.FrameworkPackage, progressReporter)
+		resp = &ServiceTargetMessage{
+			RequestId: msg.RequestId,
+			MessageType: &ServiceTargetMessage_PackageResponse{
+				PackageResponse: &ServiceTargetPackageResponse{PackageResult: result},
+			},
+		}
+		if err != nil {
+			resp.Error = &ServiceTargetErrorMessage{
+				Message: err.Error(),
+			}
+		}
+	case *ServiceTargetMessage_PublishRequest:
+		progressReporter := func(message string) {
+			progressMsg := &ServiceTargetMessage{
+				RequestId: msg.RequestId,
+				MessageType: &ServiceTargetMessage_ProgressMessage{
+					ProgressMessage: &ServiceTargetProgressMessage{
+						RequestId: msg.RequestId,
+						Message:   message,
+						Timestamp: time.Now().UnixMilli(),
+					},
+				},
+			}
+			if err := stream.Send(progressMsg); err != nil {
+				log.Printf("failed to send progress message: %v", err)
+			}
+		}
+
+		result, err := provider.Publish(ctx, r.PublishRequest.ServiceConfig, r.PublishRequest.ServicePackage, r.PublishRequest.TargetResource, progressReporter)
+		resp = &ServiceTargetMessage{
+			RequestId: msg.RequestId,
+			MessageType: &ServiceTargetMessage_PublishResponse{
+				PublishResponse: &ServiceTargetPublishResponse{PublishResult: result},
+			},
+		}
+		if err != nil {
+			resp.Error = &ServiceTargetErrorMessage{
+				Message: err.Error(),
+			}
+		}
 	case *ServiceTargetMessage_DeployRequest:
 		// Create a progress reporter that sends progress messages back to core
 		progressReporter := func(message string) {
@@ -172,11 +233,31 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 
-		result, err := provider.Deploy(ctx, r.DeployRequest.ServiceConfig, r.DeployRequest.ServicePackage, r.DeployRequest.TargetResource, progressReporter)
+		result, err := provider.Deploy(
+			ctx,
+			r.DeployRequest.ServiceConfig,
+			r.DeployRequest.ServicePackage,
+			r.DeployRequest.ServicePublish,
+			r.DeployRequest.TargetResource,
+			progressReporter,
+		)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_DeployResponse{
 				DeployResponse: &ServiceTargetDeployResponse{DeployResult: result},
+			},
+		}
+		if err != nil {
+			resp.Error = &ServiceTargetErrorMessage{
+				Message: err.Error(),
+			}
+		}
+	case *ServiceTargetMessage_EndpointsRequest:
+		endpoints, err := provider.Endpoints(ctx, r.EndpointsRequest.ServiceConfig, r.EndpointsRequest.TargetResource)
+		resp = &ServiceTargetMessage{
+			RequestId: msg.RequestId,
+			MessageType: &ServiceTargetMessage_EndpointsResponse{
+				EndpointsResponse: &ServiceTargetEndpointsResponse{Endpoints: endpoints},
 			},
 		}
 		if err != nil {
