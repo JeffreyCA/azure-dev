@@ -93,12 +93,6 @@ func (s *ServiceTargetService) Stream(
 		return status.Errorf(codes.Internal, "failed to register service target: %s", err.Error())
 	}
 
-	// Also register with the external target resource provider if available
-	var externalProvider *project.ExternalTargetResourceProvider
-	if err := s.container.Resolve(&externalProvider); err == nil {
-		externalProvider.RegisterExtension(project.ServiceTargetKind(hostType), extension, stream)
-	}
-
 	resp := &azdext.ServiceTargetMessage{
 		RequestId: msg.RequestId,
 		MessageType: &azdext.ServiceTargetMessage_RegisterServiceTargetResponse{
@@ -116,11 +110,6 @@ func (s *ServiceTargetService) Stream(
 	// Wait for the stream context to be done (client disconnects or server shutdown)
 	<-stream.Context().Done()
 	log.Printf("Stream closed for provider: %s", hostType)
-
-	// Cleanup: unregister from external target resource provider
-	if err := s.container.Resolve(&externalProvider); err == nil {
-		externalProvider.UnregisterExtension(project.ServiceTargetKind(hostType))
-	}
 
 	delete(s.providerMap, hostType)
 	return nil

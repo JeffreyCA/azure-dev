@@ -1218,6 +1218,7 @@ type TargetResource struct {
 	ResourceGroupName string                 `protobuf:"bytes,2,opt,name=resource_group_name,json=resourceGroupName,proto3" json:"resource_group_name,omitempty"`
 	ResourceName      string                 `protobuf:"bytes,3,opt,name=resource_name,json=resourceName,proto3" json:"resource_name,omitempty"`
 	ResourceType      string                 `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
+	Metadata          map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1278,6 +1279,13 @@ func (x *TargetResource) GetResourceType() string {
 		return x.ResourceType
 	}
 	return ""
+}
+
+func (x *TargetResource) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
 }
 
 // Deploy request and response
@@ -1653,12 +1661,16 @@ const file_service_target_proto_rawDesc = "" +
 	"\x1bproject_resource_group_name\x18\x05 \x01(\v2!.azdext.ResourceGroupNameTemplateR\x18projectResourceGroupName\"R\n" +
 	"\x19ResourceGroupNameTemplate\x12\x1a\n" +
 	"\btemplate\x18\x01 \x01(\tR\btemplate\x12\x19\n" +
-	"\bis_empty\x18\x02 \x01(\bR\aisEmpty\"\xb3\x01\n" +
+	"\bis_empty\x18\x02 \x01(\bR\aisEmpty\"\xb2\x02\n" +
 	"\x0eTargetResource\x12'\n" +
 	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionId\x12.\n" +
 	"\x13resource_group_name\x18\x02 \x01(\tR\x11resourceGroupName\x12#\n" +
 	"\rresource_name\x18\x03 \x01(\tR\fresourceName\x12#\n" +
-	"\rresource_type\x18\x04 \x01(\tR\fresourceType\"\xee\x01\n" +
+	"\rresource_type\x18\x04 \x01(\tR\fresourceType\x12@\n" +
+	"\bmetadata\x18\x05 \x03(\v2$.azdext.TargetResource.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xee\x01\n" +
 	"\x1aServiceTargetDeployRequest\x12B\n" +
 	"\x0eservice_config\x18\x01 \x01(\v2\x1b.azdext.ServiceTargetConfigR\rserviceConfig\x12K\n" +
 	"\x0fservice_package\x18\x02 \x01(\v2\".azdext.ServiceTargetPackageResultR\x0eservicePackage\x12?\n" +
@@ -1697,7 +1709,7 @@ func file_service_target_proto_rawDescGZIP() []byte {
 	return file_service_target_proto_rawDescData
 }
 
-var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_service_target_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetMessage)(nil),            // 0: azdext.ServiceTargetMessage
 	(*ServiceTargetState)(nil),              // 1: azdext.ServiceTargetState
@@ -1728,8 +1740,9 @@ var file_service_target_proto_goTypes = []any{
 	(*ServiceTargetProgressMessage)(nil),    // 26: azdext.ServiceTargetProgressMessage
 	nil,                                     // 27: azdext.ServiceTargetState.OutputsEntry
 	nil,                                     // 28: azdext.ServiceTargetOptions.DeploymentStacksEntry
-	nil,                                     // 29: azdext.ServiceTargetPackageResult.DetailsEntry
-	(*structpb.Struct)(nil),                 // 30: google.protobuf.Struct
+	nil,                                     // 29: azdext.TargetResource.MetadataEntry
+	nil,                                     // 30: azdext.ServiceTargetPackageResult.DetailsEntry
+	(*structpb.Struct)(nil),                 // 31: google.protobuf.Struct
 }
 var file_service_target_proto_depIdxs = []int32{
 	16, // 0: azdext.ServiceTargetMessage.error:type_name -> azdext.ServiceTargetErrorMessage
@@ -1746,26 +1759,27 @@ var file_service_target_proto_depIdxs = []int32{
 	12, // 11: azdext.ServiceTargetStateRequest.options:type_name -> azdext.ServiceTargetStateOptions
 	13, // 12: azdext.ServiceTargetStateResponse.state_result:type_name -> azdext.ServiceTargetStateResult
 	28, // 13: azdext.ServiceTargetOptions.deployment_stacks:type_name -> azdext.ServiceTargetOptions.DeploymentStacksEntry
-	30, // 14: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
+	31, // 14: azdext.ServiceTargetOptions.config:type_name -> google.protobuf.Struct
 	1,  // 15: azdext.ServiceTargetStateResult.state:type_name -> azdext.ServiceTargetState
 	19, // 16: azdext.GetTargetResourceRequest.service_config:type_name -> azdext.ServiceTargetConfig
 	21, // 17: azdext.GetTargetResourceResponse.target_resource:type_name -> azdext.TargetResource
 	20, // 18: azdext.ServiceTargetConfig.resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
 	20, // 19: azdext.ServiceTargetConfig.project_resource_group_name:type_name -> azdext.ResourceGroupNameTemplate
-	19, // 20: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
-	24, // 21: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServiceTargetPackageResult
-	21, // 22: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
-	25, // 23: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceTargetDeployResult
-	29, // 24: azdext.ServiceTargetPackageResult.details:type_name -> azdext.ServiceTargetPackageResult.DetailsEntry
-	24, // 25: azdext.ServiceTargetDeployResult.package:type_name -> azdext.ServiceTargetPackageResult
-	3,  // 26: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
-	0,  // 27: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
-	0,  // 28: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
-	28, // [28:29] is the sub-list for method output_type
-	27, // [27:28] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	29, // 20: azdext.TargetResource.metadata:type_name -> azdext.TargetResource.MetadataEntry
+	19, // 21: azdext.ServiceTargetDeployRequest.service_config:type_name -> azdext.ServiceTargetConfig
+	24, // 22: azdext.ServiceTargetDeployRequest.service_package:type_name -> azdext.ServiceTargetPackageResult
+	21, // 23: azdext.ServiceTargetDeployRequest.target_resource:type_name -> azdext.TargetResource
+	25, // 24: azdext.ServiceTargetDeployResponse.deploy_result:type_name -> azdext.ServiceTargetDeployResult
+	30, // 25: azdext.ServiceTargetPackageResult.details:type_name -> azdext.ServiceTargetPackageResult.DetailsEntry
+	24, // 26: azdext.ServiceTargetDeployResult.package:type_name -> azdext.ServiceTargetPackageResult
+	3,  // 27: azdext.ServiceTargetState.OutputsEntry.value:type_name -> azdext.ServiceTargetOutputParameter
+	0,  // 28: azdext.ServiceTargetService.Stream:input_type -> azdext.ServiceTargetMessage
+	0,  // 29: azdext.ServiceTargetService.Stream:output_type -> azdext.ServiceTargetMessage
+	29, // [29:30] is the sub-list for method output_type
+	28, // [28:29] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_service_target_proto_init() }
@@ -1788,7 +1802,7 @@ func file_service_target_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_target_proto_rawDesc), len(file_service_target_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -443,7 +443,7 @@ func (sm *serviceManager) Publish(
 		return nil, fmt.Errorf("getting service target: %w", err)
 	}
 
-	targetResource, err := sm.getTargetResourceForService(ctx, serviceConfig)
+	targetResource, err := sm.getTargetResourceForService(ctx, serviceConfig, serviceTarget)
 	if err != nil {
 		return nil, fmt.Errorf("getting target resource: %w", err)
 	}
@@ -499,7 +499,7 @@ func (sm *serviceManager) Deploy(
 		return nil, fmt.Errorf("getting service target: %w", err)
 	}
 
-	targetResource, err := sm.getTargetResourceForService(ctx, serviceConfig)
+	targetResource, err := sm.getTargetResourceForService(ctx, serviceConfig, serviceTarget)
 	if err != nil {
 		return nil, fmt.Errorf("getting target resource: %w", err)
 	}
@@ -687,10 +687,26 @@ func runCommand[T any](
 // getTargetResourceForService resolves the target resource for a service configuration.
 // For DotNetContainerAppTarget, it handles container app environment resolution.
 // For other service types, it delegates to the resource manager.
+type targetResourceResolver interface {
+	ResolveTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceConfig) (*environment.TargetResource, error)
+}
+
 func (sm *serviceManager) getTargetResourceForService(
 	ctx context.Context,
 	serviceConfig *ServiceConfig,
+	serviceTarget ServiceTarget,
 ) (*environment.TargetResource, error) {
+	if serviceTarget != nil {
+		if resolver, ok := serviceTarget.(targetResourceResolver); ok {
+			resource, err := resolver.ResolveTargetResource(ctx, sm.env.GetSubscriptionId(), serviceConfig)
+			if err != nil {
+				return nil, fmt.Errorf("resolving target resource via external service target: %w", err)
+			}
+
+			return resource, nil
+		}
+	}
+
 	if serviceConfig.Host == DotNetContainerAppTarget {
 		containerEnvName := sm.env.GetServiceProperty(serviceConfig.Name, "CONTAINER_ENVIRONMENT_NAME")
 		// AZURE_CONTAINER_APPS_ENVIRONMENT_ID is not required for Aspire (serviceConfig.DotNetContainerApp != nil)

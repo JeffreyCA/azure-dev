@@ -31,7 +31,6 @@ func Test_Server_Start(t *testing.T) {
 		azdext.UnimplementedComposeServiceServer{},
 		azdext.UnimplementedWorkflowServiceServer{},
 		azdext.UnimplementedExtensionServiceServer{},
-		azdext.UnimplementedProvisioningServiceServer{},
 		azdext.UnimplementedServiceTargetServiceServer{},
 	)
 

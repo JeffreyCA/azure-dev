@@ -6,13 +6,12 @@ package project
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 )
+
+// Reference implementation
 
 // Ensure AgentServiceTargetProvider implements ServiceTargetProvider interface
 var _ azdext.ServiceTargetProvider = &AgentServiceTargetProvider{}
@@ -22,43 +21,30 @@ type AgentServiceTargetProvider struct {
 	azdClient   *azdext.AzdClient
 	projectPath string
 	options     *azdext.ServiceTargetOptions
-	logger      *log.Logger
+}
+
+func agentPrintf(format string, args ...any) {
+	fmt.Printf("\n"+format+"\n", args...)
 }
 
 // NewAgentServiceTargetProvider creates a new AgentServiceTargetProvider instance
 func NewAgentServiceTargetProvider(azdClient *azdext.AzdClient) azdext.ServiceTargetProvider {
-	// Create log file in a temp directory
-	logDir := filepath.Join("/workspaces/azure-dev/cli/azd/extensions/microsoft.agents", "logs")
-	os.MkdirAll(logDir, 0755)
-
-	logFile, err := os.OpenFile(
-		filepath.Join(logDir, "service_target_agent.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
-		0644,
-	)
-	if err != nil {
-		// Fallback to stdout if file creation fails
-		logFile = os.Stdout
-	}
-
-	logger := log.New(logFile, "[AgentServiceTarget] ", log.LstdFlags|log.Lshortfile)
-	logger.Printf("AgentServiceTargetProvider created, logging to: %s", logFile.Name())
+	agentPrintf("[AgentServiceTarget] AgentServiceTargetProvider created")
 
 	return &AgentServiceTargetProvider{
 		azdClient: azdClient,
-		logger:    logger,
 	}
 }
 
 // Name returns the name of this service target provider
 func (p *AgentServiceTargetProvider) Name(ctx context.Context) (string, error) {
-	p.logger.Println("Name() called")
+	agentPrintf("[AgentServiceTarget] Name() called")
 	return "agent", nil
 }
 
 // Initialize initializes the service target provider with project path and options
 func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, projectPath string, options *azdext.ServiceTargetOptions) error {
-	p.logger.Printf("Initialize() called with projectPath: %s", projectPath)
+	agentPrintf("[AgentServiceTarget] Initialize() called with projectPath: %s", projectPath)
 	p.projectPath = projectPath
 	p.options = options
 	return nil
@@ -66,7 +52,7 @@ func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, projectPath
 
 // State returns the current state of the service target
 func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.ServiceTargetStateOptions) (*azdext.ServiceTargetStateResult, error) {
-	p.logger.Println("State() called")
+	agentPrintf("[AgentServiceTarget] State() called")
 
 	// Return a minimal state result
 	state := &azdext.ServiceTargetState{
@@ -81,7 +67,7 @@ func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.
 
 // GetTargetResource returns a custom target resource for the agent service
 func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *azdext.ServiceTargetConfig) (*azdext.TargetResource, error) {
-	p.logger.Printf("GetTargetResource() called for service: %s", serviceConfig.Name)
+	agentPrintf("[AgentServiceTarget] GetTargetResource() called for service: %s", serviceConfig.Name)
 
 	// This is a sample implementation that creates a mock target resource
 	// In a real implementation, this would contain the custom logic for resolving
@@ -93,17 +79,21 @@ func (p *AgentServiceTargetProvider) GetTargetResource(ctx context.Context, subs
 		ResourceGroupName: "rg-agent-demo",
 		ResourceName:      "ca-" + serviceConfig.Name + "-agent",
 		ResourceType:      "Microsoft.App/containerApps",
+		Metadata: map[string]string{
+			"agentId":       "agent-" + serviceConfig.Name,
+			"agentEndpoint": fmt.Sprintf("https://%s.agents.ai.azure.com", serviceConfig.Name),
+		},
 	}
 
-	p.logger.Printf("Returning target resource: %+v", targetResource)
+	agentPrintf("[AgentServiceTarget] Returning target resource: %+v", targetResource)
 	return targetResource, nil
 }
 
 // Deploy performs the deployment operation for the agent service
 func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *azdext.ServiceTargetConfig, servicePackage *azdext.ServiceTargetPackageResult, targetResource *azdext.TargetResource, progress azdext.ProgressReporter) (*azdext.ServiceTargetDeployResult, error) {
-	p.logger.Printf("Deploy() called for service: %s", serviceConfig.Name)
-	p.logger.Printf("Package path: %s", servicePackage.PackagePath)
-	p.logger.Printf("Target resource: %s", targetResource.ResourceName)
+	agentPrintf("[AgentServiceTarget] Deploy() called for service: %s", serviceConfig.Name)
+	agentPrintf("[AgentServiceTarget] Package path: %s", servicePackage.PackagePath)
+	agentPrintf("[AgentServiceTarget] Target resource: %s", targetResource.ResourceName)
 
 	// This is a sample implementation that simulates a deployment with progress updates
 	// In a real implementation, this would contain the custom logic for deploying
@@ -149,12 +139,12 @@ func (p *AgentServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *
 		TargetResourceId: resourceId,
 		Kind:             "agent",
 		Endpoints: []string{
-			// fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
-			"https://foo.bar.azurecontainerapps.io",
+			fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
+			// "https://foo.bar.azurecontainerapps.io",
 		},
 		Details: "Agent service deployed successfully using custom extension logic",
 	}
 
-	p.logger.Printf("Returning deploy result: %+v", deployResult)
+	agentPrintf("\n\n[AgentServiceTarget] Returning deploy result: %+v", deployResult)
 	return deployResult, nil
 }

@@ -140,6 +140,7 @@ message TargetResource {
   string resource_group_name = 2;
   string resource_name = 3;
   string resource_type = 4;
+  map<string, string> metadata = 5;
 }
 
 // Deploy request and response

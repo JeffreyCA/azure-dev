@@ -6,6 +6,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
@@ -27,6 +28,18 @@ type ExternalServiceTarget struct {
 
 	stream        azdext.ServiceTargetService_StreamServer
 	responseChans sync.Map
+}
+
+// Publish implements ServiceTarget.
+func (est *ExternalServiceTarget) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+	frameworkPackageOutput *ServicePackageResult,
+	targetResource *environment.TargetResource,
+	progress *async.Progress[ServiceProgress],
+	publishOptions *PublishOptions,
+) (*ServicePublishResult, error) {
+	return nil, nil
 }
 
 // NewExternalServiceTarget creates a new external service target
@@ -57,6 +70,8 @@ func NewExternalServiceTarget(
 func (est *ExternalServiceTarget) Initialize(ctx context.Context, serviceConfig *ServiceConfig) error {
 	// For now, return no-op since ServiceTarget proto doesn't have all the fields we need
 	// TODO: Implement gRPC call when ServiceTarget proto supports service configuration
+	cleanup := est.wireConsole()
+	defer cleanup()
 	return nil
 }
 
@@ -75,6 +90,8 @@ func (est *ExternalServiceTarget) Package(
 ) (*ServicePackageResult, error) {
 	// No-op implementation - ServiceTarget proto doesn't support Package operation yet
 	// TODO: Implement gRPC call when ServiceTarget proto supports Package
+	cleanup := est.wireConsole()
+	defer cleanup()
 	return frameworkPackageOutput, nil
 }
 
@@ -83,9 +100,13 @@ func (est *ExternalServiceTarget) Deploy(
 	ctx context.Context,
 	serviceConfig *ServiceConfig,
 	servicePackage *ServicePackageResult,
+	publishResult *ServicePublishResult,
 	targetResource *environment.TargetResource,
 	progress *async.Progress[ServiceProgress],
 ) (*ServiceDeployResult, error) {
+	cleanup := est.wireConsole()
+	defer cleanup()
+
 	// Convert project types to protobuf types
 	protoServiceConfig := &azdext.ServiceTargetConfig{
 		Name:        serviceConfig.Name,
@@ -114,6 +135,7 @@ func (est *ExternalServiceTarget) Deploy(
 		ResourceGroupName: targetResource.ResourceGroupName(),
 		ResourceName:      targetResource.ResourceName(),
 		ResourceType:      targetResource.ResourceType(),
+		Metadata:          targetResource.Metadata(),
 	}
 
 	// Create Deploy request message
@@ -162,7 +184,56 @@ func (est *ExternalServiceTarget) Endpoints(
 	targetResource *environment.TargetResource,
 ) ([]string, error) {
 	// No-op implementation - return empty endpoints
+	cleanup := est.wireConsole()
+	defer cleanup()
 	return []string{}, nil
+}
+
+// ResolveTargetResource resolves the Azure target resource for the service configuration via the extension.
+func (est *ExternalServiceTarget) ResolveTargetResource(
+	ctx context.Context,
+	subscriptionId string,
+	serviceConfig *ServiceConfig,
+) (*environment.TargetResource, error) {
+	cleanup := est.wireConsole()
+	defer cleanup()
+
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &azdext.ServiceTargetMessage{
+		RequestId: uuid.NewString(),
+		MessageType: &azdext.ServiceTargetMessage_GetTargetResourceRequest{
+			GetTargetResourceRequest: &azdext.GetTargetResourceRequest{
+				SubscriptionId: subscriptionId,
+				ServiceConfig:  protoServiceConfig,
+			},
+		},
+	}
+
+	resp, err := est.sendAndWait(ctx, req, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetGetTargetResourceResponse() != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := resp.GetGetTargetResourceResponse()
+	if result == nil || result.TargetResource == nil {
+		return nil, errors.New("invalid get target resource response: missing target resource")
+	}
+
+	target := environment.NewTargetResource(
+		result.TargetResource.SubscriptionId,
+		result.TargetResource.ResourceGroupName,
+		result.TargetResource.ResourceName,
+		result.TargetResource.ResourceType,
+	)
+	target.SetMetadata(result.TargetResource.GetMetadata())
+
+	return target, nil
 }
 
 // Private methods for gRPC communication
@@ -209,7 +280,9 @@ func (est *ExternalServiceTarget) sendAndWaitWithProgress(ctx context.Context, r
 			// Check if this is a progress message
 			if progressMsg := resp.GetProgressMessage(); progressMsg != nil && progressMsg.RequestId == req.RequestId {
 				// Forward progress to core azd
-				progress.SetProgress(NewServiceProgress(progressMsg.Message))
+				if progress != nil {
+					progress.SetProgress(NewServiceProgress(progressMsg.Message))
+				}
 				// Continue waiting for more messages
 				continue
 			}
@@ -258,4 +331,54 @@ func (est *ExternalServiceTarget) wireConsole() func() {
 		stdOut.RemoveWriter(est.console.Handles().Stdout)
 		stdErr.RemoveWriter(est.console.Handles().Stderr)
 	}
+}
+
+func (est *ExternalServiceTarget) toProtoServiceConfig(serviceConfig *ServiceConfig) (*azdext.ServiceTargetConfig, error) {
+	protoConfig := &azdext.ServiceTargetConfig{
+		Name:        serviceConfig.Name,
+		Host:        string(serviceConfig.Host),
+		ProjectName: serviceConfig.Project.Name,
+	}
+
+	if !serviceConfig.ResourceGroupName.Empty() {
+		templateValue, err := serviceConfig.ResourceGroupName.MarshalYAML()
+		if err != nil {
+			return nil, fmt.Errorf("marshalling service resource group name: %w", err)
+		}
+		template, ok := templateValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected resource group template type %T", templateValue)
+		}
+
+		protoConfig.ResourceGroupName = &azdext.ResourceGroupNameTemplate{
+			Template: template,
+			IsEmpty:  false,
+		}
+	} else {
+		protoConfig.ResourceGroupName = &azdext.ResourceGroupNameTemplate{
+			IsEmpty: true,
+		}
+	}
+
+	if !serviceConfig.Project.ResourceGroupName.Empty() {
+		templateValue, err := serviceConfig.Project.ResourceGroupName.MarshalYAML()
+		if err != nil {
+			return nil, fmt.Errorf("marshalling project resource group name: %w", err)
+		}
+		template, ok := templateValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected project resource group template type %T", templateValue)
+		}
+
+		protoConfig.ProjectResourceGroupName = &azdext.ResourceGroupNameTemplate{
+			Template: template,
+			IsEmpty:  false,
+		}
+	} else {
+		protoConfig.ProjectResourceGroupName = &azdext.ResourceGroupNameTemplate{
+			IsEmpty: true,
+		}
+	}
+
+	return protoConfig, nil
 }

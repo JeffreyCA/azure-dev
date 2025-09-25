@@ -34,7 +34,6 @@ type Server struct {
 	composeService       azdext.ComposeServiceServer
 	workflowService      azdext.WorkflowServiceServer
 	extensionService     azdext.ExtensionServiceServer
-	provisioningService  azdext.ProvisioningServiceServer
 	serviceTargetService azdext.ServiceTargetServiceServer
 }
 
@@ -48,7 +47,6 @@ func NewServer(
 	composeService azdext.ComposeServiceServer,
 	workflowService azdext.WorkflowServiceServer,
 	extensionService azdext.ExtensionServiceServer,
-	provisioningService azdext.ProvisioningServiceServer,
 	serviceTargetService azdext.ServiceTargetServiceServer,
 ) *Server {
 	return &Server{
@@ -61,7 +59,6 @@ func NewServer(
 		composeService:       composeService,
 		workflowService:      workflowService,
 		extensionService:     extensionService,
-		provisioningService:  provisioningService,
 		serviceTargetService: serviceTargetService,
 	}
 }
@@ -97,7 +94,7 @@ func (s *Server) Start() (*ServerInfo, error) {
 	azdext.RegisterComposeServiceServer(s.grpcServer, s.composeService)
 	azdext.RegisterWorkflowServiceServer(s.grpcServer, s.workflowService)
 	azdext.RegisterExtensionServiceServer(s.grpcServer, s.extensionService)
-	azdext.RegisterProvisioningServiceServer(s.grpcServer, s.provisioningService)
+	// azdext.RegisterProvisioningServiceServer(s.grpcServer, s.provisioningService)
 	azdext.RegisterServiceTargetServiceServer(s.grpcServer, s.serviceTargetService)
 
 	serverInfo.Address = fmt.Sprintf("localhost:%d", randomPort)
