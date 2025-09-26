@@ -715,11 +715,6 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		container.MustRegisterNamedScoped(string(target), constructor)
 	}
 
-	// Note: External service targets are registered dynamically as transient dependencies
-	// from the gRPC ServiceTargetService.Stream function when extensions connect.
-	// They use project.NewExternalServiceTarget and are registered with the provider name
-	// as the service target kind.
-
 	// Languages
 	frameworkServiceMap := map[project.ServiceLanguageKind]any{
 		project.ServiceLanguageNone:       project.NewNoOpProject,

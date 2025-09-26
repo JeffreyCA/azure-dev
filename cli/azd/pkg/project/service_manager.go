@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/alpha"
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
@@ -537,7 +538,7 @@ func (sm *serviceManager) GetServiceTarget(ctx context.Context, serviceConfig *S
 		if !sm.alphaFeatureManager.IsEnabled(alphaFeatureId) {
 			return nil, fmt.Errorf(
 				"service host '%s' is currently in alpha and needs to be enabled explicitly."+
-					" Run `%s` to enable the feature.",
+					" Run `%s` to enable the feature",
 				host,
 				alpha.GetEnableCommand(alphaFeatureId),
 			)
@@ -545,6 +546,20 @@ func (sm *serviceManager) GetServiceTarget(ctx context.Context, serviceConfig *S
 	}
 
 	if err := sm.serviceLocator.ResolveNamed(host, &target); err != nil {
+		if errors.Is(err, ioc.ErrResolveInstance) {
+			return nil, &internal.ErrorWithSuggestion{
+				Err: fmt.Errorf(
+					"service host '%s' for service '%s' is unsupported",
+					host,
+					serviceConfig.Name,
+				),
+				Suggestion: fmt.Sprintf(
+					"Suggestion: install an extension that provides this host or update azure.yaml to use one of the supported hosts: %s",
+					strings.Join(builtInServiceTargetNames(), ", "),
+				),
+			}
+		}
+
 		return nil, fmt.Errorf(
 			"failed to resolve service host '%s' for service '%s', %w",
 			serviceConfig.Host,

@@ -127,17 +127,6 @@
         "$ref": "#/definitions/ExtensionExample"
       }
     },
-    "hostKinds": {
-      "type": "array",
-      "title": "Host Kinds",
-      "description": "List of host kinds that this extension provides. Only applicable when the extension has the 'service-target-provider' capability.",
-      "items": {
-        "type": "string",
-        "title": "Host Kind",
-        "description": "A unique identifier for the host kind (e.g., 'agents', 'custom-runtime')."
-      },
-      "uniqueItems": true
-    },
     "tags": {
       "type": "array",
       "title": "Tags",

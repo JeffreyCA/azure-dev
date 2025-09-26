@@ -29,6 +29,27 @@ const (
 	AiEndpointTarget         ServiceTargetKind = "ai.endpoint"
 )
 
+// DotNetContainerAppTarget is intentionally omitted because it is only used internally when
+// containerizing .NET projects and is not a valid service host value in azure.yaml.
+var builtInServiceTargetKinds = []ServiceTargetKind{
+	AppServiceTarget,
+	ContainerAppTarget,
+	AzureFunctionTarget,
+	StaticWebAppTarget,
+	SpringAppTarget,
+	AksTarget,
+	AiEndpointTarget,
+}
+
+func builtInServiceTargetNames() []string {
+	names := make([]string, 0, len(builtInServiceTargetKinds))
+	for _, kind := range builtInServiceTargetKinds {
+		names = append(names, string(kind))
+	}
+
+	return names
+}
+
 // RequiresContainer returns true if the service target runs a container image.
 func (stk ServiceTargetKind) RequiresContainer() bool {
 	switch stk {

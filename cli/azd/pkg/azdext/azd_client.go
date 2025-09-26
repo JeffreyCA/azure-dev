@@ -26,7 +26,6 @@ type AzdClient struct {
 	eventsClient        EventServiceClient
 	composeClient       ComposeServiceClient
 	workflowClient      WorkflowServiceClient
-	provisioningClient  ProvisioningServiceClient
 	extensionClient     ExtensionServiceClient
 	serviceTargetClient ServiceTargetServiceClient
 }
@@ -147,14 +146,6 @@ func (c *AzdClient) Workflow() WorkflowServiceClient {
 	}
 
 	return c.workflowClient
-}
-
-// Provisioning returns the provisioning service client.
-func (c *AzdClient) Provisioning() ProvisioningServiceClient {
-	if c.provisioningClient == nil {
-		c.provisioningClient = NewProvisioningServiceClient(c.connection)
-	}
-	return c.provisioningClient
 }
 
 // Extension returns the extension service client.

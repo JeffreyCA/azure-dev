@@ -5,11 +5,15 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
+	"io"
 
+	"azure.foundry.ai.agents/internal/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func newListenCommand() *cobra.Command {
@@ -27,32 +31,21 @@ func newListenCommand() *cobra.Command {
 			}
 			defer azdClient.Close()
 
-			eventManager := azdext.NewEventManager(azdClient)
-			defer eventManager.Close()
-
-			// Hook into preprovision event
-			err = eventManager.AddProjectEventHandler(
-				ctx,
-				"preprovision",
-				func(ctx context.Context, args *azdext.ProjectEventArgs) error {
-					for i := 1; i <= 20; i++ {
-						fmt.Printf("%d. Doing important work in extension...\n", i)
-						time.Sleep(250 * time.Millisecond)
-					}
-
-					return nil
-				},
-			)
-			if err != nil {
-				return fmt.Errorf("failed to add preprovision project event handler: %w", err)
+			provider := project.NewAgentServiceTargetProvider(azdClient)
+			provisioningManager := azdext.NewServiceTargetManager(azdClient)
+			if err := provisioningManager.Register(ctx, provider, "agents", "Agents Provider"); err != nil {
+				return fmt.Errorf("failed to register provider: %w", err)
 			}
 
-			// Start listening for events
-			// This is a blocking call and will not return until the server connection is closed.
-			if err := eventManager.Receive(ctx); err != nil {
-				return fmt.Errorf("failed to receive events: %w", err)
+			if _, err := azdClient.Extension().Ready(ctx, &azdext.ReadyRequest{}); err != nil {
+				// Treat connection shutdowns as graceful termination.
+				if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("failed to signal readiness: %w (type: %T, status: %v)", err, err, status.Code(err))
+				}
 			}
 
+			// Block until context is cancelled (graceful shutdown)
+			<-ctx.Done()
 			return nil
 		},
 	}
