@@ -4,13 +4,12 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"io"
 
 	"azure.foundry.ai.agents/internal/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -36,15 +35,14 @@ func newListenCommand() *cobra.Command {
 				return fmt.Errorf("failed to register provider: %w", err)
 			}
 
+			// This is blocking
 			if _, err := azdClient.Extension().Ready(ctx, &azdext.ReadyRequest{}); err != nil {
 				// Treat connection shutdowns as graceful termination.
-				if !errors.Is(err, io.EOF) {
+				if status.Code(err) != codes.Canceled && status.Code(err) != codes.Unavailable {
 					return fmt.Errorf("failed to signal readiness: %w (type: %T, status: %v)", err, err, status.Code(err))
 				}
 			}
 
-			// Block until context is cancelled (graceful shutdown)
-			<-ctx.Done()
 			return nil
 		},
 	}
