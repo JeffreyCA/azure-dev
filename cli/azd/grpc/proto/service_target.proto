@@ -18,12 +18,8 @@ message ServiceTargetMessage {
   oneof message_type {
     RegisterServiceTargetRequest register_service_target_request = 2;
     RegisterServiceTargetResponse register_service_target_response = 3;
-    // ServiceTargetNameRequest name_request = 4;
-    // ServiceTargetNameResponse name_response = 5;
-    // ServiceTargetInitializeRequest initialize_request = 6;
-    // ServiceTargetInitializeResponse initialize_response = 7;
-    // ServiceTargetStateRequest state_request = 8;
-    // ServiceTargetStateResponse state_response = 9;
+    ServiceTargetInitializeRequest initialize_request = 6;
+    ServiceTargetInitializeResponse initialize_response = 7;
     GetTargetResourceRequest get_target_resource_request = 10;
     GetTargetResourceResponse get_target_resource_response = 11;
     ServiceTargetDeployRequest deploy_request = 12;
@@ -36,12 +32,6 @@ message ServiceTargetMessage {
     ServiceTargetEndpointsRequest endpoints_request = 19;
     ServiceTargetEndpointsResponse endpoints_response = 20;
   }
-}
-
-// State
-message ServiceTargetState {
-  map<string, ServiceTargetOutputParameter> outputs = 1;
-  repeated ServiceTargetResource resources = 2;
 }
 
 // InputParameter
@@ -64,23 +54,10 @@ message ServiceTargetResource {
 
 // --- Request and response messages for each Provider method ---
 
-message ServiceTargetNameRequest {}
-message ServiceTargetNameResponse {
-  string name = 1;
-}
-
 message ServiceTargetInitializeRequest {
-  string project_path = 1;
-  ServiceTargetOptions options = 2;
+  ServiceTargetConfig service_config = 1;
 }
 message ServiceTargetInitializeResponse {}
-
-message ServiceTargetStateRequest {
-  ServiceTargetStateOptions options = 1;
-}
-message ServiceTargetStateResponse {
-  ServiceTargetStateResult state_result = 1;
-}
 
 // Core options and result wrappers
 message ServiceTargetOptions {
@@ -92,18 +69,8 @@ message ServiceTargetOptions {
   google.protobuf.Struct config = 6;
 }
 
-message ServiceTargetStateOptions {
-  // Add fields as needed
-  string hint = 1;
-}
-
-message ServiceTargetStateResult {
-  ServiceTargetState state = 1;
-}
-
 message RegisterServiceTargetRequest {
-  string host = 1;// unique identifier for the provider
-  // string display_name = 2;
+  string host = 1; // unique identifier for the provider
 }
 
 message RegisterServiceTargetResponse {

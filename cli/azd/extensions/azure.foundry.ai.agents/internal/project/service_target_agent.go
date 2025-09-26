@@ -18,9 +18,8 @@ var _ azdext.ServiceTargetProvider = &AgentServiceTargetProvider{}
 
 // AgentServiceTargetProvider is a minimal implementation of ServiceTargetProvider for demonstration
 type AgentServiceTargetProvider struct {
-	azdClient   *azdext.AzdClient
-	projectPath string
-	options     *azdext.ServiceTargetOptions
+	azdClient     *azdext.AzdClient
+	serviceConfig *azdext.ServiceTargetConfig
 }
 
 func agentPrintf(format string, args ...any) {
@@ -36,32 +35,26 @@ func NewAgentServiceTargetProvider(azdClient *azdext.AzdClient) azdext.ServiceTa
 	}
 }
 
-// Name returns the name of this service target provider
-func (p *AgentServiceTargetProvider) Name(ctx context.Context) (string, error) {
-	agentPrintf("[AgentServiceTarget] Name() called")
-	return "agent", nil
-}
-
-// Initialize initializes the service target provider with project path and options
-func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, projectPath string, options *azdext.ServiceTargetOptions) error {
-	agentPrintf("[AgentServiceTarget] Initialize() called with projectPath: %s", projectPath)
-	p.projectPath = projectPath
-	p.options = options
+// Initialize initializes the service target provider with service configuration
+func (p *AgentServiceTargetProvider) Initialize(ctx context.Context, serviceConfig *azdext.ServiceTargetConfig) error {
+	name := ""
+	if serviceConfig != nil {
+		name = serviceConfig.GetName()
+	}
+	agentPrintf("[AgentServiceTarget] Initialize() called for service: %s", name)
+	p.serviceConfig = serviceConfig
 	return nil
 }
 
-// State returns the current state of the service target
-func (p *AgentServiceTargetProvider) State(ctx context.Context, options *azdext.ServiceTargetStateOptions) (*azdext.ServiceTargetStateResult, error) {
-	agentPrintf("[AgentServiceTarget] State() called")
-
-	// Return a minimal state result
-	state := &azdext.ServiceTargetState{
-		Outputs:   make(map[string]*azdext.ServiceTargetOutputParameter),
-		Resources: []*azdext.ServiceTargetResource{},
-	}
-
-	return &azdext.ServiceTargetStateResult{
-		State: state,
+// Endpoints returns endpoints exposed by the agent service
+func (p *AgentServiceTargetProvider) Endpoints(
+	ctx context.Context,
+	serviceConfig *azdext.ServiceTargetConfig,
+	targetResource *azdext.TargetResource,
+) ([]string, error) {
+	agentPrintf("[AgentServiceTarget] Endpoints() called for service: %s", serviceConfig.Name)
+	return []string{
+		fmt.Sprintf("https://%s.%s.azurecontainerapps.io/api", targetResource.ResourceName, "region"),
 	}, nil
 }
 
@@ -185,14 +178,17 @@ func (p *AgentServiceTargetProvider) Deploy(
 		targetResource.ResourceType,
 		targetResource.ResourceName)
 
+	// Resolve endpoints
+	endpoints, err := p.Endpoints(ctx, serviceConfig, targetResource)
+	if err != nil {
+		return nil, err
+	}
+
 	// Return deployment result
 	deployResult := &azdext.ServiceDeployResult{
 		TargetResourceId: resourceId,
 		Kind:             "agent",
-		Endpoints: []string{
-			fmt.Sprintf("https://%s.%s.azurecontainerapps.io", targetResource.ResourceName, "region"),
-			// "https://foo.bar.azurecontainerapps.io",
-		},
+		Endpoints:        endpoints,
 		Details: map[string]string{
 			"message": "Agent service deployed successfully using custom extension logic",
 		},
@@ -200,16 +196,4 @@ func (p *AgentServiceTargetProvider) Deploy(
 
 	agentPrintf("\n\n[AgentServiceTarget] Returning deploy result: %+v", deployResult)
 	return deployResult, nil
-}
-
-// Endpoints returns endpoints exposed by the agent service
-func (p *AgentServiceTargetProvider) Endpoints(
-	ctx context.Context,
-	serviceConfig *azdext.ServiceTargetConfig,
-	targetResource *azdext.TargetResource,
-) ([]string, error) {
-	agentPrintf("[AgentServiceTarget] Endpoints() called for service: %s", serviceConfig.Name)
-	return []string{
-		fmt.Sprintf("https://%s.%s.azurecontainerapps.io/api", targetResource.ResourceName, "region"),
-	}, nil
 }

@@ -106,16 +106,35 @@ func NewExternalServiceTarget(
 // Initialize initializes the service target for the specified service configuration.
 // This allows service targets to opt-in to service lifecycle events
 func (est *ExternalServiceTarget) Initialize(ctx context.Context, serviceConfig *ServiceConfig) error {
-	// For now, return no-op since ServiceTarget proto doesn't have all the fields we need
-	// TODO: Implement gRPC call when ServiceTarget proto supports service configuration
 	cleanup := est.wireConsole()
 	defer cleanup()
-	return nil
+
+	if serviceConfig == nil {
+		return errors.New("service configuration is required")
+	}
+
+	protoServiceConfig, err := est.toProtoServiceConfig(serviceConfig)
+	if err != nil {
+		return err
+	}
+
+	req := &azdext.ServiceTargetMessage{
+		RequestId: uuid.NewString(),
+		MessageType: &azdext.ServiceTargetMessage_InitializeRequest{
+			InitializeRequest: &azdext.ServiceTargetInitializeRequest{
+				ServiceConfig: protoServiceConfig,
+			},
+		},
+	}
+
+	_, err = est.sendAndWait(ctx, req, func(r *azdext.ServiceTargetMessage) bool {
+		return r.GetInitializeResponse() != nil
+	})
+	return err
 }
 
 // RequiredExternalTools returns the tools needed to run the deploy operation for this target.
 func (est *ExternalServiceTarget) RequiredExternalTools(ctx context.Context, serviceConfig *ServiceConfig) []tools.ExternalTool {
-	// No-op implementation - return empty slice
 	return []tools.ExternalTool{}
 }
 

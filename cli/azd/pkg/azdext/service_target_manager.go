@@ -20,14 +20,12 @@ type ProgressReporter func(message string)
 
 // ServiceTargetProvider defines the interface for service target logic.
 type ServiceTargetProvider interface {
-	Name(ctx context.Context) (string, error)
-	Initialize(ctx context.Context, projectPath string, options *ServiceTargetOptions) error
-	State(ctx context.Context, options *ServiceTargetStateOptions) (*ServiceTargetStateResult, error)
+	Initialize(ctx context.Context, serviceConfig *ServiceTargetConfig) error
+	Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error)
 	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
 	Package(ctx context.Context, serviceConfig *ServiceTargetConfig, frameworkPackage *ServicePackageResult, progress ProgressReporter) (*ServicePackageResult, error)
 	Publish(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServicePublishResult, error)
 	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, servicePublish *ServicePublishResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceDeployResult, error)
-	Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -44,7 +42,7 @@ func NewServiceTargetManager(client *AzdClient) *ServiceTargetManager {
 }
 
 // Register registers the provider with the server, waits for the response, then starts background handling of provisioning requests.
-func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTargetProvider, hostType string, displayName string) error {
+func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTargetProvider, hostType string) error {
 	stream, err := m.client.ServiceTarget().Stream(ctx)
 	if err != nil {
 		return err
@@ -57,7 +55,6 @@ func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTar
 		MessageType: &ServiceTargetMessage_RegisterServiceTargetRequest{
 			RegisterServiceTargetRequest: &RegisterServiceTargetRequest{
 				Host: hostType,
-				// DisplayName: displayName,
 			},
 		},
 	}
@@ -110,40 +107,25 @@ func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, pr
 func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetProvider, msg *ServiceTargetMessage, stream ServiceTargetService_StreamClient) *ServiceTargetMessage {
 	var resp *ServiceTargetMessage
 	switch r := msg.MessageType.(type) {
-	// case *ServiceTargetMessage_NameRequest:
-	// 	name, _ := provider.Name(ctx)
-	// 	resp = &ServiceTargetMessage{
-	// 		RequestId: msg.RequestId,
-	// 		MessageType: &ServiceTargetMessage_NameResponse{
-	// 			NameResponse: &ServiceTargetNameResponse{Name: name},
-	// 		},
-	// 	}
-	// case *ServiceTargetMessage_InitializeRequest:
-	// 	err := provider.Initialize(ctx, r.InitializeRequest.ProjectPath, r.InitializeRequest.Options)
-	// 	resp = &ServiceTargetMessage{
-	// 		RequestId: msg.RequestId,
-	// 		MessageType: &ServiceTargetMessage_InitializeResponse{
-	// 			InitializeResponse: &ServiceTargetInitializeResponse{},
-	// 		},
-	// 	}
-	// 	if err != nil {
-	// 		resp.Error = &ServiceTargetErrorMessage{
-	// 			Message: err.Error(),
-	// 		}
-	// 	}
-	// case *ServiceTargetMessage_StateRequest:
-	// 	result, err := provider.State(ctx, r.StateRequest.Options)
-	// 	resp = &ServiceTargetMessage{
-	// 		RequestId: msg.RequestId,
-	// 		MessageType: &ServiceTargetMessage_StateResponse{
-	// 			StateResponse: &ServiceTargetStateResponse{StateResult: result},
-	// 		},
-	// 	}
-	// 	if err != nil {
-	// 		resp.Error = &ServiceTargetErrorMessage{
-	// 			Message: err.Error(),
-	// 		}
-	// 	}
+	case *ServiceTargetMessage_InitializeRequest:
+		initReq := r.InitializeRequest
+		var serviceConfig *ServiceTargetConfig
+		if initReq != nil {
+			serviceConfig = initReq.ServiceConfig
+		}
+
+		err := provider.Initialize(ctx, serviceConfig)
+		resp = &ServiceTargetMessage{
+			RequestId: msg.RequestId,
+			MessageType: &ServiceTargetMessage_InitializeResponse{
+				InitializeResponse: &ServiceTargetInitializeResponse{},
+			},
+		}
+		if err != nil {
+			resp.Error = &ServiceTargetErrorMessage{
+				Message: err.Error(),
+			}
+		}
 	case *ServiceTargetMessage_GetTargetResourceRequest:
 		result, err := provider.GetTargetResource(ctx, r.GetTargetResourceRequest.SubscriptionId, r.GetTargetResourceRequest.ServiceConfig)
 		resp = &ServiceTargetMessage{
