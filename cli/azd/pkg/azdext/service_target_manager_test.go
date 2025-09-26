@@ -21,23 +21,49 @@ func (p *recordingServiceTargetProvider) Initialize(ctx context.Context, service
 	return p.initErr
 }
 
-func (p *recordingServiceTargetProvider) Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error) {
+func (p *recordingServiceTargetProvider) Endpoints(
+	ctx context.Context,
+	serviceConfig *ServiceTargetConfig,
+	targetResource *TargetResource,
+) ([]string, error) {
 	return nil, nil
 }
 
-func (p *recordingServiceTargetProvider) GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error) {
+func (p *recordingServiceTargetProvider) GetTargetResource(
+	ctx context.Context,
+	subscriptionId string,
+	serviceConfig *ServiceTargetConfig,
+) (*TargetResource, error) {
 	return nil, nil
 }
 
-func (p *recordingServiceTargetProvider) Package(ctx context.Context, serviceConfig *ServiceTargetConfig, frameworkPackage *ServicePackageResult, progress ProgressReporter) (*ServicePackageResult, error) {
+func (p *recordingServiceTargetProvider) Package(
+	ctx context.Context,
+	serviceConfig *ServiceTargetConfig,
+	frameworkPackage *ServicePackageResult,
+	progress ProgressReporter,
+) (*ServicePackageResult, error) {
 	return nil, nil
 }
 
-func (p *recordingServiceTargetProvider) Publish(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServicePublishResult, error) {
+func (p *recordingServiceTargetProvider) Publish(
+	ctx context.Context,
+	serviceConfig *ServiceTargetConfig,
+	servicePackage *ServicePackageResult,
+	targetResource *TargetResource,
+	progress ProgressReporter,
+) (*ServicePublishResult, error) {
 	return nil, nil
 }
 
-func (p *recordingServiceTargetProvider) Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, servicePublish *ServicePublishResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceDeployResult, error) {
+func (p *recordingServiceTargetProvider) Deploy(
+	ctx context.Context,
+	serviceConfig *ServiceTargetConfig,
+	servicePackage *ServicePackageResult,
+	servicePublish *ServicePublishResult,
+	targetResource *TargetResource,
+	progress ProgressReporter,
+) (*ServiceDeployResult, error) {
 	return nil, nil
 }
 

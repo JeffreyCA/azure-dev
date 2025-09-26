@@ -134,7 +134,10 @@ func (est *ExternalServiceTarget) Initialize(ctx context.Context, serviceConfig 
 }
 
 // RequiredExternalTools returns the tools needed to run the deploy operation for this target.
-func (est *ExternalServiceTarget) RequiredExternalTools(ctx context.Context, serviceConfig *ServiceConfig) []tools.ExternalTool {
+func (est *ExternalServiceTarget) RequiredExternalTools(
+	ctx context.Context,
+	serviceConfig *ServiceConfig,
+) []tools.ExternalTool {
 	return []tools.ExternalTool{}
 }
 
@@ -335,7 +338,11 @@ func (est *ExternalServiceTarget) ResolveTargetResource(
 // Private methods for gRPC communication
 
 // helper to send a request and wait for the matching response
-func (est *ExternalServiceTarget) sendAndWait(ctx context.Context, req *azdext.ServiceTargetMessage, match func(*azdext.ServiceTargetMessage) bool) (*azdext.ServiceTargetMessage, error) {
+func (est *ExternalServiceTarget) sendAndWait(
+	ctx context.Context,
+	req *azdext.ServiceTargetMessage,
+	match func(*azdext.ServiceTargetMessage) bool,
+) (*azdext.ServiceTargetMessage, error) {
 	ch := make(chan *azdext.ServiceTargetMessage, 1)
 	est.responseChans.Store(req.RequestId, ch)
 	defer est.responseChans.Delete(req.RequestId)
@@ -360,7 +367,12 @@ func (est *ExternalServiceTarget) sendAndWait(ctx context.Context, req *azdext.S
 }
 
 // helper to send a request, handle progress updates, and wait for the matching response
-func (est *ExternalServiceTarget) sendAndWaitWithProgress(ctx context.Context, req *azdext.ServiceTargetMessage, progress *async.Progress[ServiceProgress], match func(*azdext.ServiceTargetMessage) bool) (*azdext.ServiceTargetMessage, error) {
+func (est *ExternalServiceTarget) sendAndWaitWithProgress(
+	ctx context.Context,
+	req *azdext.ServiceTargetMessage,
+	progress *async.Progress[ServiceProgress],
+	match func(*azdext.ServiceTargetMessage) bool,
+) (*azdext.ServiceTargetMessage, error) {
 	// Use a larger buffer to handle multiple progress messages without blocking the dispatcher
 	ch := make(chan *azdext.ServiceTargetMessage, 50)
 	est.responseChans.Store(req.RequestId, ch)
@@ -493,7 +505,10 @@ func toProtoServicePackageResult(result *ServicePackageResult) *azdext.ServicePa
 	return protoResult
 }
 
-func fromProtoServicePackageResult(protoResult *azdext.ServicePackageResult, fallback *ServicePackageResult) *ServicePackageResult {
+func fromProtoServicePackageResult(
+	protoResult *azdext.ServicePackageResult,
+	fallback *ServicePackageResult,
+) *ServicePackageResult {
 	if protoResult == nil {
 		return fallback
 	}

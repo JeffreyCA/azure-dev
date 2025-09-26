@@ -86,7 +86,14 @@ func (s *ServiceTargetService) Stream(
 		console input.Console,
 		prompter prompt.Prompter,
 	) project.ServiceTarget {
-		return project.NewExternalServiceTarget(hostType, project.ServiceTargetKind(hostType), extension, stream, console, prompter)
+		return project.NewExternalServiceTarget(
+			hostType,
+			project.ServiceTargetKind(hostType),
+			extension,
+			stream,
+			console,
+			prompter,
+		)
 	})
 
 	if err != nil {

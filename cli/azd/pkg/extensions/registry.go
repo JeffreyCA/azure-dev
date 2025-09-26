@@ -23,7 +23,8 @@ const (
 	// Custom commands expose new command groups & comments to AZD
 	CustomCommandCapability CapabilityType = "custom-commands"
 	// Lifecycle events enable extensions to subscribe to AZD project & service lifecycle events
-	LifecycleEventsCapability       CapabilityType = "lifecycle-events"
+	LifecycleEventsCapability CapabilityType = "lifecycle-events"
+	// Service target providers enable extensions to package, publish, and deploy to custom service targets
 	ServiceTargetProviderCapability CapabilityType = "service-target-provider"
 )
 

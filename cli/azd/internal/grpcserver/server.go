@@ -94,7 +94,6 @@ func (s *Server) Start() (*ServerInfo, error) {
 	azdext.RegisterComposeServiceServer(s.grpcServer, s.composeService)
 	azdext.RegisterWorkflowServiceServer(s.grpcServer, s.workflowService)
 	azdext.RegisterExtensionServiceServer(s.grpcServer, s.extensionService)
-	// azdext.RegisterProvisioningServiceServer(s.grpcServer, s.provisioningService)
 	azdext.RegisterServiceTargetServiceServer(s.grpcServer, s.serviceTargetService)
 
 	serverInfo.Address = fmt.Sprintf("localhost:%d", randomPort)

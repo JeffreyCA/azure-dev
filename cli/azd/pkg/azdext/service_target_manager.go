@@ -21,11 +21,37 @@ type ProgressReporter func(message string)
 // ServiceTargetProvider defines the interface for service target logic.
 type ServiceTargetProvider interface {
 	Initialize(ctx context.Context, serviceConfig *ServiceTargetConfig) error
-	Endpoints(ctx context.Context, serviceConfig *ServiceTargetConfig, targetResource *TargetResource) ([]string, error)
-	GetTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceTargetConfig) (*TargetResource, error)
-	Package(ctx context.Context, serviceConfig *ServiceTargetConfig, frameworkPackage *ServicePackageResult, progress ProgressReporter) (*ServicePackageResult, error)
-	Publish(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, targetResource *TargetResource, progress ProgressReporter) (*ServicePublishResult, error)
-	Deploy(ctx context.Context, serviceConfig *ServiceTargetConfig, servicePackage *ServicePackageResult, servicePublish *ServicePublishResult, targetResource *TargetResource, progress ProgressReporter) (*ServiceDeployResult, error)
+	Endpoints(
+		ctx context.Context,
+		serviceConfig *ServiceTargetConfig,
+		targetResource *TargetResource,
+	) ([]string, error)
+	GetTargetResource(
+		ctx context.Context,
+		subscriptionId string,
+		serviceConfig *ServiceTargetConfig,
+	) (*TargetResource, error)
+	Package(
+		ctx context.Context,
+		serviceConfig *ServiceTargetConfig,
+		frameworkPackage *ServicePackageResult,
+		progress ProgressReporter,
+	) (*ServicePackageResult, error)
+	Publish(
+		ctx context.Context,
+		serviceConfig *ServiceTargetConfig,
+		servicePackage *ServicePackageResult,
+		targetResource *TargetResource,
+		progress ProgressReporter,
+	) (*ServicePublishResult, error)
+	Deploy(
+		ctx context.Context,
+		serviceConfig *ServiceTargetConfig,
+		servicePackage *ServicePackageResult,
+		servicePublish *ServicePublishResult,
+		targetResource *TargetResource,
+		progress ProgressReporter,
+	) (*ServiceDeployResult, error)
 }
 
 // ServiceTargetManager handles registration and provisioning request forwarding for a provider.
@@ -41,7 +67,8 @@ func NewServiceTargetManager(client *AzdClient) *ServiceTargetManager {
 	}
 }
 
-// Register registers the provider with the server, waits for the response, then starts background handling of provisioning requests.
+// Register registers the provider with the server, waits for the response,
+// then starts background handling of provisioning requests.
 func (m *ServiceTargetManager) Register(ctx context.Context, provider ServiceTargetProvider, hostType string) error {
 	stream, err := m.client.ServiceTarget().Stream(ctx)
 	if err != nil {
@@ -104,7 +131,12 @@ func (m *ServiceTargetManager) handleServiceTargetStream(ctx context.Context, pr
 	}
 }
 
-func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetProvider, msg *ServiceTargetMessage, stream ServiceTargetService_StreamClient) *ServiceTargetMessage {
+func buildServiceTargetResponseMsg(
+	ctx context.Context,
+	provider ServiceTargetProvider,
+	msg *ServiceTargetMessage,
+	stream ServiceTargetService_StreamClient,
+) *ServiceTargetMessage {
 	var resp *ServiceTargetMessage
 	switch r := msg.MessageType.(type) {
 	case *ServiceTargetMessage_InitializeRequest:
@@ -127,7 +159,11 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 	case *ServiceTargetMessage_GetTargetResourceRequest:
-		result, err := provider.GetTargetResource(ctx, r.GetTargetResourceRequest.SubscriptionId, r.GetTargetResourceRequest.ServiceConfig)
+		result, err := provider.GetTargetResource(
+			ctx,
+			r.GetTargetResourceRequest.SubscriptionId,
+			r.GetTargetResourceRequest.ServiceConfig,
+		)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_GetTargetResourceResponse{
@@ -156,7 +192,12 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 
-		result, err := provider.Package(ctx, r.PackageRequest.ServiceConfig, r.PackageRequest.FrameworkPackage, progressReporter)
+		result, err := provider.Package(
+			ctx,
+			r.PackageRequest.ServiceConfig,
+			r.PackageRequest.FrameworkPackage,
+			progressReporter,
+		)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_PackageResponse{
@@ -185,7 +226,13 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 
-		result, err := provider.Publish(ctx, r.PublishRequest.ServiceConfig, r.PublishRequest.ServicePackage, r.PublishRequest.TargetResource, progressReporter)
+		result, err := provider.Publish(
+			ctx,
+			r.PublishRequest.ServiceConfig,
+			r.PublishRequest.ServicePackage,
+			r.PublishRequest.TargetResource,
+			progressReporter,
+		)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_PublishResponse{
@@ -235,7 +282,11 @@ func buildServiceTargetResponseMsg(ctx context.Context, provider ServiceTargetPr
 			}
 		}
 	case *ServiceTargetMessage_EndpointsRequest:
-		endpoints, err := provider.Endpoints(ctx, r.EndpointsRequest.ServiceConfig, r.EndpointsRequest.TargetResource)
+		endpoints, err := provider.Endpoints(
+			ctx,
+			r.EndpointsRequest.ServiceConfig,
+			r.EndpointsRequest.TargetResource,
+		)
 		resp = &ServiceTargetMessage{
 			RequestId: msg.RequestId,
 			MessageType: &ServiceTargetMessage_EndpointsResponse{

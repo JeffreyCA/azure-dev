@@ -554,7 +554,8 @@ func (sm *serviceManager) GetServiceTarget(ctx context.Context, serviceConfig *S
 					serviceConfig.Name,
 				),
 				Suggestion: fmt.Sprintf(
-					"Suggestion: install an extension that provides this host or update azure.yaml to use one of the supported hosts: %s",
+					"Suggestion: install an extension that provides this host or update azure.yaml "+
+						"to use one of the supported hosts: %s",
 					strings.Join(builtInServiceTargetNames(), ", "),
 				),
 			}
@@ -703,7 +704,11 @@ func runCommand[T any](
 // For DotNetContainerAppTarget, it handles container app environment resolution.
 // For other service types, it delegates to the resource manager.
 type targetResourceResolver interface {
-	ResolveTargetResource(ctx context.Context, subscriptionId string, serviceConfig *ServiceConfig) (*environment.TargetResource, error)
+	ResolveTargetResource(
+		ctx context.Context,
+		subscriptionId string,
+		serviceConfig *ServiceConfig,
+	) (*environment.TargetResource, error)
 }
 
 func (sm *serviceManager) getTargetResourceForService(
