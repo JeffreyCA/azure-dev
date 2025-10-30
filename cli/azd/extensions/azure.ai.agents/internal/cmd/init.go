@@ -17,6 +17,7 @@ import (
 	"azureaiagent/internal/pkg/agents/agent_yaml"
 	"azureaiagent/internal/pkg/agents/registry_api"
 	"azureaiagent/internal/pkg/azure/ai"
+	"azureaiagent/internal/project"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -63,8 +64,6 @@ type GitHubUrlInfo struct {
 	FilePath string
 	Hostname string
 }
-
-const AiAgentHost = "azure.ai.agent"
 
 func newInitCommand() *cobra.Command {
 	flags := &initFlags{}
@@ -782,7 +781,7 @@ func (a *InitAction) addToProject(ctx context.Context, targetDir string, agentMa
 	case "containerapp":
 		serviceHost = "containerapp"
 	default:
-		serviceHost = AiAgentHost
+		serviceHost = project.AiAgentHost
 	}
 
 	serviceConfig := &azdext.ServiceConfig{
@@ -1317,7 +1316,7 @@ func (a *InitAction) updateEnvironment(ctx context.Context, agentManifest *agent
 	}
 
 	envName := envResponse.Environment.Name
-	deploymentDetails := []Deployment{}
+	deploymentDetails := []project.Deployment{}
 
 	// Set environment variables based on agent kind
 	switch agentDef.Kind {
@@ -1345,7 +1344,7 @@ func (a *InitAction) updateEnvironment(ctx context.Context, agentManifest *agent
 		}
 	}
 
-	if host == "containerapp" {
+	if host == project.ContainerAppHost {
 		if err := a.setEnvVar(ctx, envName, "ENABLE_CONTAINER_AGENTS", "true"); err != nil {
 			return err
 		}
@@ -1377,40 +1376,7 @@ func (a *InitAction) setEnvVar(ctx context.Context, envName, key, value string) 
 	return nil
 }
 
-// Deployment represents a single cognitive service account deployment
-type Deployment struct {
-	// Specify the name of cognitive service account deployment.
-	Name string `json:"name"`
-
-	// Required. Properties of Cognitive Services account deployment model.
-	Model DeploymentModel `json:"model"`
-
-	// The resource model definition representing SKU.
-	Sku DeploymentSku `json:"sku"`
-}
-
-// DeploymentModel represents the model configuration for a cognitive services deployment
-type DeploymentModel struct {
-	// Required. The name of Cognitive Services account deployment model.
-	Name string `json:"name"`
-
-	// Required. The format of Cognitive Services account deployment model.
-	Format string `json:"format"`
-
-	// Required. The version of Cognitive Services account deployment model.
-	Version string `json:"version"`
-}
-
-// DeploymentSku represents the resource model definition representing SKU
-type DeploymentSku struct {
-	// Required. The name of the resource model definition representing SKU.
-	Name string `json:"name"`
-
-	// The capacity of the resource model definition representing SKU.
-	Capacity int `json:"capacity"`
-}
-
-func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_yaml.Model) (*Deployment, error) {
+func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_yaml.Model) (*project.Deployment, error) {
 	version := ""
 	if model.Version != nil {
 		version = *model.Version
@@ -1440,14 +1406,14 @@ func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_
 		modelDeployment = modelDeploymentInput.Value
 	}
 
-	return &Deployment{
+	return &project.Deployment{
 		Name: modelDeployment,
-		Model: DeploymentModel{
+		Model: project.DeploymentModel{
 			Name:    model.Id,
 			Format:  modelDetails.Format,
 			Version: modelDetails.Version,
 		},
-		Sku: DeploymentSku{
+		Sku: project.DeploymentSku{
 			Name:     modelDetails.Sku.Name,
 			Capacity: int(modelDetails.Sku.Capacity),
 		},

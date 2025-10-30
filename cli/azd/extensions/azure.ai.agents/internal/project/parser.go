@@ -38,7 +38,7 @@ type FoundryParser struct {
 func shouldRun(ctx context.Context, project *azdext.ProjectConfig) (bool, error) {
 	projectPath := project.Path
 	for _, service := range project.Services {
-		if service.Host == "containerapp" {
+		if service.Host == ContainerAppHost {
 			servicePath := filepath.Join(projectPath, service.RelativePath)
 
 			agentYamlPath := filepath.Join(servicePath, "agent.yaml")
@@ -1151,5 +1151,227 @@ func testDataPlane(endpoint, token, agentName, agentVersion string) {
 		}
 	} else {
 		fmt.Fprintln(os.Stderr, "Warning: Data plane call failed")
+	}
+}
+
+// UpdateEnvironmentVariables sets environment variables for azure.ai.agent services
+// only if they don't already exist in the current environment.
+// It also parses agent.yaml manifests and sets AI_PROJECT_DEPLOYMENTS.
+func (p *FoundryParser) UpdateEnvironmentVariables(ctx context.Context, args *azdext.ProjectEventArgs) error {
+	azdEnvClient := p.AzdClient.Environment()
+
+	// Get current environment
+	currentEnvResponse, err := azdEnvClient.GetCurrent(ctx, &azdext.EmptyRequest{})
+	if err != nil {
+		return fmt.Errorf("failed to get current environment: %w", err)
+	}
+
+	if currentEnvResponse.Environment == nil {
+		return fmt.Errorf("no current environment found")
+	}
+
+	envName := currentEnvResponse.Environment.Name
+
+	// Get existing environment values to check what's already set
+	envResponse, err := azdEnvClient.GetValues(ctx, &azdext.GetEnvironmentRequest{
+		Name: envName,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get environment values: %w", err)
+	}
+
+	// Create a map of existing environment variables
+	existingEnv := make(map[string]string)
+	for _, kv := range envResponse.KeyValues {
+		existingEnv[kv.Key] = kv.Value
+	}
+
+	projectPath := args.Project.Path
+	allDeployments := []Deployment{}
+	hasHostedAgents := false
+	hasContainerAppHost := false
+
+	// Process each service in the project
+	for _, svc := range args.Project.Services {
+		if svc.Host == ContainerAppHost {
+			hasContainerAppHost = true
+			continue
+		}
+
+		if svc.Host != AiAgentHost {
+			continue
+		}
+
+		var foundryAgentConfig *ServiceTargetAgentConfig
+		if err := UnmarshalStruct(svc.Config, &foundryAgentConfig); err != nil {
+			return fmt.Errorf("failed to parse foundry agent config: %w", err)
+		}
+
+		// Set environment variables only if they don't already exist
+		if foundryAgentConfig != nil && foundryAgentConfig.Environment != nil {
+			for key, value := range foundryAgentConfig.Environment {
+				if _, exists := existingEnv[key]; !exists {
+					fmt.Printf("Setting environment variable: %s\n", key)
+					_, err := azdEnvClient.SetValue(ctx, &azdext.SetEnvRequest{
+						EnvName: envName,
+						Key:     key,
+						Value:   value,
+					})
+					if err != nil {
+						return fmt.Errorf("failed to set environment variable %s: %w", key, err)
+					}
+				} else {
+					fmt.Printf("Environment variable %s already exists, skipping\n", key)
+				}
+			}
+		}
+
+		// Parse agent.yaml to get model deployments
+		servicePath := filepath.Join(projectPath, svc.RelativePath)
+		agentManifest, err := p.loadAgentManifest(servicePath)
+		if err != nil {
+			fmt.Printf("Warning: Failed to load agent manifest for service %s: %v\n", svc.Name, err)
+			continue
+		}
+
+		// Convert template to AgentDefinition
+		templateBytes, err := json.Marshal(agentManifest.Template)
+		if err != nil {
+			return fmt.Errorf("failed to marshal agent template: %w", err)
+		}
+
+		var agentDef agent_yaml.AgentDefinition
+		if err := json.Unmarshal(templateBytes, &agentDef); err != nil {
+			return fmt.Errorf("failed to unmarshal agent definition: %w", err)
+		}
+
+		// Process models based on agent kind
+		switch agentDef.Kind {
+		case agent_yaml.AgentKindPrompt:
+			promptAgent := agentManifest.Template.(agent_yaml.PromptAgent)
+			deployment := p.createDeploymentFromModel(promptAgent.Model)
+			allDeployments = append(allDeployments, deployment)
+		case agent_yaml.AgentKindHosted:
+			hasHostedAgents = true
+			hostedAgent := agentManifest.Template.(agent_yaml.HostedContainerAgent)
+			for _, model := range hostedAgent.Models {
+				deployment := p.createDeploymentFromModel(model)
+				allDeployments = append(allDeployments, deployment)
+			}
+		}
+	}
+
+	// Set ENABLE_HOSTED_AGENTS if needed and not already set
+	if hasHostedAgents {
+		if _, exists := existingEnv["ENABLE_HOSTED_AGENTS"]; !exists {
+			fmt.Println("Setting environment variable: ENABLE_HOSTED_AGENTS=true")
+			_, err := azdEnvClient.SetValue(ctx, &azdext.SetEnvRequest{
+				EnvName: envName,
+				Key:     "ENABLE_HOSTED_AGENTS",
+				Value:   "true",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set ENABLE_HOSTED_AGENTS: %w", err)
+			}
+		}
+	}
+
+	// Set ENABLE_CONTAINER_AGENTS if needed and not already set
+	if hasContainerAppHost {
+		if _, exists := existingEnv["ENABLE_CONTAINER_AGENTS"]; !exists {
+			fmt.Println("Setting environment variable: ENABLE_CONTAINER_AGENTS=true")
+			_, err := azdEnvClient.SetValue(ctx, &azdext.SetEnvRequest{
+				EnvName: envName,
+				Key:     "ENABLE_CONTAINER_AGENTS",
+				Value:   "true",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set ENABLE_CONTAINER_AGENTS: %w", err)
+			}
+		}
+	}
+
+	// Set AI_PROJECT_DEPLOYMENTS if we have deployments and it's not already set
+	if len(allDeployments) > 0 {
+		if _, exists := existingEnv["AI_PROJECT_DEPLOYMENTS"]; !exists {
+			deploymentsJson, err := json.Marshal(allDeployments)
+			if err != nil {
+				return fmt.Errorf("failed to marshal deployment details: %w", err)
+			}
+			fmt.Println("Setting environment variable: AI_PROJECT_DEPLOYMENTS")
+			_, err = azdEnvClient.SetValue(ctx, &azdext.SetEnvRequest{
+				EnvName: envName,
+				Key:     "AI_PROJECT_DEPLOYMENTS",
+				Value:   string(deploymentsJson),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set AI_PROJECT_DEPLOYMENTS: %w", err)
+			}
+		} else {
+			fmt.Println("Environment variable AI_PROJECT_DEPLOYMENTS already exists, skipping")
+		}
+	}
+
+	return nil
+}
+
+// loadAgentManifest loads and validates an agent manifest from a service directory
+func (p *FoundryParser) loadAgentManifest(servicePath string) (*agent_yaml.AgentManifest, error) {
+	// Look for agent.yaml or agent.yml
+	agentYamlPath := filepath.Join(servicePath, "agent.yaml")
+	agentYmlPath := filepath.Join(servicePath, "agent.yml")
+
+	var agentPath string
+	if _, err := os.Stat(agentYamlPath); err == nil {
+		agentPath = agentYamlPath
+	} else if _, err := os.Stat(agentYmlPath); err == nil {
+		agentPath = agentYmlPath
+	} else {
+		return nil, fmt.Errorf("agent.yaml or agent.yml not found in %s", servicePath)
+	}
+
+	// Read and validate the file
+	content, err := os.ReadFile(agentPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read agent manifest: %w", err)
+	}
+
+	agentManifest, err := agent_yaml.LoadAndValidateAgentManifest(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate agent manifest: %w", err)
+	}
+
+	return agentManifest, nil
+}
+
+// createDeploymentFromModel creates a Deployment from a model, using default values
+// (no user prompting unlike the init flow)
+func (p *FoundryParser) createDeploymentFromModel(model agent_yaml.Model) Deployment {
+	// Use deployment name from model if specified, otherwise use model ID as default
+	deploymentName := model.Id
+	if model.Deployment != nil {
+		deploymentName = *model.Deployment
+	}
+
+	// Use version from model if specified, otherwise use empty string (will use default)
+	version := ""
+	if model.Version != nil {
+		version = *model.Version
+	}
+
+	// Create deployment with available information
+	// Note: Format, Sku.Name, and Sku.Capacity would need to come from model catalog
+	// For now, we'll use placeholder values or the model's specified values
+	return Deployment{
+		Name: deploymentName,
+		Model: DeploymentModel{
+			Name:    model.Id,
+			Format:  "OpenAI", // Default format
+			Version: version,
+		},
+		Sku: DeploymentSku{
+			Name:     "Standard", // Default SKU
+			Capacity: 1,          // Default capacity
+		},
 	}
 }

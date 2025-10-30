@@ -10,6 +10,15 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// Service host identifiers
+const (
+	// AiAgentHost is the service host identifier for Azure AI Agent services
+	AiAgentHost = "azure.ai.agent"
+
+	// ContainerAppHost is the service host identifier for Container App services
+	ContainerAppHost = "containerapp"
+)
+
 // ServiceTargetAgentConfig provides custom configuration for the Azure AI Service target
 type ServiceTargetAgentConfig struct {
 	Environment map[string]string `json:"env,omitempty"`
