@@ -631,19 +631,18 @@ func (p *AgentServiceTargetProvider) startAgentContainer(
 				}
 
 				if completedOperation.Status == "Failed" {
-					// Get detailed container information for failed operations
+					// Try to get reason for failure by querying container API
 					containerInfo, containerErr := agentClient.GetAgentContainer(
 						ctx, agentVersionResponse.Name, agentVersionResponse.Version, apiVersion)
 					if containerErr != nil {
 						return fmt.Errorf("operation failed: failed to retrieve container details: %w", containerErr)
 					}
 
-					// Build error message with container details
 					var errorMsg string
 					if containerInfo.ErrorMessage != nil && *containerInfo.ErrorMessage != "" {
-						errorMsg = fmt.Sprintf("operation failed: %s (container status: %s)", *containerInfo.ErrorMessage, containerInfo.Status)
+						errorMsg = fmt.Sprintf("operation failed: container status is %q with error: %s", containerInfo.Status, *containerInfo.ErrorMessage)
 					} else {
-						errorMsg = fmt.Sprintf("operation failed: container status is %s with no error details", containerInfo.Status)
+						errorMsg = fmt.Sprintf("operation failed: container status is %q with no error details", containerInfo.Status)
 					}
 
 					return errors.New(errorMsg)
