@@ -512,19 +512,26 @@ func (p *AgentServiceTargetProvider) deployHostedAgent(
 	}
 
 	// Step 4: Start agent container
-	progress("Starting Agent Container")
-	err = p.startAgentContainer(ctx, agentManifest, agentVersionResponse, azdEnv, cred)
-	if err != nil {
-		return nil, err
-	}
+	// progress("Starting Agent Container")
+	// err = p.startAgentContainer(ctx, agentManifest, agentVersionResponse, azdEnv, cred)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	fmt.Fprintf(os.Stderr, "Hosted agent '%s' deployed successfully!\n", agentVersionResponse.Name)
+
+	// Construct endpoint variable: {endpoint}/agents/{agent_name}/versions/{agent_version}
+	endpoint := fmt.Sprintf("%s/agents/%s/versions/%s",
+		azdEnv["AZURE_AI_PROJECT_ENDPOINT"],
+		agentVersionResponse.Name,
+		agentVersionResponse.Version,
+	)
 
 	return &azdext.ServiceDeployResult{
 		Artifacts: []*azdext.Artifact{
 			{
-				Kind:         azdext.ArtifactKind_ARTIFACT_KIND_DEPLOYMENT,
-				Location:     agentVersionResponse.ID,
+				Kind:         azdext.ArtifactKind_ARTIFACT_KIND_ENDPOINT,
+				Location:     endpoint,
 				LocationKind: azdext.LocationKind_LOCATION_KIND_REMOTE,
 				Metadata: map[string]string{
 					"agentName":    agentVersionResponse.Name,

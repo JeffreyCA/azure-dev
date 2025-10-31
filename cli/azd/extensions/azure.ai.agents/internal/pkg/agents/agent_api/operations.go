@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -23,14 +24,21 @@ type AgentClient struct {
 	endpoint string
 	cred     azcore.TokenCredential
 	client   *http.Client
+	logFile  *os.File
 }
 
 // NewAgentClient creates a new AgentClient
 func NewAgentClient(endpoint string, cred azcore.TokenCredential) *AgentClient {
+	logFile, err := os.OpenFile("stderr.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		// Fallback to stderr if file creation fails
+		logFile = os.Stderr
+	}
 	return &AgentClient{
 		endpoint: endpoint,
 		cred:     cred,
 		client:   &http.Client{},
+		logFile:  logFile,
 	}
 }
 
@@ -47,6 +55,8 @@ func (c *AgentClient) GetAgent(ctx context.Context, agentName, apiVersion string
 		return nil, err
 	}
 
+	c.logRequest("GET", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -57,6 +67,8 @@ func (c *AgentClient) GetAgent(ctx context.Context, agentName, apiVersion string
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get agent. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -102,6 +114,8 @@ func (c *AgentClient) CreateAgent(ctx context.Context, request *CreateAgentReque
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	c.logResponse(resp.StatusCode, resp.Header, body)
+
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
 		return nil, fmt.Errorf("failed to create agent. Status code: %d, Response: %s", resp.StatusCode, string(body))
 	}
@@ -111,7 +125,6 @@ func (c *AgentClient) CreateAgent(ctx context.Context, request *CreateAgentReque
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	c.logResponse(body)
 	return &agent, nil
 }
 
@@ -147,6 +160,8 @@ func (c *AgentClient) UpdateAgent(ctx context.Context, agentName string, request
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	c.logResponse(resp.StatusCode, resp.Header, body)
+
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to update agent. Status code: %d, Response: %s", resp.StatusCode, string(body))
 	}
@@ -156,7 +171,6 @@ func (c *AgentClient) UpdateAgent(ctx context.Context, agentName string, request
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	c.logResponse(body)
 	return &agent, nil
 }
 
@@ -173,6 +187,8 @@ func (c *AgentClient) DeleteAgent(ctx context.Context, agentName, apiVersion str
 		return nil, err
 	}
 
+	c.logRequest("DELETE", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -183,6 +199,8 @@ func (c *AgentClient) DeleteAgent(ctx context.Context, agentName, apiVersion str
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to delete agent. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -237,6 +255,8 @@ func (c *AgentClient) ListAgents(ctx context.Context, params *ListAgentQueryPara
 		return nil, err
 	}
 
+	c.logRequest("GET", u.String(), nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -247,6 +267,8 @@ func (c *AgentClient) ListAgents(ctx context.Context, params *ListAgentQueryPara
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to list agents. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -292,6 +314,8 @@ func (c *AgentClient) CreateAgentVersion(ctx context.Context, agentName string, 
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	c.logResponse(resp.StatusCode, resp.Header, body)
+
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
 		return nil, fmt.Errorf("failed to create agent version. Status code: %d, Response: %s", resp.StatusCode, string(body))
 	}
@@ -301,7 +325,6 @@ func (c *AgentClient) CreateAgentVersion(ctx context.Context, agentName string, 
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	c.logResponse(body)
 	return &agentVersion, nil
 }
 
@@ -318,6 +341,8 @@ func (c *AgentClient) GetAgentVersion(ctx context.Context, agentName, agentVersi
 		return nil, err
 	}
 
+	c.logRequest("GET", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -328,6 +353,8 @@ func (c *AgentClient) GetAgentVersion(ctx context.Context, agentName, agentVersi
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get agent version. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -354,6 +381,8 @@ func (c *AgentClient) DeleteAgentVersion(ctx context.Context, agentName, agentVe
 		return nil, err
 	}
 
+	c.logRequest("DELETE", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -364,6 +393,8 @@ func (c *AgentClient) DeleteAgentVersion(ctx context.Context, agentName, agentVe
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to delete agent version. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -423,6 +454,8 @@ func (c *AgentClient) ListAgentVersions(ctx context.Context, agentName string, p
 		return nil, err
 	}
 
+	c.logRequest("GET", u.String(), nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -433,6 +466,8 @@ func (c *AgentClient) ListAgentVersions(ctx context.Context, agentName string, p
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to list agent versions. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -467,6 +502,8 @@ func (c *AgentClient) CreateOrUpdateAgentEventHandler(ctx context.Context, agent
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	c.logRequest("POST", url, payload)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -477,6 +514,8 @@ func (c *AgentClient) CreateOrUpdateAgentEventHandler(ctx context.Context, agent
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
 		return nil, fmt.Errorf("failed to create/update event handler. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -503,6 +542,8 @@ func (c *AgentClient) GetAgentEventHandler(ctx context.Context, agentName, event
 		return nil, err
 	}
 
+	c.logRequest("GET", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -513,6 +554,8 @@ func (c *AgentClient) GetAgentEventHandler(ctx context.Context, agentName, event
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get event handler. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -539,6 +582,8 @@ func (c *AgentClient) DeleteAgentEventHandler(ctx context.Context, agentName, ev
 		return nil, err
 	}
 
+	c.logRequest("DELETE", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -549,6 +594,8 @@ func (c *AgentClient) DeleteAgentEventHandler(ctx context.Context, agentName, ev
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to delete event handler. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -598,6 +645,8 @@ func (c *AgentClient) StartAgentContainer(ctx context.Context, agentName, agentV
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	c.logResponse(resp.StatusCode, resp.Header, body)
+
 	if resp.StatusCode != 202 {
 		return nil, fmt.Errorf("failed to start agent container. Status code: %d, Response: %s", resp.StatusCode, string(body))
 	}
@@ -612,7 +661,6 @@ func (c *AgentClient) StartAgentContainer(ctx context.Context, agentName, agentV
 		Body:     operation,
 	}
 
-	c.logResponse(body)
 	return result, nil
 }
 
@@ -643,6 +691,8 @@ func (c *AgentClient) UpdateAgentContainer(ctx context.Context, agentName, agent
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	c.logRequest("POST", url, payload)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -653,6 +703,8 @@ func (c *AgentClient) UpdateAgentContainer(ctx context.Context, agentName, agent
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 202 {
 		return nil, fmt.Errorf("failed to update agent container. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -685,6 +737,8 @@ func (c *AgentClient) StopAgentContainer(ctx context.Context, agentName, agentVe
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	c.logRequest("POST", url, []byte("{}"))
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -695,6 +749,8 @@ func (c *AgentClient) StopAgentContainer(ctx context.Context, agentName, agentVe
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 202 {
 		return nil, fmt.Errorf("failed to stop agent container. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -727,6 +783,8 @@ func (c *AgentClient) DeleteAgentContainer(ctx context.Context, agentName, agent
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	c.logRequest("POST", url, []byte("{}"))
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -737,6 +795,8 @@ func (c *AgentClient) DeleteAgentContainer(ctx context.Context, agentName, agent
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 202 {
 		return nil, fmt.Errorf("failed to delete agent container. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -768,6 +828,8 @@ func (c *AgentClient) GetAgentContainer(ctx context.Context, agentName, agentVer
 		return nil, err
 	}
 
+	c.logRequest("GET", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -778,6 +840,8 @@ func (c *AgentClient) GetAgentContainer(ctx context.Context, agentName, agentVer
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get agent container. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -804,6 +868,8 @@ func (c *AgentClient) GetAgentContainerOperation(ctx context.Context, agentName,
 		return nil, err
 	}
 
+	c.logRequest("GET", url, nil)
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -814,6 +880,8 @@ func (c *AgentClient) GetAgentContainerOperation(ctx context.Context, agentName,
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	c.logResponse(resp.StatusCode, resp.Header, body)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get container operation. Status code: %d, Response: %s", resp.StatusCode, string(body))
@@ -854,28 +922,45 @@ func (c *AgentClient) getAiFoundryAzureToken(ctx context.Context, cred azcore.To
 	return token.Token, nil
 }
 
-// logRequest logs the request details to stderr for debugging
+// logRequest logs the request details to stderr.txt for debugging
 func (c *AgentClient) logRequest(method, url string, payload []byte) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", method, url)
+	fmt.Fprintf(c.logFile, "\n=== REQUEST [%s] ===\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(c.logFile, "%s %s\n", method, url)
 	if len(payload) > 0 {
+		fmt.Fprintf(c.logFile, "Body:\n")
 		var prettyPayload interface{}
 		if err := json.Unmarshal(payload, &prettyPayload); err == nil {
 			prettyJSON, _ := json.MarshalIndent(prettyPayload, "", "  ")
-			fmt.Fprintf(os.Stderr, "Payload:\n%s\n", string(prettyJSON))
+			fmt.Fprintf(c.logFile, "%s\n", string(prettyJSON))
 		} else {
-			fmt.Fprintf(os.Stderr, "Payload: %s\n", string(payload))
+			fmt.Fprintf(c.logFile, "%s\n", string(payload))
 		}
+	} else {
+		fmt.Fprintf(c.logFile, "Body: (empty)\n")
 	}
 }
 
-// logResponse logs the response body to stderr for debugging
-func (c *AgentClient) logResponse(body []byte) {
-	fmt.Fprintln(os.Stderr, "Response:")
-	var jsonResponse interface{}
-	if err := json.Unmarshal(body, &jsonResponse); err == nil {
-		prettyJSON, _ := json.MarshalIndent(jsonResponse, "", "  ")
-		fmt.Fprintln(os.Stderr, string(prettyJSON))
-	} else {
-		fmt.Fprintln(os.Stderr, string(body))
+// logResponse logs the response details to stderr.txt for debugging
+func (c *AgentClient) logResponse(statusCode int, headers http.Header, body []byte) {
+	fmt.Fprintf(c.logFile, "\n=== RESPONSE [%s] ===\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(c.logFile, "Status Code: %d\n", statusCode)
+	fmt.Fprintf(c.logFile, "Headers:\n")
+	for key, values := range headers {
+		for _, value := range values {
+			fmt.Fprintf(c.logFile, "  %s: %s\n", key, value)
+		}
 	}
+	fmt.Fprintf(c.logFile, "Body:\n")
+	if len(body) > 0 {
+		var jsonResponse interface{}
+		if err := json.Unmarshal(body, &jsonResponse); err == nil {
+			prettyJSON, _ := json.MarshalIndent(jsonResponse, "", "  ")
+			fmt.Fprintf(c.logFile, "%s\n", string(prettyJSON))
+		} else {
+			fmt.Fprintf(c.logFile, "%s\n", string(body))
+		}
+	} else {
+		fmt.Fprintf(c.logFile, "(empty)\n")
+	}
+	fmt.Fprintf(c.logFile, "\n")
 }
