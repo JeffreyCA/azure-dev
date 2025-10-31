@@ -512,11 +512,11 @@ func (p *AgentServiceTargetProvider) deployHostedAgent(
 	}
 
 	// Step 4: Start agent container
-	// progress("Starting Agent Container")
-	// err = p.startAgentContainer(ctx, agentManifest, agentVersionResponse, azdEnv, cred)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	progress("Starting Agent Container")
+	err = p.startAgentContainer(ctx, agentManifest, agentVersionResponse, azdEnv, cred)
+	if err != nil {
+		return nil, err
+	}
 
 	fmt.Fprintf(os.Stderr, "Hosted agent '%s' deployed successfully!\n", agentVersionResponse.Name)
 
@@ -630,12 +630,26 @@ func (p *AgentServiceTargetProvider) startAgentContainer(
 					return fmt.Errorf("failed to get operation status: %w", err)
 				}
 
-				// Check if operation is complete
-				if completedOperation.Status == "Succeeded" || completedOperation.Status == "Failed" {
-					if completedOperation.Status == "Failed" {
-						return fmt.Errorf("operation failed: %s", completedOperation.Error)
+				if completedOperation.Status == "Failed" {
+					// Get detailed container information for failed operations
+					containerInfo, containerErr := agentClient.GetAgentContainer(
+						ctx, agentVersionResponse.Name, agentVersionResponse.Version, apiVersion)
+					if containerErr != nil {
+						return fmt.Errorf("operation failed: failed to retrieve container details: %w", containerErr)
 					}
 
+					// Build error message with container details
+					var errorMsg string
+					if containerInfo.ErrorMessage != nil && *containerInfo.ErrorMessage != "" {
+						errorMsg = fmt.Sprintf("operation failed: %s (container status: %s)", *containerInfo.ErrorMessage, containerInfo.Status)
+					} else {
+						errorMsg = fmt.Sprintf("operation failed: container status is %s with no error details", containerInfo.Status)
+					}
+
+					return errors.New(errorMsg)
+				}
+
+				if completedOperation.Status == "Succeeded" {
 					if completedOperation.Container != nil {
 						fmt.Fprintf(os.Stderr, "Agent container '%s' (version: %s) operation completed! Container status: %s\n",
 							agentVersionResponse.Name, agentVersionResponse.Version, completedOperation.Container.Status)
@@ -648,6 +662,7 @@ func (p *AgentServiceTargetProvider) startAgentContainer(
 					return nil
 				}
 
+				// Still in progress
 				fmt.Fprintf(os.Stderr, "Operation status: %s\n", completedOperation.Status)
 			}
 		}
