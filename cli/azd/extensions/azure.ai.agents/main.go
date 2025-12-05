@@ -22,6 +22,10 @@ func init() {
 func main() {
 	// Execute the root command
 	ctx := context.Background()
+
+	// TODO: Rebase and uncomment after #6321 is merged
+	// ctx := azdext.NewContext()
+
 	rootCmd := cmd.NewRootCommand()
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
