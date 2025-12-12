@@ -1,5 +1,10 @@
 # Release History
 
+## 0.1.4-preview (2025-12-12)
+
+- [[#6344]](https://github.com/Azure/azure-dev/pull/6344) Rename environment variable from `AI_FOUNDRY_PROJECT_APP_ID` to `AZURE_AI_PROJECT_PRINCIPAL_ID` for consistency
+- [[#6343]](https://github.com/Azure/azure-dev/pull/6343) Improve `azd ai agent init` message to suggest running `azd up` before `azd deploy`
+
 ## 0.1.3-preview (2025-12-03)
 
 - Improve agent service debug logging via `AZD_EXT_DEBUG` env var and `--debug` flag
