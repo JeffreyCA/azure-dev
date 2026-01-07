@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +51,7 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newInitCommand(rootFlags))
 	rootCmd.AddCommand(newMcpCommand())
+	rootCmd.AddCommand(azdext.NewCommandTreeCommand(rootCmd))
 
 	return rootCmd
 }

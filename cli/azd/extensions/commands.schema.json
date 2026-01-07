@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExtensionCommandSpec",
+  "description": "Schema for extension command tree specification used for telemetry and Fig completions.",
+  "type": "object",
+  "properties": {
+    "commands": {
+      "type": "array",
+      "description": "Top-level commands exposed by the extension.",
+      "items": {
+        "$ref": "#/definitions/Command"
+      }
+    }
+  },
+  "required": ["commands"],
+  "definitions": {
+    "Command": {
+      "type": "object",
+      "description": "A command or subcommand in the extension.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The command name (e.g., 'context', 'mcp')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of the command."
+        },
+        "subcommands": {
+          "type": "array",
+          "description": "Nested subcommands.",
+          "items": {
+            "$ref": "#/definitions/Command"
+          }
+        },
+        "flags": {
+          "type": "array",
+          "description": "Flags/options accepted by this command.",
+          "items": {
+            "$ref": "#/definitions/Flag"
+          }
+        }
+      },
+      "required": ["name"]
+    },
+    "Flag": {
+      "type": "object",
+      "description": "A flag/option for a command.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The long flag name without dashes (e.g., 'output')."
+        },
+        "shorthand": {
+          "type": "string",
+          "description": "Single character shorthand (e.g., 'o')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of the flag."
+        },
+        "takesValue": {
+          "type": "boolean",
+          "description": "Whether the flag expects an argument value.",
+          "default": false
+        }
+      },
+      "required": ["name"]
+    }
+  }
+}

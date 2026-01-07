@@ -135,9 +135,26 @@ func (a *extensionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		return nil, fmt.Errorf("failed to get extension %s: %w", extensionId, err)
 	}
 
+	// Load command spec and match command path for telemetry
+	// Build full command path: cmd.<namespace>.<extension_command>
+	// e.g., "cmd.demo.mcp.serve" for "azd demo mcp serve"
+	extensionCmdPath := ""
+	if commandSpec := extensions.LoadCommandSpec(extension.Path); commandSpec != nil {
+		extensionCmdPath = commandSpec.MatchCommandPath(a.args)
+	}
+
+	// Build the full telemetry command path
+	// Format: cmd.<namespace>[.<extension_subcommand>...]
+	fullCmdPath := "cmd." + extension.Namespace
+	if extensionCmdPath != "" && extensionCmdPath != "unknown" {
+		fullCmdPath += "." + strings.ReplaceAll(extensionCmdPath, " ", ".")
+	}
+
 	tracing.SetUsageAttributes(
+		fields.CmdEntry.String(fullCmdPath),
 		fields.ExtensionId.String(extension.Id),
-		fields.ExtensionVersion.String(extension.Version))
+		fields.ExtensionVersion.String(extension.Version),
+	)
 
 	allEnv := []string{}
 	allEnv = append(allEnv, os.Environ()...)

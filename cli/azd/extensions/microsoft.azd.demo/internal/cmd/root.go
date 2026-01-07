@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +29,9 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newMcpCommand())
 	rootCmd.AddCommand(newGhUrlParseCommand())
+
+	// Add hidden command tree export for telemetry and Fig completions
+	rootCmd.AddCommand(azdext.NewCommandTreeCommand(rootCmd))
 
 	return rootCmd
 }

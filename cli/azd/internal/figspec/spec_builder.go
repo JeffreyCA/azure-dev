@@ -15,11 +15,12 @@ import (
 // SpecBuilder builds Fig autocomplete specifications from Cobra commands.
 // Note: This is different from Fig's concept of "generators" which are dynamic completion functions.
 type SpecBuilder struct {
-	suggestionProvider CustomSuggestionProvider
-	generatorProvider  CustomGeneratorProvider
-	argsProvider       CustomArgsProvider
-	flagArgsProvider   CustomFlagArgsProvider
-	includeHidden      bool
+	suggestionProvider  CustomSuggestionProvider
+	generatorProvider   CustomGeneratorProvider
+	argsProvider        CustomArgsProvider
+	flagArgsProvider    CustomFlagArgsProvider
+	extensionSpecLoader ExtensionSpecLoader
+	includeHidden       bool
 }
 
 // NewSpecBuilder creates a new Fig spec builder
@@ -32,6 +33,12 @@ func NewSpecBuilder(includeHidden bool) *SpecBuilder {
 		flagArgsProvider:   azd,
 		includeHidden:      includeHidden,
 	}
+}
+
+// WithExtensionSpecLoader sets an extension spec loader for enriching extension commands.
+func (sb *SpecBuilder) WithExtensionSpecLoader(loader ExtensionSpecLoader) *SpecBuilder {
+	sb.extensionSpecLoader = loader
+	return sb
 }
 
 // generateNonPersistentGlobalOptions generates options for non-persistent global flags (--help, --docs)
@@ -91,6 +98,15 @@ func (sb *SpecBuilder) generateSubcommands(cmd *cobra.Command, ctx *CommandConte
 		localOpts := sb.generateOptions(sub.LocalNonPersistentFlags(), subCtx.CommandPath, false)
 		args := sb.generateCommandArgs(sub, subCtx)
 		nestedSubcommands := sb.generateSubcommands(sub, subCtx)
+
+		// Check if this is an extension command and enrich with extension spec
+		if extensionID, hasExtension := sub.Annotations["extension.id"]; hasExtension && sb.extensionSpecLoader != nil {
+			if spec := sb.extensionSpecLoader.LoadExtensionSpec(extensionID); spec != nil {
+				// Replace/extend subcommands with extension command tree
+				extensionSubcommands := convertCommandSpecToSubcommands(spec.Commands)
+				nestedSubcommands = append(nestedSubcommands, extensionSubcommands...)
+			}
+		}
 
 		subcommands = append(subcommands, Subcommand{
 			Name:        names,

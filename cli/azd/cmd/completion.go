@@ -9,6 +9,7 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/internal/figspec"
+	"github.com/azure/azure-dev/cli/azd/pkg/extensions"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/spf13/cobra"
 )
@@ -140,14 +141,20 @@ func newCompletionFigFlags(cmd *cobra.Command) *completionFigFlags {
 }
 
 type completionFigAction struct {
-	flags *completionFigFlags
-	cmd   *cobra.Command
+	flags            *completionFigFlags
+	cmd              *cobra.Command
+	extensionManager *extensions.Manager
 }
 
-func newCompletionFigAction(cmd *cobra.Command, flags *completionFigFlags) actions.Action {
+func newCompletionFigAction(
+	cmd *cobra.Command,
+	flags *completionFigFlags,
+	extensionManager *extensions.Manager,
+) actions.Action {
 	return &completionFigAction{
-		flags: flags,
-		cmd:   cmd,
+		flags:            flags,
+		cmd:              cmd,
+		extensionManager: extensionManager,
 	}
 }
 
@@ -180,6 +187,19 @@ func (a *completionFigAction) Run(ctx context.Context) (*actions.ActionResult, e
 
 	// Generate the Fig spec
 	builder := figspec.NewSpecBuilder(a.flags.includeHidden)
+
+	// Add extension spec loader to enrich extension commands
+	if a.extensionManager != nil {
+		loader := figspec.NewExtensionSpecLoader(func(extensionID string) *extensions.CommandSpec {
+			ext, err := a.extensionManager.GetInstalled(extensions.FilterOptions{Id: extensionID})
+			if err != nil {
+				return nil
+			}
+			return extensions.LoadCommandSpec(ext.Path)
+		})
+		builder.WithExtensionSpecLoader(loader)
+	}
+
 	spec := builder.BuildSpec(rootCmd)
 
 	// Convert to TypeScript

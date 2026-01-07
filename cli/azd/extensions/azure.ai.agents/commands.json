@@ -1,0 +1,43 @@
+{
+  "commands": [
+    {
+      "name": "init",
+      "description": "Initialize a new AI agent project. (Preview)",
+      "flags": [
+        {
+          "name": "environment",
+          "shorthand": "e",
+          "description": "The name of the azd environment to use.",
+          "takesValue": true
+        },
+        {
+          "name": "host",
+          "description": "[Optional] For container based agents, can override the default host to target a container app instead. Accepted values: 'containerapp'",
+          "takesValue": true
+        },
+        {
+          "name": "manifest",
+          "shorthand": "m",
+          "description": "Path or URI to an agent manifest to add to your azd project",
+          "takesValue": true
+        },
+        {
+          "name": "project-id",
+          "shorthand": "p",
+          "description": "Existing Microsoft Foundry Project Id to initialize your azd environment with",
+          "takesValue": true
+        },
+        {
+          "name": "src",
+          "shorthand": "s",
+          "description": "[Optional] Directory to download the agent definition to (defaults to 'src/\u003cagent-id\u003e')",
+          "takesValue": true
+        }
+      ]
+    },
+    {
+      "name": "version",
+      "description": "Prints the version of the application"
+    }
+  ]
+}
