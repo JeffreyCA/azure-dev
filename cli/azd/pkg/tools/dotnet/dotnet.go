@@ -152,26 +152,27 @@ func (cli *Cli) PublishAppHostManifest(
 		return os.WriteFile(manifestPath, m, osutil.PermissionFile)
 	}
 
-	// For single-file apphost, we need to use the .cs file directly
-	var runArgs exec.RunArgs
+	binlogPath := filepath.Join(filepath.Dir(manifestPath), "manifest.binlog")
+
+	args := []string{"run"}
 	if filepath.Ext(hostProject) == ".cs" {
 		// Single-file apphost: use the .cs file directly as the argument
-		runArgs = exec.NewRunArgs(
-			"dotnet", "run", filepath.Base(hostProject), "--publisher", "manifest", "--output-path", manifestPath)
+		args = append(args, filepath.Base(hostProject))
 	} else {
 		// Project-based apphost: use --project flag
-		runArgs = exec.NewRunArgs(
-			"dotnet",
-			"run",
-			"--project",
-			filepath.Base(hostProject),
-			"--publisher",
-			"manifest",
-			"--output-path",
-			manifestPath)
+		args = append(args, "--project", filepath.Base(hostProject))
 	}
 
-	runArgs = runArgs.WithCwd(filepath.Dir(hostProject))
+	args = append(args,
+		"-v:diag",
+		fmt.Sprintf("-bl:%s", binlogPath),
+		"--publisher",
+		"manifest",
+		"--output-path",
+		manifestPath,
+	)
+
+	runArgs := newDotNetRunArgs(args...).WithCwd(filepath.Dir(hostProject))
 
 	// AppHost may conditionalize their infrastructure based on the environment, so we need to pass the environment when we
 	// are `dotnet run`ing the app host project to produce its manifest.
@@ -523,6 +524,8 @@ func newDotNetRunArgs(args ...string) exec.RunArgs {
 	runArgs := exec.NewRunArgs("dotnet", args...)
 
 	runArgs = runArgs.WithEnv([]string{
+		"DOTNET_CLI_TELEMETRY_OPTOUT=1",
+		"DOTNET_CLI_UI_LANGUAGE=en",
 		"DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1",
 		"DOTNET_NOLOGO=1",
 	})

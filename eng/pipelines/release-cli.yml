@@ -65,6 +65,9 @@ extends:
               SetShieldInfo: true
               BuildLinuxPackages: true
               AZURE_DEV_CI_OS: lin
+              AZD_TEST_FLAKY_TARGET: ^Test_CLI_Aspire
+              AZD_TEST_FLAKY_REPEAT: 10
+              AZD_SKIP_DOTNET_CACHE_CLEAR: true
               Codeql.Enabled: true
               Codeql.SkipTaskAutoInjection: false
               Codeql.BuildIdentifier: cli_linux
@@ -92,6 +95,9 @@ extends:
               MacLocalSign: false
               SetExecutableBit: true
               AZURE_DEV_CI_OS: mac
+              AZD_TEST_FLAKY_TARGET: ^Test_CLI_Aspire
+              AZD_TEST_FLAKY_REPEAT: 10
+              AZD_SKIP_DOTNET_CACHE_CLEAR: true
               # CodeQL on macOS not supported by the Azure DevOps task as-of current.
               # Codeql.BuildIdentifier: cli_darwin
 

@@ -39,9 +39,21 @@ func Test_CLI_Aspire_DetectGen(t *testing.T) {
 	snRoot := filepath.Join("testdata", "snaps", "aspire-full")
 
 	t.Run("ManifestGen", func(t *testing.T) {
-		t.Parallel()
 		ctx, cancel := newTestContext(t)
 		defer cancel()
+		// Avoid t.Parallel because Setenv is used for dotnet logging defaults.
+
+		t.Setenv("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+		t.Setenv("DOTNET_CLI_UI_LANGUAGE", "en")
+
+		initialTime := time.Now()
+		dotnetStdOut := &logWriter{t: t, prefix: "dotnet stdout:", initialTime: initialTime}
+		dotnetStdErr := &logWriter{t: t, prefix: "dotnet stderr:", initialTime: initialTime}
+		runner := exec.NewCommandRunner(&exec.RunnerOptions{
+			Stdout:       dotnetStdOut,
+			Stderr:       dotnetStdErr,
+			DebugLogging: true,
+		})
 
 		dir := t.TempDir()
 		// avoid symlinked paths as this may result in the final path returned
@@ -59,11 +71,16 @@ func Test_CLI_Aspire_DetectGen(t *testing.T) {
 
 		err = copySample(dir, "aspire-full")
 		require.NoError(t, err, "failed expanding sample")
-
-		dotnetCli := dotnet.NewCli(exec.NewCommandRunner(nil))
 		appHostProject := filepath.Join(dir, "AspireAzdTests.AppHost")
 		manifestPath := filepath.Join(appHostProject, "manifest.json")
 
+		_, err = runner.Run(ctx, exec.NewRunArgs("dotnet", "--info"))
+		require.NoError(t, err)
+
+		_, err = runner.Run(ctx, exec.NewRunArgs("dotnet", "nuget", "locals", "all", "--list"))
+		require.NoError(t, err)
+
+		dotnetCli := dotnet.NewCli(runner)
 		err = dotnetCli.PublishAppHostManifest(ctx, appHostProject, manifestPath, "")
 		require.NoError(t, err)
 

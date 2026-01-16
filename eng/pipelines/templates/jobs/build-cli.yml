@@ -160,6 +160,8 @@ jobs:
           #
           # Without this disabled, we often see tests failing due to MSBuild worker processes being shared across concurrent tests.
           MSBUILDDISABLENODEREUSE: 1
+          AZD_TEST_FLAKY_TARGET: $(AZD_TEST_FLAKY_TARGET)
+          AZD_TEST_FLAKY_REPEAT: $(AZD_TEST_FLAKY_REPEAT)
 
       - task: PublishTestResults@2
         inputs:
