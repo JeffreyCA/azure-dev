@@ -184,12 +184,33 @@ func promptRequiredCapacity(
 		usageName = "selected usage meter"
 	}
 
+	defaultCapacity := int32(1)
+	helpMessage := fmt.Sprintf("Current %.0f / Limit %.0f", usage.GetCurrent(), usage.GetLimit())
+	return promptRequiredCapacityForUsage(ctx, azdClient, usageName, defaultCapacity, helpMessage)
+}
+
+func promptRequiredCapacityForUsage(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	usageName string,
+	defaultCapacity int32,
+	helpMessage string,
+) (int32, error) {
+	trimmedUsageName := strings.TrimSpace(usageName)
+	if trimmedUsageName == "" {
+		trimmedUsageName = "selected usage meter"
+	}
+
+	if defaultCapacity <= 0 {
+		defaultCapacity = 1
+	}
+
 	response, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
-			Message:      fmt.Sprintf("Required capacity for %s", usageName),
+			Message:      fmt.Sprintf("Required capacity for %s", trimmedUsageName),
 			Required:     true,
-			DefaultValue: "1",
-			HelpMessage:  fmt.Sprintf("Current %.0f / Limit %.0f", usage.GetCurrent(), usage.GetLimit()),
+			DefaultValue: fmt.Sprintf("%d", defaultCapacity),
+			HelpMessage:  helpMessage,
 		},
 	})
 	if err != nil {
@@ -206,6 +227,24 @@ func promptRequiredCapacity(
 	}
 
 	return int32(capacity), nil
+}
+
+func filterUsageMeters(usages []*azdext.AiUsage, excludedUsageNames map[string]struct{}) []*azdext.AiUsage {
+	if len(usages) == 0 || len(excludedUsageNames) == 0 {
+		return usages
+	}
+
+	filtered := make([]*azdext.AiUsage, 0, len(usages))
+	for _, usage := range usages {
+		usageName := strings.ToLower(strings.TrimSpace(usage.GetName()))
+		if _, has := excludedUsageNames[usageName]; has {
+			continue
+		}
+
+		filtered = append(filtered, usage)
+	}
+
+	return filtered
 }
 
 func promptUsageSelection(

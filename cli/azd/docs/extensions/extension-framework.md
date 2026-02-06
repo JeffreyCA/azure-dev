@@ -1654,7 +1654,7 @@ Retrieves the current deployment context.
 
 ### AI Service
 
-This service provides model catalog, location, and quota/usage operations for Azure AI Services.
+This service provides model catalog, location, quota/usage, and deployment-fit operations for Azure AI Services.
 
 > See [ai.proto](../grpc/proto/ai.proto) for message and method definitions.
 
@@ -1706,6 +1706,25 @@ Finds locations where all requested usage requirements are satisfied.
   - `matched_locations` (repeated string)
   - `results` (repeated _AiLocationQuotaResult_ with per-location diagnostics)
 
+#### FindLocationsForModelWithQuota
+
+Finds locations where a specific model deployment candidate is available and all requested usage requirements are satisfied.
+
+- **Request:** _AiFindLocationsForModelWithQuotaRequest_
+  - `subscription_id` (string)
+  - `model_name` (string)
+  - `locations` (repeated string, optional candidate allow-list)
+  - `versions` (repeated string, optional)
+  - `skus` (repeated string, optional)
+  - `kinds` (repeated string, optional)
+  - `formats` (repeated string, optional)
+  - `statuses` (repeated string, optional)
+  - `capabilities` (repeated string, optional)
+  - `requirements` (repeated _AiUsageRequirement_ using `usage_name` and `required_capacity`)
+- **Response:** _AiFindLocationsForModelWithQuotaResponse_
+  - `matched_locations` (repeated string)
+  - `results` (repeated _AiModelLocationQuotaResult_ with per-location deployment + quota diagnostics)
+
 **Example Usage (Go):**
 
 ```go
@@ -1716,16 +1735,19 @@ if err != nil {
 }
 defer azdClient.Close()
 
-catalog, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
+resp, err := azdClient.Ai().FindLocationsForModelWithQuota(ctx, &azdext.AiFindLocationsForModelWithQuotaRequest{
     SubscriptionId: "00000000-0000-0000-0000-000000000000",
-    Locations:      []string{"eastus"},
+    ModelName:      "gpt-4o",
     Kinds:          []string{"Chat"},
+    Requirements: []*azdext.AiUsageRequirement{
+        {UsageName: "OpenAI.Standard", RequiredCapacity: 10},
+    },
 })
 if err != nil {
-    return fmt.Errorf("listing model catalog: %w", err)
+    return fmt.Errorf("finding model locations with quota: %w", err)
 }
 
-fmt.Printf("Models returned: %d\n", len(catalog.Models))
+fmt.Printf("Eligible locations: %v\n", resp.MatchedLocations)
 ```
 
 ---
@@ -1784,10 +1806,27 @@ Prompts for an AI model deployment candidate in a location.
 
 `--no-prompt` behavior: returns only when a deterministic single candidate can be selected.
 
+#### PromptAiDeployment
+
+Prompts for an AI deployment in two steps: location selection with quota checks, then model deployment selection for that location.
+
+- **Request:** _PromptAiDeploymentRequest_
+  - `azure_context` (AzureContext)
+  - `allowed_locations` (repeated string, optional candidate allow-list)
+  - `requirements` (repeated _AiUsageRequirement_)
+  - `kinds` / `statuses` / `formats` / `capabilities` (repeated string filters)
+  - `preferred_skus` (repeated string, optional ranking hint)
+  - `location_message` / `location_help_message` (string, optional)
+  - `model_message` / `model_help_message` (string, optional)
+- **Response:** _PromptAiDeploymentResponse_
+  - `model` (_AiModelSelection_ with model/version/location/sku metadata)
+
+`--no-prompt` behavior: enforces the same deterministic requirements as `PromptAiLocation` and `PromptAiModel` in sequence.
+
 **Example Usage (Go):**
 
 ```go
-locationResp, err := azdClient.Prompt().PromptAiLocation(ctx, &azdext.PromptAiLocationRequest{
+deployResp, err := azdClient.Prompt().PromptAiDeployment(ctx, &azdext.PromptAiDeploymentRequest{
     AzureContext: &azdext.AzureContext{
         Scope: &azdext.AzureScope{
             SubscriptionId: "00000000-0000-0000-0000-000000000000",
@@ -1796,26 +1835,19 @@ locationResp, err := azdClient.Prompt().PromptAiLocation(ctx, &azdext.PromptAiLo
     Requirements: []*azdext.AiUsageRequirement{
         {UsageName: "OpenAI.Standard", RequiredCapacity: 10},
     },
-})
-if err != nil {
-    return fmt.Errorf("prompting AI location: %w", err)
-}
-
-modelResp, err := azdClient.Prompt().PromptAiModel(ctx, &azdext.PromptAiModelRequest{
-    AzureContext: &azdext.AzureContext{
-        Scope: &azdext.AzureScope{
-            SubscriptionId: "00000000-0000-0000-0000-000000000000",
-            Location:       locationResp.Location.Name,
-        },
-    },
-    Location: locationResp.Location.Name,
     Kinds:    []string{"Chat"},
 })
 if err != nil {
-    return fmt.Errorf("prompting AI model: %w", err)
+    return fmt.Errorf("prompting AI deployment: %w", err)
 }
 
-fmt.Printf("Selected model: %s %s\n", modelResp.Model.Name, modelResp.Model.Version)
+fmt.Printf(
+    "Selected deployment: model=%s version=%s sku=%s location=%s\n",
+    deployResp.Model.Name,
+    deployResp.Model.Version,
+    deployResp.Model.Sku.Name,
+    deployResp.Model.Location,
+)
 ```
 
 #### PromptResourceGroup

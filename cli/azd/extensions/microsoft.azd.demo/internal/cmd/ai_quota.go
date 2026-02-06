@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
@@ -19,7 +20,7 @@ var quotaErrorCodeRegex = regexp.MustCompile(`ERROR CODE:\s*([A-Za-z0-9]+)`)
 func newAiQuotaCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "quota",
-		Short: "Interactively find locations that can deploy a model and satisfy quota.",
+		Short: "Interactively find locations that satisfy model deployment and quota requirements.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
 				scope, err := promptSubscriptionScope(ctx, azdClient)
@@ -27,28 +28,55 @@ func newAiQuotaCommand() *cobra.Command {
 					return err
 				}
 
-				limitLocationResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
-					Options: &azdext.ConfirmOptions{
-						Message:      "Limit quota check to one location?",
-						DefaultValue: boolPtr(false),
-					},
+				catalogResp, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
+					SubscriptionId: scope.SubscriptionId,
 				})
 				if err != nil {
 					return err
 				}
-
-				locations := []string{}
-				if limitLocationResp.GetValue() {
-					location, err := promptLocationForScope(ctx, azdClient, scope)
-					if err != nil {
-						return err
-					}
-
-					locations = []string{location}
+				if len(catalogResp.GetModels()) == 0 {
+					fmt.Println("No AI model catalog entries found.")
+					return nil
 				}
 
-				requirements := []*azdext.AiUsageRequirement{}
-				addAdditionalResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+				modelSelection, err := promptQuotaModelSelection(ctx, azdClient, catalogResp.GetModels())
+				if err != nil {
+					return err
+				}
+				if modelSelection.Sku == nil {
+					return fmt.Errorf("model SKU selection is required")
+				}
+				if strings.TrimSpace(modelSelection.Sku.GetUsageName()) == "" {
+					return fmt.Errorf("selected model SKU does not have a usage meter name")
+				}
+				if len(modelSelection.Locations) == 0 {
+					return fmt.Errorf("selected model does not have any eligible locations")
+				}
+
+				defaultCapacity := modelSelection.Sku.GetCapacityDefault()
+				if defaultCapacity <= 0 {
+					defaultCapacity = 1
+				}
+
+				baseRequiredCapacity, err := promptRequiredCapacityForUsage(
+					ctx,
+					azdClient,
+					modelSelection.Sku.GetUsageName(),
+					defaultCapacity,
+					"Set required capacity for the selected deployment SKU.",
+				)
+				if err != nil {
+					return err
+				}
+
+				requirements := []*azdext.AiUsageRequirement{
+					{
+						UsageName:        modelSelection.Sku.GetUsageName(),
+						RequiredCapacity: baseRequiredCapacity,
+					},
+				}
+
+				addExtraResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
 					Options: &azdext.ConfirmOptions{
 						Message:      "Add extra usage requirements?",
 						DefaultValue: boolPtr(false),
@@ -57,41 +85,47 @@ func newAiQuotaCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if addAdditionalResp.GetValue() {
-					usageMeters, err := resolveUsageMetersForPrompt(ctx, azdClient, scope.SubscriptionId, locations)
+
+				if addExtraResp.GetValue() {
+					usageMeters, err := resolveUsageMetersForPrompt(
+						ctx,
+						azdClient,
+						scope.SubscriptionId,
+						modelSelection.Locations,
+					)
 					if err != nil {
 						return err
 					}
 
-					requirements, err = promptQuotaRequirements(ctx, azdClient, usageMeters)
-					if err != nil {
-						return err
+					excludedUsageNames := map[string]struct{}{
+						strings.ToLower(strings.TrimSpace(modelSelection.Sku.GetUsageName())): {},
+					}
+					usageMeters = filterUsageMeters(usageMeters, excludedUsageNames)
+					if len(usageMeters) > 0 {
+						extraRequirements, err := promptQuotaRequirements(ctx, azdClient, usageMeters)
+						if err != nil {
+							return err
+						}
+
+						requirements = append(requirements, extraRequirements...)
 					}
 				}
 
-				deploymentResp, err := azdClient.Prompt().PromptAiDeployment(ctx, &azdext.PromptAiDeploymentRequest{
-					AzureContext: &azdext.AzureContext{
-						Scope: scope,
-					},
-					AllowedLocations: locations,
-					Requirements:     requirements,
-					LocationMessage:  "Select a location for AI deployment:",
-					ModelMessage:     "Select an AI model deployment configuration:",
-				})
-				if err != nil {
-					return err
-				}
-				modelSelection := deploymentResp.GetModel()
-				if modelSelection == nil {
-					return fmt.Errorf("no AI deployment selection returned")
-				}
-				fmt.Println("Model deployment selection:")
-				printAiModelSelection(modelSelection)
+				fmt.Println("Quota check target:")
+				fmt.Printf("  model: %s\n", modelSelection.ModelName)
+				fmt.Printf("  version: %s\n", modelSelection.Version)
+				fmt.Printf("  sku: %s\n", modelSelection.Sku.GetName())
+				fmt.Printf("  usage meter: %s\n", modelSelection.Sku.GetUsageName())
+				fmt.Printf("  required capacity: %d\n", baseRequiredCapacity)
 
 				req, err := buildAiFindLocationsForModelWithQuotaRequest(
 					scope.SubscriptionId,
-					locations,
-					modelSelection,
+					slices.Clone(modelSelection.Locations),
+					&azdext.AiModelSelection{
+						Name:    modelSelection.ModelName,
+						Version: modelSelection.Version,
+						Sku:     modelSelection.Sku,
+					},
 					requirements,
 				)
 				if err != nil {

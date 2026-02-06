@@ -13,6 +13,7 @@ func newAiCommand() *cobra.Command {
 
 	aiCmd.AddCommand(newAiCatalogCommand())
 	aiCmd.AddCommand(newAiUsagesCommand())
+	aiCmd.AddCommand(newAiDeploymentCommand())
 	aiCmd.AddCommand(newAiQuotaCommand())
 
 	return aiCmd

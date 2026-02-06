@@ -30,6 +30,9 @@ examples:
   - name: ai catalog
     description: List AI model catalog entries.
     usage: azd demo ai catalog
+  - name: ai deployment
+    description: Select a single AI deployment configuration.
+    usage: azd demo ai deployment
   - name: ai quota
-    description: Find locations that can deploy a model and satisfy AI quota.
+    description: Find locations that satisfy model deployment and AI quota requirements.
     usage: azd demo ai quota

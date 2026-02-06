@@ -84,9 +84,19 @@ Example:
 azd demo ai usages
 ```
 
+#### `azd demo ai deployment`
+
+Selects one deployable AI configuration (location + model deployment) using `PromptService.PromptAiDeployment`.
+
+Example:
+
+```bash
+azd demo ai deployment
+```
+
 #### `azd demo ai quota`
 
-Finds locations that can deploy a selected model and satisfy quota using `AiService.FindLocationsForModelWithQuota`.
+Prompts for model/version/SKU requirements, then finds locations that satisfy deployment + quota using `AiService.FindLocationsForModelWithQuota`.
 
 Example:
 
