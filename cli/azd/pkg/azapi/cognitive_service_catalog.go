@@ -351,6 +351,7 @@ func (cli *AzureClient) ListAiModelCatalog(
 			}
 
 			existing.IsDefaultVersion = existing.IsDefaultVersion || versionWithKey.version.IsDefaultVersion
+			existing.Capabilities = mergeModelCapabilities(existing.Capabilities, versionWithKey.version.Capabilities)
 			existing.Skus = mergeModelSkus(existing.Skus, versionWithKey.version.Skus)
 		}
 	}
@@ -610,7 +611,6 @@ func toAiModelVersion(model *armcognitiveservices.Model) (versionByKey, bool) {
 		kind,
 		format,
 		status,
-		strings.Join(capabilities, ","),
 	}, "|")
 
 	return versionByKey{
@@ -648,6 +648,36 @@ func mergeModelSkus(existing []AiModelSku, incoming []AiModelSku) []AiModelSku {
 		index[key] = len(merged) - 1
 	}
 
+	return merged
+}
+
+func mergeModelCapabilities(existing []string, incoming []string) []string {
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	index := make(map[string]int, len(existing))
+	for i, capability := range existing {
+		index[strings.ToLower(capability)] = i
+	}
+
+	merged := slices.Clone(existing)
+	for _, capability := range incoming {
+		trimmed := strings.TrimSpace(capability)
+		if trimmed == "" {
+			continue
+		}
+
+		key := strings.ToLower(trimmed)
+		if _, has := index[key]; has {
+			continue
+		}
+
+		merged = append(merged, trimmed)
+		index[key] = len(merged) - 1
+	}
+
+	slices.Sort(merged)
 	return merged
 }
 

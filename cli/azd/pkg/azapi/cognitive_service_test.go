@@ -223,3 +223,47 @@ func Test_FindAiLocationsWithQuota(t *testing.T) {
 		require.Len(t, result.Results, 2)
 	})
 }
+
+func Test_ToAiModelVersion_IgnoresCapabilitiesInVersionKey(t *testing.T) {
+	modelA := &armcognitiveservices.Model{
+		Kind: to.Ptr("OpenAI"),
+		Model: &armcognitiveservices.AccountModel{
+			Name:            to.Ptr("gpt-4o"),
+			Version:         to.Ptr("0613"),
+			Format:          to.Ptr("OpenAI"),
+			LifecycleStatus: to.Ptr(armcognitiveservices.ModelLifecycleStatusGenerallyAvailable),
+			Capabilities: map[string]*string{
+				"ChatCompletion": to.Ptr("true"),
+			},
+		},
+	}
+
+	modelB := &armcognitiveservices.Model{
+		Kind: to.Ptr("OpenAI"),
+		Model: &armcognitiveservices.AccountModel{
+			Name:            to.Ptr("gpt-4o"),
+			Version:         to.Ptr("0613"),
+			Format:          to.Ptr("OpenAI"),
+			LifecycleStatus: to.Ptr(armcognitiveservices.ModelLifecycleStatusGenerallyAvailable),
+			Capabilities: map[string]*string{
+				"Embeddings": to.Ptr("true"),
+			},
+		},
+	}
+
+	versionA, ok := toAiModelVersion(modelA)
+	require.True(t, ok)
+	versionB, ok := toAiModelVersion(modelB)
+	require.True(t, ok)
+
+	require.Equal(t, versionA.key, versionB.key)
+}
+
+func Test_MergeModelCapabilities_DeduplicatesAndSorts(t *testing.T) {
+	merged := mergeModelCapabilities(
+		[]string{"ChatCompletion", "Embeddings"},
+		[]string{"chatcompletion", "Reasoning", " ", "Embeddings"},
+	)
+
+	require.Equal(t, []string{"ChatCompletion", "Embeddings", "Reasoning"}, merged)
+}

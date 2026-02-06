@@ -77,7 +77,7 @@ func newAiCatalogCommand() *cobra.Command {
 func newAiUsagesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "usages",
-		Short: "Interactively list AI quota usage.",
+		Short: "Interactively select and inspect AI quota usage.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
 				scope, err := promptSubscriptionScope(ctx, azdClient)
@@ -90,15 +90,9 @@ func newAiUsagesCommand() *cobra.Command {
 					return err
 				}
 
-				namePrefix, err := promptUsageNamePrefix(ctx, azdClient)
-				if err != nil {
-					return err
-				}
-
 				resp, err := azdClient.Ai().ListUsages(ctx, &azdext.AiListUsagesRequest{
 					SubscriptionId: scope.SubscriptionId,
 					Location:       location,
-					NamePrefix:     namePrefix,
 				})
 				if err != nil {
 					return err
@@ -109,7 +103,11 @@ func newAiUsagesCommand() *cobra.Command {
 					return nil
 				}
 
-				printUsageSummary(resp.Usages)
+				selectedUsage, err := promptUsageSelection(ctx, azdClient, resp.Usages)
+				if err != nil {
+					return err
+				}
+				printUsageDetails(selectedUsage, location)
 
 				return nil
 			})
@@ -360,40 +358,71 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
-func promptUsageNamePrefix(
+func promptUsageSelection(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,
-) (string, error) {
-	response, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
-		Options: &azdext.PromptOptions{
-			Message:      "Optional usage name prefix (press enter for all usages)",
-			DefaultValue: "OpenAI.",
+	usages []*azdext.AiUsage,
+) (*azdext.AiUsage, error) {
+	if len(usages) == 0 {
+		return nil, fmt.Errorf("no usage records available for selection")
+	}
+
+	choices := make([]*azdext.SelectChoice, 0, len(usages))
+	for _, usage := range usages {
+		name := strings.TrimSpace(usage.GetName())
+		if name == "" {
+			name = "<unnamed usage>"
+		}
+
+		choices = append(choices, &azdext.SelectChoice{
+			Label: name,
+			Value: name,
+		})
+	}
+
+	enableFiltering := true
+	displayCount := int32(min(12, len(choices)))
+	response, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+		Options: &azdext.SelectOptions{
+			Message:         "Select a usage meter:",
+			Choices:         choices,
+			EnableFiltering: &enableFiltering,
+			DisplayCount:    displayCount,
 		},
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return strings.TrimSpace(response.GetValue()), nil
+	index := int(response.GetValue())
+	if index < 0 || index >= len(usages) {
+		return nil, fmt.Errorf("invalid usage selection index: %d", response.GetValue())
+	}
+
+	return usages[index], nil
 }
 
-func printUsageSummary(usages []*azdext.AiUsage) {
-	const maxRows = 15
+func printUsageDetails(usage *azdext.AiUsage, location string) {
+	if usage == nil {
+		fmt.Println("No usage selected.")
+		return
+	}
 
-	fmt.Printf("Usage records: %d\n", len(usages))
-	for i, usage := range usages {
-		if i >= maxRows {
-			fmt.Printf("... and %d more (use --name-prefix to narrow)\n", len(usages)-maxRows)
-			break
+	fmt.Println("Usage details:")
+	fmt.Printf("  location: %s\n", location)
+	fmt.Printf("  name: %s\n", usage.GetName())
+	fmt.Printf("  current: %.0f\n", usage.GetCurrent())
+	fmt.Printf("  limit: %.0f\n", usage.GetLimit())
+	fmt.Printf("  remaining: %.0f\n", usage.GetRemaining())
+	if usage.GetUnit() != "" {
+		fmt.Printf("  unit: %s\n", usage.GetUnit())
+	}
+	if usage.GetLimit() > 0 {
+		utilization := (usage.GetCurrent() / usage.GetLimit()) * 100
+		if utilization < 0 {
+			utilization = 0
 		}
-
-		fmt.Printf(
-			"- %s: %.0f / %.0f remaining %.0f\n",
-			usage.Name,
-			usage.Current,
-			usage.Limit,
-			usage.Remaining,
-		)
+		fmt.Printf("  utilization: %.1f%%\n", utilization)
 	}
 }
 
@@ -516,14 +545,15 @@ func promptForModelCatalogSelection(
 	if selectedLocation == nil {
 		return nil, fmt.Errorf("selected model is not available in location '%s'", location)
 	}
-	if len(selectedLocation.GetVersions()) == 0 {
+	versionOptions := selectedLocation.GetVersions()
+	if len(versionOptions) == 0 {
 		return nil, fmt.Errorf("no model versions found for '%s' in '%s'", selectedModel.GetName(), location)
 	}
 
-	selectedVersion := selectedLocation.GetVersions()[0]
-	if len(selectedLocation.GetVersions()) > 1 {
-		choices := make([]*azdext.SelectChoice, 0, len(selectedLocation.GetVersions()))
-		for _, version := range selectedLocation.GetVersions() {
+	selectedVersion := versionOptions[0]
+	if len(versionOptions) > 1 {
+		choices := make([]*azdext.SelectChoice, 0, len(versionOptions))
+		for _, version := range versionOptions {
 			label := version.GetVersion()
 			if version.GetIsDefaultVersion() {
 				label = fmt.Sprintf("%s (default)", label)
@@ -543,17 +573,18 @@ func promptForModelCatalogSelection(
 		if err != nil {
 			return nil, fmt.Errorf("failed to prompt for model version selection: %w", err)
 		}
-		selectedVersion = selectedLocation.GetVersions()[versionResp.GetValue()]
+		selectedVersion = versionOptions[versionResp.GetValue()]
 	}
 
-	if len(selectedVersion.GetSkus()) == 0 {
+	skus := selectedVersion.GetSkus()
+	if len(skus) == 0 {
 		return nil, fmt.Errorf("no SKUs found for model '%s' version '%s'", selectedModel.GetName(), selectedVersion.GetVersion())
 	}
 
-	selectedSku := selectedVersion.GetSkus()[0]
-	if len(selectedVersion.GetSkus()) > 1 {
-		choices := make([]*azdext.SelectChoice, 0, len(selectedVersion.GetSkus()))
-		for _, sku := range selectedVersion.GetSkus() {
+	selectedSku := skus[0]
+	if len(skus) > 1 {
+		choices := make([]*azdext.SelectChoice, 0, len(skus))
+		for _, sku := range skus {
 			label := fmt.Sprintf(
 				"%s (usage=%s, default_capacity=%d)",
 				sku.GetName(),
@@ -575,7 +606,7 @@ func promptForModelCatalogSelection(
 		if err != nil {
 			return nil, fmt.Errorf("failed to prompt for model SKU selection: %w", err)
 		}
-		selectedSku = selectedVersion.GetSkus()[skuResp.GetValue()]
+		selectedSku = skus[skuResp.GetValue()]
 	}
 
 	return &azdext.AiModelSelection{
