@@ -22,6 +22,21 @@ func newAiDeploymentCommand() *cobra.Command {
 					return err
 				}
 
+				selectionMode := azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST
+				modelFirstResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+					Options: &azdext.ConfirmOptions{
+						Message:      "Focus deployment selection on model first?",
+						DefaultValue: boolPtr(false),
+					},
+				})
+				if err != nil {
+					return err
+				}
+				if modelFirstResp.GetValue() {
+					selectionMode = azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST
+				}
+
+				allowedLocations := []string{}
 				requirements := []*azdext.AiUsageRequirement{}
 				includeQuotaResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
 					Options: &azdext.ConfirmOptions{
@@ -33,14 +48,29 @@ func newAiDeploymentCommand() *cobra.Command {
 					return err
 				}
 				if includeQuotaResp.GetValue() {
-					usageMeters, err := resolveUsageMetersForPrompt(ctx, azdClient, scope.SubscriptionId, nil)
+					selectedLocation, err := promptLocationForScope(ctx, azdClient, scope)
 					if err != nil {
 						return err
 					}
 
-					requirements, err = promptQuotaRequirements(ctx, azdClient, usageMeters)
+					usageResp, err := azdClient.Ai().ListUsages(ctx, &azdext.AiListUsagesRequest{
+						SubscriptionId: scope.SubscriptionId,
+						Location:       selectedLocation,
+					})
 					if err != nil {
 						return err
+					}
+					if len(usageResp.GetUsages()) == 0 {
+						return fmt.Errorf("no usage meters found in location '%s'", selectedLocation)
+					}
+
+					requirements, err = promptQuotaRequirements(ctx, azdClient, usageResp.GetUsages())
+					if err != nil {
+						return err
+					}
+
+					if selectionMode == azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST {
+						allowedLocations = []string{selectedLocation}
 					}
 				}
 
@@ -48,9 +78,11 @@ func newAiDeploymentCommand() *cobra.Command {
 					AzureContext: &azdext.AzureContext{
 						Scope: scope,
 					},
-					Requirements:    requirements,
-					LocationMessage: "Select an Azure location for AI deployment:",
-					ModelMessage:    "Select an AI model deployment configuration:",
+					AllowedLocations: allowedLocations,
+					Requirements:     requirements,
+					LocationMessage:  "Select an Azure location for AI deployment:",
+					ModelMessage:     "Select an AI model deployment configuration:",
+					SelectionMode:    selectionMode,
 				})
 				if err != nil {
 					return err

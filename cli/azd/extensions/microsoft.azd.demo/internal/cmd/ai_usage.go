@@ -229,24 +229,6 @@ func promptRequiredCapacityForUsage(
 	return int32(capacity), nil
 }
 
-func filterUsageMeters(usages []*azdext.AiUsage, excludedUsageNames map[string]struct{}) []*azdext.AiUsage {
-	if len(usages) == 0 || len(excludedUsageNames) == 0 {
-		return usages
-	}
-
-	filtered := make([]*azdext.AiUsage, 0, len(usages))
-	for _, usage := range usages {
-		usageName := strings.ToLower(strings.TrimSpace(usage.GetName()))
-		if _, has := excludedUsageNames[usageName]; has {
-			continue
-		}
-
-		filtered = append(filtered, usage)
-	}
-
-	return filtered
-}
-
 func promptUsageSelection(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,

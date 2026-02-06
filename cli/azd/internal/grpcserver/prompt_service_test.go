@@ -942,3 +942,127 @@ func Test_PromptService_PromptAiDeployment_NoPrompt(t *testing.T) {
 	require.Equal(t, "gpt-4o", resp.GetModel().GetName())
 	require.Equal(t, "Standard", resp.GetModel().GetSku().GetName())
 }
+
+func Test_PromptService_PromptAiDeployment_ModelFirst_NoPrompt(t *testing.T) {
+	service := &promptService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(
+				_ context.Context,
+				subscriptionId string,
+				filters azapi.AiModelCatalogFilters,
+			) ([]azapi.AiModelCatalogItem, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, []string{"eastus", "westus"}, filters.Locations)
+				require.Equal(t, []string{"Chat"}, filters.Kinds)
+
+				return []azapi.AiModelCatalogItem{
+					{
+						Name: "gpt-4o",
+						Locations: []azapi.AiModelLocation{
+							{
+								Location: "eastus",
+								Versions: []azapi.AiModelVersion{
+									{
+										Version:          "2024-05-13",
+										IsDefaultVersion: true,
+										Kind:             "Chat",
+										Format:           "OpenAI",
+										Status:           "GenerallyAvailable",
+										Capabilities:     []string{"ChatCompletion"},
+										Skus: []azapi.AiModelSku{
+											{
+												Name:            "Standard",
+												UsageName:       "OpenAI.Standard",
+												CapacityDefault: 10,
+											},
+										},
+									},
+								},
+							},
+							{
+								Location: "westus",
+								Versions: []azapi.AiModelVersion{
+									{
+										Version:          "2024-05-13",
+										IsDefaultVersion: true,
+										Kind:             "Chat",
+										Format:           "OpenAI",
+										Status:           "GenerallyAvailable",
+										Capabilities:     []string{"ChatCompletion"},
+										Skus: []azapi.AiModelSku{
+											{
+												Name:            "Standard",
+												UsageName:       "OpenAI.Standard",
+												CapacityDefault: 10,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				context.Context,
+				string,
+				[]string,
+				[]azapi.AiUsageRequirement,
+				*azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+			findLocationsForModelWithQuotaFn: func(
+				_ context.Context,
+				subscriptionId string,
+				modelName string,
+				options *azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, "gpt-4o", modelName)
+				require.Equal(t, []string{"eastus", "westus"}, options.Locations)
+				require.Equal(t, []string{"2024-05-13"}, options.Versions)
+				require.Equal(t, []string{"Standard"}, options.Skus)
+				require.Len(t, options.Requirements, 1)
+				require.Equal(t, "OpenAI.Standard", options.Requirements[0].UsageName)
+				require.Equal(t, float64(5), options.Requirements[0].RequiredCapacity)
+
+				return &azapi.AiLocationsForModelWithQuotaResult{
+					MatchedLocations: []string{"eastus", "westus"},
+				}, nil
+			},
+		},
+		globalOptions: &internal.GlobalCommandOptions{NoPrompt: true},
+		lock:          newPromptLock(),
+	}
+
+	resp, err := service.PromptAiDeployment(context.Background(), &azdext.PromptAiDeploymentRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: &azdext.AzureScope{
+				SubscriptionId: "sub-123",
+				Location:       "westus",
+			},
+		},
+		AllowedLocations: []string{"eastus", "westus"},
+		Requirements: []*azdext.AiUsageRequirement{
+			{
+				UsageName:        "OpenAI.Standard",
+				RequiredCapacity: 5,
+			},
+		},
+		Kinds:         []string{"Chat"},
+		SelectionMode: azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetModel())
+	require.Equal(t, "westus", resp.GetModel().GetLocation())
+	require.Equal(t, "gpt-4o", resp.GetModel().GetName())
+	require.Equal(t, "2024-05-13", resp.GetModel().GetVersion())
+	require.Equal(t, "Standard", resp.GetModel().GetSku().GetName())
+}

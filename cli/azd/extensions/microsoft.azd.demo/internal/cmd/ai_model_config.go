@@ -155,13 +155,13 @@ func buildAiQuotaVersionChoices(model *azdext.AiModelCatalogItem) []*aiQuotaVers
 	}
 
 	type versionAccumulator struct {
-		version          string
-		isDefaultVersion bool
-		kind             string
-		format           string
-		status           string
-		capabilities     []string
-		skus             map[string]*skuAccumulator
+		version           string
+		isDefaultVersion  bool
+		kind              string
+		format            string
+		status            string
+		capabilitiesByKey map[string]string
+		skus              map[string]*skuAccumulator
 	}
 
 	versionByKey := map[string]*versionAccumulator{}
@@ -172,29 +172,46 @@ func buildAiQuotaVersionChoices(model *azdext.AiModelCatalogItem) []*aiQuotaVers
 		}
 
 		for _, version := range modelLocation.GetVersions() {
-			capabilities := normalizeCapabilities(version.GetCapabilities())
-			versionKey := strings.Join([]string{
-				strings.ToLower(strings.TrimSpace(version.GetVersion())),
-				strings.ToLower(strings.TrimSpace(version.GetKind())),
-				strings.ToLower(strings.TrimSpace(version.GetFormat())),
-				strings.ToLower(strings.TrimSpace(version.GetStatus())),
-				strings.Join(capabilities, ","),
-			}, "|")
+			versionKey := strings.ToLower(strings.TrimSpace(version.GetVersion()))
+			if versionKey == "" {
+				continue
+			}
 
 			versionEntry, has := versionByKey[versionKey]
 			if !has {
 				versionEntry = &versionAccumulator{
-					version:          version.GetVersion(),
-					isDefaultVersion: version.GetIsDefaultVersion(),
-					kind:             version.GetKind(),
-					format:           version.GetFormat(),
-					status:           version.GetStatus(),
-					capabilities:     slices.Clone(version.GetCapabilities()),
-					skus:             map[string]*skuAccumulator{},
+					version:           version.GetVersion(),
+					isDefaultVersion:  version.GetIsDefaultVersion(),
+					kind:              version.GetKind(),
+					format:            version.GetFormat(),
+					status:            version.GetStatus(),
+					capabilitiesByKey: map[string]string{},
+					skus:              map[string]*skuAccumulator{},
 				}
 				versionByKey[versionKey] = versionEntry
 			} else {
 				versionEntry.isDefaultVersion = versionEntry.isDefaultVersion || version.GetIsDefaultVersion()
+
+				// Keep first non-empty metadata to avoid blank labels after merge.
+				if versionEntry.kind == "" {
+					versionEntry.kind = version.GetKind()
+				}
+				if versionEntry.format == "" {
+					versionEntry.format = version.GetFormat()
+				}
+				if versionEntry.status == "" {
+					versionEntry.status = version.GetStatus()
+				}
+			}
+
+			for _, capability := range version.GetCapabilities() {
+				normalized := strings.ToLower(strings.TrimSpace(capability))
+				if normalized == "" {
+					continue
+				}
+				if _, exists := versionEntry.capabilitiesByKey[normalized]; !exists {
+					versionEntry.capabilitiesByKey[normalized] = strings.TrimSpace(capability)
+				}
 			}
 
 			for _, sku := range version.GetSkus() {
@@ -258,13 +275,21 @@ func buildAiQuotaVersionChoices(model *azdext.AiModelCatalogItem) []*aiQuotaVers
 			return strings.Compare(strings.ToLower(a.Sku.GetUsageName()), strings.ToLower(b.Sku.GetUsageName()))
 		})
 
+		capabilities := make([]string, 0, len(versionEntry.capabilitiesByKey))
+		for _, capability := range versionEntry.capabilitiesByKey {
+			capabilities = append(capabilities, capability)
+		}
+		slices.SortFunc(capabilities, func(a, b string) int {
+			return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+		})
+
 		versions = append(versions, &aiQuotaVersionChoice{
 			Version:          versionEntry.version,
 			IsDefaultVersion: versionEntry.isDefaultVersion,
 			Kind:             versionEntry.kind,
 			Format:           versionEntry.format,
 			Status:           versionEntry.status,
-			Capabilities:     slices.Clone(versionEntry.capabilities),
+			Capabilities:     capabilities,
 			Skus:             skus,
 		})
 	}
@@ -291,20 +316,6 @@ func buildAiQuotaVersionChoices(model *azdext.AiModelCatalogItem) []*aiQuotaVers
 	})
 
 	return versions
-}
-
-func normalizeCapabilities(capabilities []string) []string {
-	values := make([]string, 0, len(capabilities))
-	for _, capability := range capabilities {
-		trimmed := strings.ToLower(strings.TrimSpace(capability))
-		if trimmed == "" {
-			continue
-		}
-		values = append(values, trimmed)
-	}
-
-	slices.Sort(values)
-	return slices.Compact(values)
 }
 
 func addCaseInsensitiveString(values map[string]string, value string) {

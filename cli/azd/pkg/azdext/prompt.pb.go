@@ -24,6 +24,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type AiDeploymentSelectionMode int32
+
+const (
+	AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED    AiDeploymentSelectionMode = 0
+	AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST AiDeploymentSelectionMode = 1
+	AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST    AiDeploymentSelectionMode = 2
+)
+
+// Enum value maps for AiDeploymentSelectionMode.
+var (
+	AiDeploymentSelectionMode_name = map[int32]string{
+		0: "AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED",
+		1: "AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST",
+		2: "AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST",
+	}
+	AiDeploymentSelectionMode_value = map[string]int32{
+		"AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED":    0,
+		"AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST": 1,
+		"AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST":    2,
+	}
+)
+
+func (x AiDeploymentSelectionMode) Enum() *AiDeploymentSelectionMode {
+	p := new(AiDeploymentSelectionMode)
+	*p = x
+	return p
+}
+
+func (x AiDeploymentSelectionMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AiDeploymentSelectionMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_prompt_proto_enumTypes[0].Descriptor()
+}
+
+func (AiDeploymentSelectionMode) Type() protoreflect.EnumType {
+	return &file_prompt_proto_enumTypes[0]
+}
+
+func (x AiDeploymentSelectionMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AiDeploymentSelectionMode.Descriptor instead.
+func (AiDeploymentSelectionMode) EnumDescriptor() ([]byte, []int) {
+	return file_prompt_proto_rawDescGZIP(), []int{0}
+}
+
 type PromptSubscriptionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=Message,proto3" json:"Message,omitempty"`
@@ -1121,19 +1170,20 @@ func (x *PromptAiModelResponse) GetModel() *AiModelSelection {
 }
 
 type PromptAiDeploymentRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	AzureContext        *AzureContext          `protobuf:"bytes,1,opt,name=azure_context,json=azureContext,proto3" json:"azure_context,omitempty"`
-	AllowedLocations    []string               `protobuf:"bytes,2,rep,name=allowed_locations,json=allowedLocations,proto3" json:"allowed_locations,omitempty"`
-	Requirements        []*AiUsageRequirement  `protobuf:"bytes,3,rep,name=requirements,proto3" json:"requirements,omitempty"`
-	Kinds               []string               `protobuf:"bytes,4,rep,name=kinds,proto3" json:"kinds,omitempty"`
-	Statuses            []string               `protobuf:"bytes,5,rep,name=statuses,proto3" json:"statuses,omitempty"`
-	Formats             []string               `protobuf:"bytes,6,rep,name=formats,proto3" json:"formats,omitempty"`
-	Capabilities        []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	PreferredSkus       []string               `protobuf:"bytes,8,rep,name=preferred_skus,json=preferredSkus,proto3" json:"preferred_skus,omitempty"`
-	LocationMessage     string                 `protobuf:"bytes,9,opt,name=location_message,json=locationMessage,proto3" json:"location_message,omitempty"`
-	LocationHelpMessage string                 `protobuf:"bytes,10,opt,name=location_help_message,json=locationHelpMessage,proto3" json:"location_help_message,omitempty"`
-	ModelMessage        string                 `protobuf:"bytes,11,opt,name=model_message,json=modelMessage,proto3" json:"model_message,omitempty"`
-	ModelHelpMessage    string                 `protobuf:"bytes,12,opt,name=model_help_message,json=modelHelpMessage,proto3" json:"model_help_message,omitempty"`
+	state               protoimpl.MessageState    `protogen:"open.v1"`
+	AzureContext        *AzureContext             `protobuf:"bytes,1,opt,name=azure_context,json=azureContext,proto3" json:"azure_context,omitempty"`
+	AllowedLocations    []string                  `protobuf:"bytes,2,rep,name=allowed_locations,json=allowedLocations,proto3" json:"allowed_locations,omitempty"`
+	Requirements        []*AiUsageRequirement     `protobuf:"bytes,3,rep,name=requirements,proto3" json:"requirements,omitempty"`
+	Kinds               []string                  `protobuf:"bytes,4,rep,name=kinds,proto3" json:"kinds,omitempty"`
+	Statuses            []string                  `protobuf:"bytes,5,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	Formats             []string                  `protobuf:"bytes,6,rep,name=formats,proto3" json:"formats,omitempty"`
+	Capabilities        []string                  `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	PreferredSkus       []string                  `protobuf:"bytes,8,rep,name=preferred_skus,json=preferredSkus,proto3" json:"preferred_skus,omitempty"`
+	LocationMessage     string                    `protobuf:"bytes,9,opt,name=location_message,json=locationMessage,proto3" json:"location_message,omitempty"`
+	LocationHelpMessage string                    `protobuf:"bytes,10,opt,name=location_help_message,json=locationHelpMessage,proto3" json:"location_help_message,omitempty"`
+	ModelMessage        string                    `protobuf:"bytes,11,opt,name=model_message,json=modelMessage,proto3" json:"model_message,omitempty"`
+	ModelHelpMessage    string                    `protobuf:"bytes,12,opt,name=model_help_message,json=modelHelpMessage,proto3" json:"model_help_message,omitempty"`
+	SelectionMode       AiDeploymentSelectionMode `protobuf:"varint,13,opt,name=selection_mode,json=selectionMode,proto3,enum=azdext.AiDeploymentSelectionMode" json:"selection_mode,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1250,6 +1300,13 @@ func (x *PromptAiDeploymentRequest) GetModelHelpMessage() string {
 		return x.ModelHelpMessage
 	}
 	return ""
+}
+
+func (x *PromptAiDeploymentRequest) GetSelectionMode() AiDeploymentSelectionMode {
+	if x != nil {
+		return x.SelectionMode
+	}
+	return AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED
 }
 
 type PromptAiDeploymentResponse struct {
@@ -2202,7 +2259,7 @@ const file_prompt_proto_rawDesc = "" +
 	"\amessage\x18\b \x01(\tR\amessage\x12!\n" +
 	"\fhelp_message\x18\t \x01(\tR\vhelpMessage\"G\n" +
 	"\x15PromptAiModelResponse\x12.\n" +
-	"\x05model\x18\x01 \x01(\v2\x18.azdext.AiModelSelectionR\x05model\"\x8c\x04\n" +
+	"\x05model\x18\x01 \x01(\v2\x18.azdext.AiModelSelectionR\x05model\"\xd6\x04\n" +
 	"\x19PromptAiDeploymentRequest\x129\n" +
 	"\razure_context\x18\x01 \x01(\v2\x14.azdext.AzureContextR\fazureContext\x12+\n" +
 	"\x11allowed_locations\x18\x02 \x03(\tR\x10allowedLocations\x12>\n" +
@@ -2216,7 +2273,8 @@ const file_prompt_proto_rawDesc = "" +
 	"\x15location_help_message\x18\n" +
 	" \x01(\tR\x13locationHelpMessage\x12#\n" +
 	"\rmodel_message\x18\v \x01(\tR\fmodelMessage\x12,\n" +
-	"\x12model_help_message\x18\f \x01(\tR\x10modelHelpMessage\"L\n" +
+	"\x12model_help_message\x18\f \x01(\tR\x10modelHelpMessage\x12H\n" +
+	"\x0eselection_mode\x18\r \x01(\x0e2!.azdext.AiDeploymentSelectionModeR\rselectionMode\"L\n" +
 	"\x1aPromptAiDeploymentResponse\x12.\n" +
 	"\x05model\x18\x01 \x01(\v2\x18.azdext.AiModelSelectionR\x05model\"\x98\x02\n" +
 	"\x10AiModelSelection\x12\x12\n" +
@@ -2300,7 +2358,11 @@ const file_prompt_proto_rawDesc = "" +
 	"\x10_display_numbersB\x13\n" +
 	"\x11_enable_filtering\"h\n" +
 	"\x1aPromptResourceGroupOptions\x12J\n" +
-	"\x0eselect_options\x18\x01 \x01(\v2#.azdext.PromptResourceSelectOptionsR\rselectOptions2\x82\b\n" +
+	"\x0eselect_options\x18\x01 \x01(\v2#.azdext.PromptResourceSelectOptionsR\rselectOptions*\xa8\x01\n" +
+	"\x19AiDeploymentSelectionMode\x12,\n" +
+	"(AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED\x10\x00\x12/\n" +
+	"+AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST\x10\x01\x12,\n" +
+	"(AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST\x10\x022\x82\b\n" +
 	"\rPromptService\x12[\n" +
 	"\x12PromptSubscription\x12!.azdext.PromptSubscriptionRequest\x1a\".azdext.PromptSubscriptionResponse\x12O\n" +
 	"\x0ePromptLocation\x12\x1d.azdext.PromptLocationRequest\x1a\x1e.azdext.PromptLocationResponse\x12^\n" +
@@ -2327,110 +2389,113 @@ func file_prompt_proto_rawDescGZIP() []byte {
 	return file_prompt_proto_rawDescData
 }
 
+var file_prompt_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_prompt_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_prompt_proto_goTypes = []any{
-	(*PromptSubscriptionRequest)(nil),           // 0: azdext.PromptSubscriptionRequest
-	(*PromptSubscriptionResponse)(nil),          // 1: azdext.PromptSubscriptionResponse
-	(*PromptLocationRequest)(nil),               // 2: azdext.PromptLocationRequest
-	(*PromptLocationResponse)(nil),              // 3: azdext.PromptLocationResponse
-	(*PromptResourceGroupRequest)(nil),          // 4: azdext.PromptResourceGroupRequest
-	(*PromptResourceGroupResponse)(nil),         // 5: azdext.PromptResourceGroupResponse
-	(*ConfirmRequest)(nil),                      // 6: azdext.ConfirmRequest
-	(*ConfirmResponse)(nil),                     // 7: azdext.ConfirmResponse
-	(*PromptRequest)(nil),                       // 8: azdext.PromptRequest
-	(*PromptResponse)(nil),                      // 9: azdext.PromptResponse
-	(*SelectRequest)(nil),                       // 10: azdext.SelectRequest
-	(*SelectResponse)(nil),                      // 11: azdext.SelectResponse
-	(*MultiSelectRequest)(nil),                  // 12: azdext.MultiSelectRequest
-	(*MultiSelectResponse)(nil),                 // 13: azdext.MultiSelectResponse
-	(*PromptSubscriptionResourceRequest)(nil),   // 14: azdext.PromptSubscriptionResourceRequest
-	(*PromptSubscriptionResourceResponse)(nil),  // 15: azdext.PromptSubscriptionResourceResponse
-	(*PromptResourceGroupResourceRequest)(nil),  // 16: azdext.PromptResourceGroupResourceRequest
-	(*PromptResourceGroupResourceResponse)(nil), // 17: azdext.PromptResourceGroupResourceResponse
-	(*PromptAiLocationRequest)(nil),             // 18: azdext.PromptAiLocationRequest
-	(*PromptAiLocationResponse)(nil),            // 19: azdext.PromptAiLocationResponse
-	(*PromptAiModelRequest)(nil),                // 20: azdext.PromptAiModelRequest
-	(*PromptAiModelResponse)(nil),               // 21: azdext.PromptAiModelResponse
-	(*PromptAiDeploymentRequest)(nil),           // 22: azdext.PromptAiDeploymentRequest
-	(*PromptAiDeploymentResponse)(nil),          // 23: azdext.PromptAiDeploymentResponse
-	(*AiModelSelection)(nil),                    // 24: azdext.AiModelSelection
-	(*ConfirmOptions)(nil),                      // 25: azdext.ConfirmOptions
-	(*PromptOptions)(nil),                       // 26: azdext.PromptOptions
-	(*SelectChoice)(nil),                        // 27: azdext.SelectChoice
-	(*MultiSelectChoice)(nil),                   // 28: azdext.MultiSelectChoice
-	(*SelectOptions)(nil),                       // 29: azdext.SelectOptions
-	(*MultiSelectOptions)(nil),                  // 30: azdext.MultiSelectOptions
-	(*PromptResourceOptions)(nil),               // 31: azdext.PromptResourceOptions
-	(*PromptResourceSelectOptions)(nil),         // 32: azdext.PromptResourceSelectOptions
-	(*PromptResourceGroupOptions)(nil),          // 33: azdext.PromptResourceGroupOptions
-	(*Subscription)(nil),                        // 34: azdext.Subscription
-	(*AzureContext)(nil),                        // 35: azdext.AzureContext
-	(*Location)(nil),                            // 36: azdext.Location
-	(*ResourceGroup)(nil),                       // 37: azdext.ResourceGroup
-	(*ResourceExtended)(nil),                    // 38: azdext.ResourceExtended
-	(*AiUsageRequirement)(nil),                  // 39: azdext.AiUsageRequirement
-	(*AiModelSku)(nil),                          // 40: azdext.AiModelSku
+	(AiDeploymentSelectionMode)(0),              // 0: azdext.AiDeploymentSelectionMode
+	(*PromptSubscriptionRequest)(nil),           // 1: azdext.PromptSubscriptionRequest
+	(*PromptSubscriptionResponse)(nil),          // 2: azdext.PromptSubscriptionResponse
+	(*PromptLocationRequest)(nil),               // 3: azdext.PromptLocationRequest
+	(*PromptLocationResponse)(nil),              // 4: azdext.PromptLocationResponse
+	(*PromptResourceGroupRequest)(nil),          // 5: azdext.PromptResourceGroupRequest
+	(*PromptResourceGroupResponse)(nil),         // 6: azdext.PromptResourceGroupResponse
+	(*ConfirmRequest)(nil),                      // 7: azdext.ConfirmRequest
+	(*ConfirmResponse)(nil),                     // 8: azdext.ConfirmResponse
+	(*PromptRequest)(nil),                       // 9: azdext.PromptRequest
+	(*PromptResponse)(nil),                      // 10: azdext.PromptResponse
+	(*SelectRequest)(nil),                       // 11: azdext.SelectRequest
+	(*SelectResponse)(nil),                      // 12: azdext.SelectResponse
+	(*MultiSelectRequest)(nil),                  // 13: azdext.MultiSelectRequest
+	(*MultiSelectResponse)(nil),                 // 14: azdext.MultiSelectResponse
+	(*PromptSubscriptionResourceRequest)(nil),   // 15: azdext.PromptSubscriptionResourceRequest
+	(*PromptSubscriptionResourceResponse)(nil),  // 16: azdext.PromptSubscriptionResourceResponse
+	(*PromptResourceGroupResourceRequest)(nil),  // 17: azdext.PromptResourceGroupResourceRequest
+	(*PromptResourceGroupResourceResponse)(nil), // 18: azdext.PromptResourceGroupResourceResponse
+	(*PromptAiLocationRequest)(nil),             // 19: azdext.PromptAiLocationRequest
+	(*PromptAiLocationResponse)(nil),            // 20: azdext.PromptAiLocationResponse
+	(*PromptAiModelRequest)(nil),                // 21: azdext.PromptAiModelRequest
+	(*PromptAiModelResponse)(nil),               // 22: azdext.PromptAiModelResponse
+	(*PromptAiDeploymentRequest)(nil),           // 23: azdext.PromptAiDeploymentRequest
+	(*PromptAiDeploymentResponse)(nil),          // 24: azdext.PromptAiDeploymentResponse
+	(*AiModelSelection)(nil),                    // 25: azdext.AiModelSelection
+	(*ConfirmOptions)(nil),                      // 26: azdext.ConfirmOptions
+	(*PromptOptions)(nil),                       // 27: azdext.PromptOptions
+	(*SelectChoice)(nil),                        // 28: azdext.SelectChoice
+	(*MultiSelectChoice)(nil),                   // 29: azdext.MultiSelectChoice
+	(*SelectOptions)(nil),                       // 30: azdext.SelectOptions
+	(*MultiSelectOptions)(nil),                  // 31: azdext.MultiSelectOptions
+	(*PromptResourceOptions)(nil),               // 32: azdext.PromptResourceOptions
+	(*PromptResourceSelectOptions)(nil),         // 33: azdext.PromptResourceSelectOptions
+	(*PromptResourceGroupOptions)(nil),          // 34: azdext.PromptResourceGroupOptions
+	(*Subscription)(nil),                        // 35: azdext.Subscription
+	(*AzureContext)(nil),                        // 36: azdext.AzureContext
+	(*Location)(nil),                            // 37: azdext.Location
+	(*ResourceGroup)(nil),                       // 38: azdext.ResourceGroup
+	(*ResourceExtended)(nil),                    // 39: azdext.ResourceExtended
+	(*AiUsageRequirement)(nil),                  // 40: azdext.AiUsageRequirement
+	(*AiModelSku)(nil),                          // 41: azdext.AiModelSku
 }
 var file_prompt_proto_depIdxs = []int32{
-	34, // 0: azdext.PromptSubscriptionResponse.subscription:type_name -> azdext.Subscription
-	35, // 1: azdext.PromptLocationRequest.azure_context:type_name -> azdext.AzureContext
-	36, // 2: azdext.PromptLocationResponse.location:type_name -> azdext.Location
-	35, // 3: azdext.PromptResourceGroupRequest.azure_context:type_name -> azdext.AzureContext
-	33, // 4: azdext.PromptResourceGroupRequest.options:type_name -> azdext.PromptResourceGroupOptions
-	37, // 5: azdext.PromptResourceGroupResponse.resource_group:type_name -> azdext.ResourceGroup
-	25, // 6: azdext.ConfirmRequest.options:type_name -> azdext.ConfirmOptions
-	26, // 7: azdext.PromptRequest.options:type_name -> azdext.PromptOptions
-	29, // 8: azdext.SelectRequest.options:type_name -> azdext.SelectOptions
-	30, // 9: azdext.MultiSelectRequest.options:type_name -> azdext.MultiSelectOptions
-	28, // 10: azdext.MultiSelectResponse.values:type_name -> azdext.MultiSelectChoice
-	35, // 11: azdext.PromptSubscriptionResourceRequest.azure_context:type_name -> azdext.AzureContext
-	31, // 12: azdext.PromptSubscriptionResourceRequest.options:type_name -> azdext.PromptResourceOptions
-	38, // 13: azdext.PromptSubscriptionResourceResponse.resource:type_name -> azdext.ResourceExtended
-	35, // 14: azdext.PromptResourceGroupResourceRequest.azure_context:type_name -> azdext.AzureContext
-	31, // 15: azdext.PromptResourceGroupResourceRequest.options:type_name -> azdext.PromptResourceOptions
-	38, // 16: azdext.PromptResourceGroupResourceResponse.resource:type_name -> azdext.ResourceExtended
-	35, // 17: azdext.PromptAiLocationRequest.azure_context:type_name -> azdext.AzureContext
-	39, // 18: azdext.PromptAiLocationRequest.requirements:type_name -> azdext.AiUsageRequirement
-	36, // 19: azdext.PromptAiLocationResponse.location:type_name -> azdext.Location
-	35, // 20: azdext.PromptAiModelRequest.azure_context:type_name -> azdext.AzureContext
-	24, // 21: azdext.PromptAiModelResponse.model:type_name -> azdext.AiModelSelection
-	35, // 22: azdext.PromptAiDeploymentRequest.azure_context:type_name -> azdext.AzureContext
-	39, // 23: azdext.PromptAiDeploymentRequest.requirements:type_name -> azdext.AiUsageRequirement
-	24, // 24: azdext.PromptAiDeploymentResponse.model:type_name -> azdext.AiModelSelection
-	40, // 25: azdext.AiModelSelection.sku:type_name -> azdext.AiModelSku
-	27, // 26: azdext.SelectOptions.choices:type_name -> azdext.SelectChoice
-	28, // 27: azdext.MultiSelectOptions.choices:type_name -> azdext.MultiSelectChoice
-	32, // 28: azdext.PromptResourceOptions.select_options:type_name -> azdext.PromptResourceSelectOptions
-	32, // 29: azdext.PromptResourceGroupOptions.select_options:type_name -> azdext.PromptResourceSelectOptions
-	0,  // 30: azdext.PromptService.PromptSubscription:input_type -> azdext.PromptSubscriptionRequest
-	2,  // 31: azdext.PromptService.PromptLocation:input_type -> azdext.PromptLocationRequest
-	4,  // 32: azdext.PromptService.PromptResourceGroup:input_type -> azdext.PromptResourceGroupRequest
-	6,  // 33: azdext.PromptService.Confirm:input_type -> azdext.ConfirmRequest
-	8,  // 34: azdext.PromptService.Prompt:input_type -> azdext.PromptRequest
-	10, // 35: azdext.PromptService.Select:input_type -> azdext.SelectRequest
-	12, // 36: azdext.PromptService.MultiSelect:input_type -> azdext.MultiSelectRequest
-	14, // 37: azdext.PromptService.PromptSubscriptionResource:input_type -> azdext.PromptSubscriptionResourceRequest
-	16, // 38: azdext.PromptService.PromptResourceGroupResource:input_type -> azdext.PromptResourceGroupResourceRequest
-	18, // 39: azdext.PromptService.PromptAiLocation:input_type -> azdext.PromptAiLocationRequest
-	20, // 40: azdext.PromptService.PromptAiModel:input_type -> azdext.PromptAiModelRequest
-	22, // 41: azdext.PromptService.PromptAiDeployment:input_type -> azdext.PromptAiDeploymentRequest
-	1,  // 42: azdext.PromptService.PromptSubscription:output_type -> azdext.PromptSubscriptionResponse
-	3,  // 43: azdext.PromptService.PromptLocation:output_type -> azdext.PromptLocationResponse
-	5,  // 44: azdext.PromptService.PromptResourceGroup:output_type -> azdext.PromptResourceGroupResponse
-	7,  // 45: azdext.PromptService.Confirm:output_type -> azdext.ConfirmResponse
-	9,  // 46: azdext.PromptService.Prompt:output_type -> azdext.PromptResponse
-	11, // 47: azdext.PromptService.Select:output_type -> azdext.SelectResponse
-	13, // 48: azdext.PromptService.MultiSelect:output_type -> azdext.MultiSelectResponse
-	15, // 49: azdext.PromptService.PromptSubscriptionResource:output_type -> azdext.PromptSubscriptionResourceResponse
-	17, // 50: azdext.PromptService.PromptResourceGroupResource:output_type -> azdext.PromptResourceGroupResourceResponse
-	19, // 51: azdext.PromptService.PromptAiLocation:output_type -> azdext.PromptAiLocationResponse
-	21, // 52: azdext.PromptService.PromptAiModel:output_type -> azdext.PromptAiModelResponse
-	23, // 53: azdext.PromptService.PromptAiDeployment:output_type -> azdext.PromptAiDeploymentResponse
-	42, // [42:54] is the sub-list for method output_type
-	30, // [30:42] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	35, // 0: azdext.PromptSubscriptionResponse.subscription:type_name -> azdext.Subscription
+	36, // 1: azdext.PromptLocationRequest.azure_context:type_name -> azdext.AzureContext
+	37, // 2: azdext.PromptLocationResponse.location:type_name -> azdext.Location
+	36, // 3: azdext.PromptResourceGroupRequest.azure_context:type_name -> azdext.AzureContext
+	34, // 4: azdext.PromptResourceGroupRequest.options:type_name -> azdext.PromptResourceGroupOptions
+	38, // 5: azdext.PromptResourceGroupResponse.resource_group:type_name -> azdext.ResourceGroup
+	26, // 6: azdext.ConfirmRequest.options:type_name -> azdext.ConfirmOptions
+	27, // 7: azdext.PromptRequest.options:type_name -> azdext.PromptOptions
+	30, // 8: azdext.SelectRequest.options:type_name -> azdext.SelectOptions
+	31, // 9: azdext.MultiSelectRequest.options:type_name -> azdext.MultiSelectOptions
+	29, // 10: azdext.MultiSelectResponse.values:type_name -> azdext.MultiSelectChoice
+	36, // 11: azdext.PromptSubscriptionResourceRequest.azure_context:type_name -> azdext.AzureContext
+	32, // 12: azdext.PromptSubscriptionResourceRequest.options:type_name -> azdext.PromptResourceOptions
+	39, // 13: azdext.PromptSubscriptionResourceResponse.resource:type_name -> azdext.ResourceExtended
+	36, // 14: azdext.PromptResourceGroupResourceRequest.azure_context:type_name -> azdext.AzureContext
+	32, // 15: azdext.PromptResourceGroupResourceRequest.options:type_name -> azdext.PromptResourceOptions
+	39, // 16: azdext.PromptResourceGroupResourceResponse.resource:type_name -> azdext.ResourceExtended
+	36, // 17: azdext.PromptAiLocationRequest.azure_context:type_name -> azdext.AzureContext
+	40, // 18: azdext.PromptAiLocationRequest.requirements:type_name -> azdext.AiUsageRequirement
+	37, // 19: azdext.PromptAiLocationResponse.location:type_name -> azdext.Location
+	36, // 20: azdext.PromptAiModelRequest.azure_context:type_name -> azdext.AzureContext
+	25, // 21: azdext.PromptAiModelResponse.model:type_name -> azdext.AiModelSelection
+	36, // 22: azdext.PromptAiDeploymentRequest.azure_context:type_name -> azdext.AzureContext
+	40, // 23: azdext.PromptAiDeploymentRequest.requirements:type_name -> azdext.AiUsageRequirement
+	0,  // 24: azdext.PromptAiDeploymentRequest.selection_mode:type_name -> azdext.AiDeploymentSelectionMode
+	25, // 25: azdext.PromptAiDeploymentResponse.model:type_name -> azdext.AiModelSelection
+	41, // 26: azdext.AiModelSelection.sku:type_name -> azdext.AiModelSku
+	28, // 27: azdext.SelectOptions.choices:type_name -> azdext.SelectChoice
+	29, // 28: azdext.MultiSelectOptions.choices:type_name -> azdext.MultiSelectChoice
+	33, // 29: azdext.PromptResourceOptions.select_options:type_name -> azdext.PromptResourceSelectOptions
+	33, // 30: azdext.PromptResourceGroupOptions.select_options:type_name -> azdext.PromptResourceSelectOptions
+	1,  // 31: azdext.PromptService.PromptSubscription:input_type -> azdext.PromptSubscriptionRequest
+	3,  // 32: azdext.PromptService.PromptLocation:input_type -> azdext.PromptLocationRequest
+	5,  // 33: azdext.PromptService.PromptResourceGroup:input_type -> azdext.PromptResourceGroupRequest
+	7,  // 34: azdext.PromptService.Confirm:input_type -> azdext.ConfirmRequest
+	9,  // 35: azdext.PromptService.Prompt:input_type -> azdext.PromptRequest
+	11, // 36: azdext.PromptService.Select:input_type -> azdext.SelectRequest
+	13, // 37: azdext.PromptService.MultiSelect:input_type -> azdext.MultiSelectRequest
+	15, // 38: azdext.PromptService.PromptSubscriptionResource:input_type -> azdext.PromptSubscriptionResourceRequest
+	17, // 39: azdext.PromptService.PromptResourceGroupResource:input_type -> azdext.PromptResourceGroupResourceRequest
+	19, // 40: azdext.PromptService.PromptAiLocation:input_type -> azdext.PromptAiLocationRequest
+	21, // 41: azdext.PromptService.PromptAiModel:input_type -> azdext.PromptAiModelRequest
+	23, // 42: azdext.PromptService.PromptAiDeployment:input_type -> azdext.PromptAiDeploymentRequest
+	2,  // 43: azdext.PromptService.PromptSubscription:output_type -> azdext.PromptSubscriptionResponse
+	4,  // 44: azdext.PromptService.PromptLocation:output_type -> azdext.PromptLocationResponse
+	6,  // 45: azdext.PromptService.PromptResourceGroup:output_type -> azdext.PromptResourceGroupResponse
+	8,  // 46: azdext.PromptService.Confirm:output_type -> azdext.ConfirmResponse
+	10, // 47: azdext.PromptService.Prompt:output_type -> azdext.PromptResponse
+	12, // 48: azdext.PromptService.Select:output_type -> azdext.SelectResponse
+	14, // 49: azdext.PromptService.MultiSelect:output_type -> azdext.MultiSelectResponse
+	16, // 50: azdext.PromptService.PromptSubscriptionResource:output_type -> azdext.PromptSubscriptionResourceResponse
+	18, // 51: azdext.PromptService.PromptResourceGroupResource:output_type -> azdext.PromptResourceGroupResourceResponse
+	20, // 52: azdext.PromptService.PromptAiLocation:output_type -> azdext.PromptAiLocationResponse
+	22, // 53: azdext.PromptService.PromptAiModel:output_type -> azdext.PromptAiModelResponse
+	24, // 54: azdext.PromptService.PromptAiDeployment:output_type -> azdext.PromptAiDeploymentResponse
+	43, // [43:55] is the sub-list for method output_type
+	31, // [31:43] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_prompt_proto_init() }
@@ -2451,13 +2516,14 @@ func file_prompt_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_prompt_proto_rawDesc), len(file_prompt_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_prompt_proto_goTypes,
 		DependencyIndexes: file_prompt_proto_depIdxs,
+		EnumInfos:         file_prompt_proto_enumTypes,
 		MessageInfos:      file_prompt_proto_msgTypes,
 	}.Build()
 	File_prompt_proto = out.File

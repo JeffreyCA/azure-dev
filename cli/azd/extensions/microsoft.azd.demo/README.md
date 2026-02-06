@@ -87,6 +87,7 @@ azd demo ai usages
 #### `azd demo ai deployment`
 
 Selects one deployable AI configuration (location + model deployment) using `PromptService.PromptAiDeployment`.
+Supports both location-first and model-first interactive flows.
 
 Example:
 

@@ -151,6 +151,12 @@ message PromptAiModelResponse {
   AiModelSelection model = 1;
 }
 
+enum AiDeploymentSelectionMode {
+  AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED = 0;
+  AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST = 1;
+  AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST = 2;
+}
+
 message PromptAiDeploymentRequest {
   AzureContext azure_context = 1;
   repeated string allowed_locations = 2;
@@ -164,6 +170,7 @@ message PromptAiDeploymentRequest {
   string location_help_message = 10;
   string model_message = 11;
   string model_help_message = 12;
+  AiDeploymentSelectionMode selection_mode = 13;
 }
 
 message PromptAiDeploymentResponse {

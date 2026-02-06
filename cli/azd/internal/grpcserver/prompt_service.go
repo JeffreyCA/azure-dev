@@ -512,6 +512,22 @@ func (s *promptService) PromptAiDeployment(
 	ctx context.Context,
 	req *azdext.PromptAiDeploymentRequest,
 ) (*azdext.PromptAiDeploymentResponse, error) {
+	selectionMode := req.GetSelectionMode()
+	switch selectionMode {
+	case azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_UNSPECIFIED,
+		azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST:
+		return s.promptAiDeploymentLocationFirst(ctx, req)
+	case azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST:
+		return s.promptAiDeploymentModelFirst(ctx, req)
+	default:
+		return nil, fmt.Errorf("unsupported AI deployment selection_mode: %s", selectionMode.String())
+	}
+}
+
+func (s *promptService) promptAiDeploymentLocationFirst(
+	ctx context.Context,
+	req *azdext.PromptAiDeploymentRequest,
+) (*azdext.PromptAiDeploymentResponse, error) {
 	locationResp, err := s.PromptAiLocation(ctx, &azdext.PromptAiLocationRequest{
 		AzureContext:     req.GetAzureContext(),
 		AllowedLocations: req.GetAllowedLocations(),
@@ -551,6 +567,71 @@ func (s *promptService) PromptAiDeployment(
 
 	return &azdext.PromptAiDeploymentResponse{
 		Model: modelResp.GetModel(),
+	}, nil
+}
+
+func (s *promptService) promptAiDeploymentModelFirst(
+	ctx context.Context,
+	req *azdext.PromptAiDeploymentRequest,
+) (*azdext.PromptAiDeploymentResponse, error) {
+	if s.aiClient == nil {
+		return nil, fmt.Errorf("ai service is unavailable")
+	}
+
+	azureContext, err := s.createAzureContext(req.GetAzureContext())
+	if err != nil {
+		return nil, err
+	}
+	if azureContext.Scope.SubscriptionId == "" {
+		return nil, fmt.Errorf("azure context must include subscription_id")
+	}
+
+	modelSelection, err := s.promptAiDeploymentModelConfig(ctx, req, azureContext.Scope.SubscriptionId)
+	if err != nil {
+		return nil, err
+	}
+	if modelSelection == nil || modelSelection.GetSku() == nil {
+		return nil, fmt.Errorf("no AI model selected")
+	}
+
+	requirements := toAiUsageRequirements(req.GetRequirements())
+	matchedLocationsResult, err := s.aiClient.FindAiLocationsForModelWithQuota(
+		ctx,
+		azureContext.Scope.SubscriptionId,
+		modelSelection.GetName(),
+		&azapi.AiFindLocationsForModelWithQuotaOptions{
+			Locations:    req.GetAllowedLocations(),
+			Versions:     []string{modelSelection.GetVersion()},
+			Skus:         []string{modelSelection.GetSku().GetName()},
+			Kinds:        req.GetKinds(),
+			Formats:      req.GetFormats(),
+			Statuses:     req.GetStatuses(),
+			Capabilities: req.GetCapabilities(),
+			Requirements: requirements,
+		},
+	)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+
+	if len(matchedLocationsResult.MatchedLocations) == 0 {
+		return nil, fmt.Errorf("no AI locations found that can deploy the selected model and satisfy the requested quota")
+	}
+
+	locationName, err := s.selectAiLocation(
+		ctx,
+		matchedLocationsResult.MatchedLocations,
+		azureContext.Scope.Location,
+		req.GetLocationMessage(),
+		req.GetLocationHelpMessage(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	modelSelection.Location = locationName
+	return &azdext.PromptAiDeploymentResponse{
+		Model: modelSelection,
 	}, nil
 }
 
@@ -756,6 +837,18 @@ type aiModelPromptOption struct {
 	Sku              azapi.AiModelSku
 }
 
+type aiModelConfigPromptOption struct {
+	ModelName        string
+	Version          string
+	IsDefaultVersion bool
+	Kind             string
+	Format           string
+	Status           string
+	Capabilities     []string
+	Sku              azapi.AiModelSku
+	Locations        []string
+}
+
 func (o aiModelPromptOption) id() string {
 	return strings.Join([]string{
 		o.ModelName,
@@ -804,6 +897,54 @@ func (o aiModelPromptOption) toProto() *azdext.AiModelSelection {
 	}
 }
 
+func (o aiModelConfigPromptOption) id() string {
+	return strings.Join([]string{
+		o.ModelName,
+		o.Version,
+		o.Sku.Name,
+		o.Sku.UsageName,
+	}, "|")
+}
+
+func (o aiModelConfigPromptOption) label() string {
+	parts := []string{
+		fmt.Sprintf("%s/%s", o.ModelName, o.Version),
+		fmt.Sprintf("sku=%s", o.Sku.Name),
+		fmt.Sprintf("usage=%s", o.Sku.UsageName),
+	}
+	if o.IsDefaultVersion {
+		parts = append(parts, "default")
+	}
+	if len(o.Locations) > 0 {
+		parts = append(parts, fmt.Sprintf("locations=%d", len(o.Locations)))
+	}
+
+	return strings.Join(parts, " | ")
+}
+
+func (o aiModelConfigPromptOption) toProto() *azdext.AiModelSelection {
+	capabilities := slices.Clone(o.Capabilities)
+	slices.Sort(capabilities)
+
+	return &azdext.AiModelSelection{
+		Name:             o.ModelName,
+		Version:          o.Version,
+		IsDefaultVersion: o.IsDefaultVersion,
+		Kind:             o.Kind,
+		Format:           o.Format,
+		Status:           o.Status,
+		Capabilities:     capabilities,
+		Sku: &azdext.AiModelSku{
+			Name:            o.Sku.Name,
+			UsageName:       o.Sku.UsageName,
+			CapacityDefault: o.Sku.CapacityDefault,
+			CapacityMinimum: o.Sku.CapacityMinimum,
+			CapacityMaximum: o.Sku.CapacityMaximum,
+			CapacityStep:    o.Sku.CapacityStep,
+		},
+	}
+}
+
 func flattenAiModelCandidates(items []azapi.AiModelCatalogItem, location string) []aiModelPromptOption {
 	candidates := []aiModelPromptOption{}
 	for _, item := range items {
@@ -828,6 +969,126 @@ func flattenAiModelCandidates(items []azapi.AiModelCatalogItem, location string)
 				}
 			}
 		}
+	}
+
+	return candidates
+}
+
+func flattenAiModelConfigCandidates(items []azapi.AiModelCatalogItem) []aiModelConfigPromptOption {
+	type aggregate struct {
+		modelName        string
+		version          string
+		isDefaultVersion bool
+		kind             string
+		format           string
+		status           string
+		capabilityMap    map[string]string
+		sku              azapi.AiModelSku
+		locationMap      map[string]string
+	}
+
+	aggregatesByID := map[string]*aggregate{}
+	for _, item := range items {
+		modelName := strings.TrimSpace(item.Name)
+		if modelName == "" {
+			continue
+		}
+
+		for _, modelLocation := range item.Locations {
+			locationName := strings.TrimSpace(modelLocation.Location)
+			if locationName == "" {
+				continue
+			}
+
+			for _, version := range modelLocation.Versions {
+				for _, sku := range version.Skus {
+					skuName := strings.TrimSpace(sku.Name)
+					if skuName == "" {
+						continue
+					}
+
+					id := strings.Join([]string{
+						strings.ToLower(modelName),
+						strings.ToLower(strings.TrimSpace(version.Version)),
+						strings.ToLower(strings.TrimSpace(version.Kind)),
+						strings.ToLower(strings.TrimSpace(version.Format)),
+						strings.ToLower(strings.TrimSpace(version.Status)),
+						strings.ToLower(skuName),
+						strings.ToLower(strings.TrimSpace(sku.UsageName)),
+						fmt.Sprintf("%d", sku.CapacityDefault),
+						fmt.Sprintf("%d", sku.CapacityMinimum),
+						fmt.Sprintf("%d", sku.CapacityMaximum),
+						fmt.Sprintf("%d", sku.CapacityStep),
+					}, "|")
+
+					entry, has := aggregatesByID[id]
+					if !has {
+						entry = &aggregate{
+							modelName:        modelName,
+							version:          version.Version,
+							isDefaultVersion: version.IsDefaultVersion,
+							kind:             version.Kind,
+							format:           version.Format,
+							status:           version.Status,
+							capabilityMap:    map[string]string{},
+							sku:              sku,
+							locationMap:      map[string]string{},
+						}
+						aggregatesByID[id] = entry
+					} else {
+						entry.isDefaultVersion = entry.isDefaultVersion || version.IsDefaultVersion
+					}
+
+					for _, capability := range version.Capabilities {
+						trimmed := strings.TrimSpace(capability)
+						if trimmed == "" {
+							continue
+						}
+
+						key := strings.ToLower(trimmed)
+						if _, exists := entry.capabilityMap[key]; !exists {
+							entry.capabilityMap[key] = trimmed
+						}
+					}
+
+					locationKey := strings.ToLower(locationName)
+					if _, exists := entry.locationMap[locationKey]; !exists {
+						entry.locationMap[locationKey] = locationName
+					}
+				}
+			}
+		}
+	}
+
+	candidates := make([]aiModelConfigPromptOption, 0, len(aggregatesByID))
+	for _, entry := range aggregatesByID {
+		capabilities := make([]string, 0, len(entry.capabilityMap))
+		for _, capability := range entry.capabilityMap {
+			capabilities = append(capabilities, capability)
+		}
+		slices.SortFunc(capabilities, func(a, b string) int {
+			return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+		})
+
+		locations := make([]string, 0, len(entry.locationMap))
+		for _, location := range entry.locationMap {
+			locations = append(locations, location)
+		}
+		slices.SortFunc(locations, func(a, b string) int {
+			return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+		})
+
+		candidates = append(candidates, aiModelConfigPromptOption{
+			ModelName:        entry.modelName,
+			Version:          entry.version,
+			IsDefaultVersion: entry.isDefaultVersion,
+			Kind:             entry.kind,
+			Format:           entry.format,
+			Status:           entry.status,
+			Capabilities:     capabilities,
+			Sku:              entry.sku,
+			Locations:        locations,
+		})
 	}
 
 	return candidates
@@ -871,6 +1132,51 @@ func chooseDeterministicAiModel(
 	}
 
 	sortAiModelCandidates(filtered, preferredSkus)
+	if len(filtered) == 1 {
+		return &filtered[0], nil
+	}
+
+	return nil, fmt.Errorf("multiple AI model candidates found; cannot select deterministically in --no-prompt mode")
+}
+
+func chooseDeterministicAiModelConfig(
+	candidates []aiModelConfigPromptOption,
+	preferredSkus []string,
+) (*aiModelConfigPromptOption, error) {
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no AI models found matching the provided filters")
+	}
+
+	filtered := slices.Clone(candidates)
+	if len(preferredSkus) > 0 {
+		preferredSet := make(map[string]struct{}, len(preferredSkus))
+		for _, sku := range preferredSkus {
+			preferredSet[strings.ToLower(strings.TrimSpace(sku))] = struct{}{}
+		}
+
+		preferredCandidates := []aiModelConfigPromptOption{}
+		for _, candidate := range filtered {
+			if _, has := preferredSet[strings.ToLower(candidate.Sku.Name)]; has {
+				preferredCandidates = append(preferredCandidates, candidate)
+			}
+		}
+
+		if len(preferredCandidates) > 0 {
+			filtered = preferredCandidates
+		}
+	}
+
+	defaultCandidates := []aiModelConfigPromptOption{}
+	for _, candidate := range filtered {
+		if candidate.IsDefaultVersion {
+			defaultCandidates = append(defaultCandidates, candidate)
+		}
+	}
+	if len(defaultCandidates) > 0 {
+		filtered = defaultCandidates
+	}
+
+	sortAiModelConfigCandidates(filtered, preferredSkus)
 	if len(filtered) == 1 {
 		return &filtered[0], nil
 	}
@@ -922,6 +1228,215 @@ func sortAiModelCandidates(candidates []aiModelPromptOption, preferredSkus []str
 
 		return strings.Compare(strings.ToLower(a.Location), strings.ToLower(b.Location))
 	})
+}
+
+func sortAiModelConfigCandidates(candidates []aiModelConfigPromptOption, preferredSkus []string) {
+	preferredOrder := make(map[string]int, len(preferredSkus))
+	for i, sku := range preferredSkus {
+		preferredOrder[strings.ToLower(strings.TrimSpace(sku))] = i
+	}
+
+	const preferredDefaultRank = 1_000_000
+	slices.SortFunc(candidates, func(a, b aiModelConfigPromptOption) int {
+		aRank, aHas := preferredOrder[strings.ToLower(a.Sku.Name)]
+		bRank, bHas := preferredOrder[strings.ToLower(b.Sku.Name)]
+
+		if !aHas {
+			aRank = preferredDefaultRank
+		}
+		if !bHas {
+			bRank = preferredDefaultRank
+		}
+
+		if aRank != bRank {
+			if aRank < bRank {
+				return -1
+			}
+			return 1
+		}
+
+		if a.IsDefaultVersion != b.IsDefaultVersion {
+			if a.IsDefaultVersion {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(strings.ToLower(a.ModelName), strings.ToLower(b.ModelName)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.Version), strings.ToLower(b.Version)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.Sku.Name), strings.ToLower(b.Sku.Name)); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(strings.ToLower(a.Sku.UsageName), strings.ToLower(b.Sku.UsageName))
+	})
+}
+
+func toAiUsageRequirements(requirements []*azdext.AiUsageRequirement) []azapi.AiUsageRequirement {
+	result := make([]azapi.AiUsageRequirement, 0, len(requirements))
+	for _, requirement := range requirements {
+		requiredCapacity := float64(requirement.GetRequiredCapacity())
+		if requiredCapacity <= 0 {
+			requiredCapacity = 1
+		}
+
+		result = append(result, azapi.AiUsageRequirement{
+			UsageName:        requirement.GetUsageName(),
+			RequiredCapacity: requiredCapacity,
+		})
+	}
+
+	return result
+}
+
+func (s *promptService) promptAiDeploymentModelConfig(
+	ctx context.Context,
+	req *azdext.PromptAiDeploymentRequest,
+	subscriptionId string,
+) (*azdext.AiModelSelection, error) {
+	modelCatalog, err := s.aiClient.ListAiModelCatalog(
+		ctx,
+		subscriptionId,
+		azapi.AiModelCatalogFilters{
+			Locations:    req.GetAllowedLocations(),
+			Kinds:        req.GetKinds(),
+			Formats:      req.GetFormats(),
+			Statuses:     req.GetStatuses(),
+			Capabilities: req.GetCapabilities(),
+		},
+	)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+
+	candidates := flattenAiModelConfigCandidates(modelCatalog)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no AI models found matching the provided filters")
+	}
+
+	preferredSkus := req.GetPreferredSkus()
+	if s.globalOptions.NoPrompt {
+		selected, err := chooseDeterministicAiModelConfig(candidates, preferredSkus)
+		if err != nil {
+			return nil, err
+		}
+
+		return selected.toProto(), nil
+	}
+
+	sortAiModelConfigCandidates(candidates, preferredSkus)
+	if len(candidates) == 1 {
+		return candidates[0].toProto(), nil
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	choices := make([]*ux.SelectChoice, 0, len(candidates))
+	for _, candidate := range candidates {
+		choices = append(choices, &ux.SelectChoice{
+			Value: candidate.id(),
+			Label: candidate.label(),
+		})
+	}
+
+	message := req.GetModelMessage()
+	if message == "" {
+		message = "Select an AI model deployment configuration:"
+	}
+
+	selectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         message,
+		HelpMessage:     req.GetModelHelpMessage(),
+		Choices:         choices,
+		EnableFiltering: to.Ptr(true),
+		DisplayCount:    min(12, len(choices)),
+	})
+
+	selectedIndex, err := selectPrompt.Ask(ctx)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+	if selectedIndex == nil {
+		return nil, fmt.Errorf("no AI model selected")
+	}
+
+	return candidates[*selectedIndex].toProto(), nil
+}
+
+func (s *promptService) selectAiLocation(
+	ctx context.Context,
+	locations []string,
+	currentLocation string,
+	message string,
+	helpMessage string,
+) (string, error) {
+	if len(locations) == 0 {
+		return "", fmt.Errorf("no AI locations available for selection")
+	}
+
+	if s.globalOptions.NoPrompt {
+		if currentLocation == "" {
+			return "", fmt.Errorf("no location in azure context for --no-prompt mode")
+		}
+
+		selectedLocation, has := findCaseInsensitive(locations, currentLocation)
+		if !has {
+			return "", fmt.Errorf(
+				"azure context location '%s' does not satisfy the selected model and requested AI quota",
+				currentLocation,
+			)
+		}
+
+		return selectedLocation, nil
+	}
+
+	if len(locations) == 1 {
+		return locations[0], nil
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
+	choices := make([]*ux.SelectChoice, 0, len(locations))
+	for _, location := range locations {
+		choices = append(choices, &ux.SelectChoice{
+			Value: location,
+			Label: location,
+		})
+	}
+
+	if message == "" {
+		message = "Select an Azure location for AI deployments:"
+	}
+
+	selectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         message,
+		HelpMessage:     helpMessage,
+		Choices:         choices,
+		EnableFiltering: to.Ptr(true),
+		DisplayCount:    min(12, len(choices)),
+	})
+
+	selectedIndex, err := selectPrompt.Ask(ctx)
+	if err != nil {
+		return "", wrapErrorWithSuggestion(err)
+	}
+	if selectedIndex == nil {
+		return "", fmt.Errorf("no AI location selected")
+	}
+
+	return locations[*selectedIndex], nil
 }
 
 func findCaseInsensitive(values []string, target string) (string, bool) {

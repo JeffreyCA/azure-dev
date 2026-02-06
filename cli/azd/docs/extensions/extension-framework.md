@@ -1816,6 +1816,9 @@ Prompts for an AI deployment in two steps: location selection with quota checks,
   - `requirements` (repeated _AiUsageRequirement_)
   - `kinds` / `statuses` / `formats` / `capabilities` (repeated string filters)
   - `preferred_skus` (repeated string, optional ranking hint)
+  - `selection_mode` (_AiDeploymentSelectionMode_, optional)
+    - `AI_DEPLOYMENT_SELECTION_MODE_LOCATION_FIRST` (default): prompt location, then model.
+    - `AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST`: prompt model config, then location.
   - `location_message` / `location_help_message` (string, optional)
   - `model_message` / `model_help_message` (string, optional)
 - **Response:** _PromptAiDeploymentResponse_
@@ -1832,6 +1835,7 @@ deployResp, err := azdClient.Prompt().PromptAiDeployment(ctx, &azdext.PromptAiDe
             SubscriptionId: "00000000-0000-0000-0000-000000000000",
         },
     },
+    SelectionMode: azdext.AiDeploymentSelectionMode_AI_DEPLOYMENT_SELECTION_MODE_MODEL_FIRST,
     Requirements: []*azdext.AiUsageRequirement{
         {UsageName: "OpenAI.Standard", RequiredCapacity: 10},
     },

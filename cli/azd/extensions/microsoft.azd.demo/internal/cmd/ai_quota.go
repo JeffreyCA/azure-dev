@@ -53,28 +53,7 @@ func newAiQuotaCommand() *cobra.Command {
 					return fmt.Errorf("selected model does not have any eligible locations")
 				}
 
-				defaultCapacity := modelSelection.Sku.GetCapacityDefault()
-				if defaultCapacity <= 0 {
-					defaultCapacity = 1
-				}
-
-				baseRequiredCapacity, err := promptRequiredCapacityForUsage(
-					ctx,
-					azdClient,
-					modelSelection.Sku.GetUsageName(),
-					defaultCapacity,
-					"Set required capacity for the selected deployment SKU.",
-				)
-				if err != nil {
-					return err
-				}
-
-				requirements := []*azdext.AiUsageRequirement{
-					{
-						UsageName:        modelSelection.Sku.GetUsageName(),
-						RequiredCapacity: baseRequiredCapacity,
-					},
-				}
+				requirements := []*azdext.AiUsageRequirement{}
 
 				addExtraResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
 					Options: &azdext.ConfirmOptions{
@@ -97,18 +76,12 @@ func newAiQuotaCommand() *cobra.Command {
 						return err
 					}
 
-					excludedUsageNames := map[string]struct{}{
-						strings.ToLower(strings.TrimSpace(modelSelection.Sku.GetUsageName())): {},
+					extraRequirements, err := promptQuotaRequirements(ctx, azdClient, usageMeters)
+					if err != nil {
+						return err
 					}
-					usageMeters = filterUsageMeters(usageMeters, excludedUsageNames)
-					if len(usageMeters) > 0 {
-						extraRequirements, err := promptQuotaRequirements(ctx, azdClient, usageMeters)
-						if err != nil {
-							return err
-						}
 
-						requirements = append(requirements, extraRequirements...)
-					}
+					requirements = append(requirements, extraRequirements...)
 				}
 
 				fmt.Println("Quota check target:")
@@ -116,7 +89,7 @@ func newAiQuotaCommand() *cobra.Command {
 				fmt.Printf("  version: %s\n", modelSelection.Version)
 				fmt.Printf("  sku: %s\n", modelSelection.Sku.GetName())
 				fmt.Printf("  usage meter: %s\n", modelSelection.Sku.GetUsageName())
-				fmt.Printf("  required capacity: %d\n", baseRequiredCapacity)
+				fmt.Printf("  default deployment capacity: %d\n", max(1, modelSelection.Sku.GetCapacityDefault()))
 
 				req, err := buildAiFindLocationsForModelWithQuotaRequest(
 					scope.SubscriptionId,
