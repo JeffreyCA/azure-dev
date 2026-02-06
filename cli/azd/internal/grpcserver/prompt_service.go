@@ -468,43 +468,13 @@ func (s *promptService) PromptAiModel(
 		}, nil
 	}
 
-	release, err := s.acquirePromptLock(ctx)
+	selectedIndex, err := s.promptAiModelCandidateSelection(ctx, candidates, preferredSkus, req.GetMessage(), req.GetHelpMessage())
 	if err != nil {
 		return nil, err
 	}
-	defer release()
-
-	choices := make([]*ux.SelectChoice, 0, len(candidates))
-	for _, candidate := range candidates {
-		choices = append(choices, &ux.SelectChoice{
-			Value: candidate.id(),
-			Label: candidate.label(),
-		})
-	}
-
-	message := req.GetMessage()
-	if message == "" {
-		message = "Select an AI model deployment configuration:"
-	}
-
-	selectPrompt := ux.NewSelect(&ux.SelectOptions{
-		Message:         message,
-		HelpMessage:     req.GetHelpMessage(),
-		Choices:         choices,
-		EnableFiltering: to.Ptr(true),
-		DisplayCount:    min(12, len(choices)),
-	})
-
-	selectedIndex, err := selectPrompt.Ask(ctx)
-	if err != nil {
-		return nil, wrapErrorWithSuggestion(err)
-	}
-	if selectedIndex == nil {
-		return nil, fmt.Errorf("no AI model selected")
-	}
 
 	return &azdext.PromptAiModelResponse{
-		Model: candidates[*selectedIndex].toProto(),
+		Model: candidates[selectedIndex].toProto(),
 	}, nil
 }
 
@@ -1333,42 +1303,437 @@ func (s *promptService) promptAiDeploymentModelConfig(
 		return candidates[0].toProto(), nil
 	}
 
-	release, err := s.acquirePromptLock(ctx)
+	selectedIndex, err := s.promptAiModelConfigCandidateSelection(
+		ctx,
+		candidates,
+		preferredSkus,
+		req.GetModelMessage(),
+		req.GetModelHelpMessage(),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	return candidates[selectedIndex].toProto(), nil
+}
+
+func (s *promptService) promptAiModelCandidateSelection(
+	ctx context.Context,
+	candidates []aiModelPromptOption,
+	preferredSkus []string,
+	message string,
+	helpMessage string,
+) (int, error) {
+	type group struct {
+		modelName        string
+		location         string
+		version          string
+		isDefaultVersion bool
+		kind             string
+		format           string
+		status           string
+		capabilities     []string
+		candidateIndexes []int
+	}
+
+	groupByKey := map[string]*group{}
+	for i, candidate := range candidates {
+		key := strings.Join([]string{
+			strings.ToLower(strings.TrimSpace(candidate.ModelName)),
+			strings.ToLower(strings.TrimSpace(candidate.Location)),
+			strings.ToLower(strings.TrimSpace(candidate.Version)),
+			strings.ToLower(strings.TrimSpace(candidate.Kind)),
+			strings.ToLower(strings.TrimSpace(candidate.Format)),
+			strings.ToLower(strings.TrimSpace(candidate.Status)),
+			normalizedCapabilitiesKey(candidate.Capabilities),
+		}, "|")
+
+		entry, has := groupByKey[key]
+		if !has {
+			entry = &group{
+				modelName:        candidate.ModelName,
+				location:         candidate.Location,
+				version:          candidate.Version,
+				isDefaultVersion: candidate.IsDefaultVersion,
+				kind:             candidate.Kind,
+				format:           candidate.Format,
+				status:           candidate.Status,
+				capabilities:     slices.Clone(candidate.Capabilities),
+			}
+			groupByKey[key] = entry
+		} else {
+			entry.isDefaultVersion = entry.isDefaultVersion || candidate.IsDefaultVersion
+		}
+
+		entry.candidateIndexes = append(entry.candidateIndexes, i)
+	}
+
+	modelGroups := make([]*group, 0, len(groupByKey))
+	for _, entry := range groupByKey {
+		modelGroups = append(modelGroups, entry)
+	}
+	slices.SortFunc(modelGroups, func(a, b *group) int {
+		if a.isDefaultVersion != b.isDefaultVersion {
+			if a.isDefaultVersion {
+				return -1
+			}
+			return 1
+		}
+		if cmp := strings.Compare(strings.ToLower(a.modelName), strings.ToLower(b.modelName)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.version), strings.ToLower(b.version)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.kind), strings.ToLower(b.kind)); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(strings.ToLower(a.format), strings.ToLower(b.format))
+	})
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return 0, err
+	}
 	defer release()
 
-	choices := make([]*ux.SelectChoice, 0, len(candidates))
-	for _, candidate := range candidates {
-		choices = append(choices, &ux.SelectChoice{
-			Value: candidate.id(),
-			Label: candidate.label(),
+	selectedModelGroup := modelGroups[0]
+	if len(modelGroups) > 1 {
+		modelChoices := make([]*ux.SelectChoice, 0, len(modelGroups))
+		for _, entry := range modelGroups {
+			label := fmt.Sprintf("%s/%s", entry.modelName, entry.version)
+			if entry.isDefaultVersion {
+				label = fmt.Sprintf("%s (default)", label)
+			}
+			if entry.kind != "" || entry.format != "" {
+				label = fmt.Sprintf("%s [%s/%s]", label, entry.kind, entry.format)
+			}
+
+			modelChoices = append(modelChoices, &ux.SelectChoice{
+				Value: label,
+				Label: label,
+			})
+		}
+
+		modelPromptMessage := message
+		if modelPromptMessage == "" {
+			modelPromptMessage = "Select an AI model:"
+		}
+
+		modelSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+			Message:         modelPromptMessage,
+			HelpMessage:     helpMessage,
+			Choices:         modelChoices,
+			EnableFiltering: to.Ptr(true),
+			DisplayCount:    min(12, len(modelChoices)),
+		})
+
+		selectedModelIndex, err := modelSelectPrompt.Ask(ctx)
+		if err != nil {
+			return 0, wrapErrorWithSuggestion(err)
+		}
+		if selectedModelIndex == nil {
+			return 0, fmt.Errorf("no AI model selected")
+		}
+
+		selectedModelGroup = modelGroups[*selectedModelIndex]
+	}
+
+	selectedCandidateIndex := selectedModelGroup.candidateIndexes[0]
+	if len(selectedModelGroup.candidateIndexes) == 1 {
+		return selectedCandidateIndex, nil
+	}
+
+	sortedCandidateIndexes := slices.Clone(selectedModelGroup.candidateIndexes)
+	preferredOrder := map[string]int{}
+	for i, sku := range preferredSkus {
+		preferredOrder[strings.ToLower(strings.TrimSpace(sku))] = i
+	}
+	const preferredDefaultRank = 1_000_000
+	slices.SortFunc(sortedCandidateIndexes, func(a, b int) int {
+		aSku := strings.ToLower(strings.TrimSpace(candidates[a].Sku.Name))
+		bSku := strings.ToLower(strings.TrimSpace(candidates[b].Sku.Name))
+
+		aRank, aHas := preferredOrder[aSku]
+		bRank, bHas := preferredOrder[bSku]
+		if !aHas {
+			aRank = preferredDefaultRank
+		}
+		if !bHas {
+			bRank = preferredDefaultRank
+		}
+
+		if aRank != bRank {
+			if aRank < bRank {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(aSku, bSku); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(
+			strings.ToLower(strings.TrimSpace(candidates[a].Sku.UsageName)),
+			strings.ToLower(strings.TrimSpace(candidates[b].Sku.UsageName)),
+		)
+	})
+
+	skuChoices := make([]*ux.SelectChoice, 0, len(sortedCandidateIndexes))
+	for _, candidateIndex := range sortedCandidateIndexes {
+		sku := candidates[candidateIndex].Sku
+		label := fmt.Sprintf(
+			"%s (usage=%s, default capacity=%d)",
+			sku.Name,
+			sku.UsageName,
+			max(1, sku.CapacityDefault),
+		)
+
+		skuChoices = append(skuChoices, &ux.SelectChoice{
+			Value: fmt.Sprintf("%d", candidateIndex),
+			Label: label,
 		})
 	}
 
-	message := req.GetModelMessage()
-	if message == "" {
-		message = "Select an AI model deployment configuration:"
-	}
-
-	selectPrompt := ux.NewSelect(&ux.SelectOptions{
-		Message:         message,
-		HelpMessage:     req.GetModelHelpMessage(),
-		Choices:         choices,
+	skuSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         "Select an AI model SKU:",
+		HelpMessage:     helpMessage,
+		Choices:         skuChoices,
 		EnableFiltering: to.Ptr(true),
-		DisplayCount:    min(12, len(choices)),
+		DisplayCount:    min(12, len(skuChoices)),
 	})
 
-	selectedIndex, err := selectPrompt.Ask(ctx)
+	selectedSkuIndex, err := skuSelectPrompt.Ask(ctx)
 	if err != nil {
-		return nil, wrapErrorWithSuggestion(err)
+		return 0, wrapErrorWithSuggestion(err)
 	}
-	if selectedIndex == nil {
-		return nil, fmt.Errorf("no AI model selected")
+	if selectedSkuIndex == nil {
+		return 0, fmt.Errorf("no AI model SKU selected")
 	}
 
-	return candidates[*selectedIndex].toProto(), nil
+	return sortedCandidateIndexes[*selectedSkuIndex], nil
+}
+
+func (s *promptService) promptAiModelConfigCandidateSelection(
+	ctx context.Context,
+	candidates []aiModelConfigPromptOption,
+	preferredSkus []string,
+	message string,
+	helpMessage string,
+) (int, error) {
+	type group struct {
+		modelName        string
+		version          string
+		isDefaultVersion bool
+		kind             string
+		format           string
+		status           string
+		capabilities     []string
+		candidateIndexes []int
+	}
+
+	groupByKey := map[string]*group{}
+	for i, candidate := range candidates {
+		key := strings.Join([]string{
+			strings.ToLower(strings.TrimSpace(candidate.ModelName)),
+			strings.ToLower(strings.TrimSpace(candidate.Version)),
+			strings.ToLower(strings.TrimSpace(candidate.Kind)),
+			strings.ToLower(strings.TrimSpace(candidate.Format)),
+			strings.ToLower(strings.TrimSpace(candidate.Status)),
+			normalizedCapabilitiesKey(candidate.Capabilities),
+		}, "|")
+
+		entry, has := groupByKey[key]
+		if !has {
+			entry = &group{
+				modelName:        candidate.ModelName,
+				version:          candidate.Version,
+				isDefaultVersion: candidate.IsDefaultVersion,
+				kind:             candidate.Kind,
+				format:           candidate.Format,
+				status:           candidate.Status,
+				capabilities:     slices.Clone(candidate.Capabilities),
+			}
+			groupByKey[key] = entry
+		} else {
+			entry.isDefaultVersion = entry.isDefaultVersion || candidate.IsDefaultVersion
+		}
+
+		entry.candidateIndexes = append(entry.candidateIndexes, i)
+	}
+
+	modelGroups := make([]*group, 0, len(groupByKey))
+	for _, entry := range groupByKey {
+		modelGroups = append(modelGroups, entry)
+	}
+	slices.SortFunc(modelGroups, func(a, b *group) int {
+		if a.isDefaultVersion != b.isDefaultVersion {
+			if a.isDefaultVersion {
+				return -1
+			}
+			return 1
+		}
+		if cmp := strings.Compare(strings.ToLower(a.modelName), strings.ToLower(b.modelName)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.version), strings.ToLower(b.version)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.kind), strings.ToLower(b.kind)); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(strings.ToLower(a.format), strings.ToLower(b.format))
+	})
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+
+	selectedModelGroup := modelGroups[0]
+	if len(modelGroups) > 1 {
+		modelChoices := make([]*ux.SelectChoice, 0, len(modelGroups))
+		for _, entry := range modelGroups {
+			label := fmt.Sprintf("%s/%s", entry.modelName, entry.version)
+			if entry.isDefaultVersion {
+				label = fmt.Sprintf("%s (default)", label)
+			}
+			if entry.kind != "" || entry.format != "" {
+				label = fmt.Sprintf("%s [%s/%s]", label, entry.kind, entry.format)
+			}
+
+			modelChoices = append(modelChoices, &ux.SelectChoice{
+				Value: label,
+				Label: label,
+			})
+		}
+
+		modelPromptMessage := message
+		if modelPromptMessage == "" {
+			modelPromptMessage = "Select an AI model:"
+		}
+
+		modelSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+			Message:         modelPromptMessage,
+			HelpMessage:     helpMessage,
+			Choices:         modelChoices,
+			EnableFiltering: to.Ptr(true),
+			DisplayCount:    min(12, len(modelChoices)),
+		})
+
+		selectedModelIndex, err := modelSelectPrompt.Ask(ctx)
+		if err != nil {
+			return 0, wrapErrorWithSuggestion(err)
+		}
+		if selectedModelIndex == nil {
+			return 0, fmt.Errorf("no AI model selected")
+		}
+
+		selectedModelGroup = modelGroups[*selectedModelIndex]
+	}
+
+	selectedCandidateIndex := selectedModelGroup.candidateIndexes[0]
+	if len(selectedModelGroup.candidateIndexes) == 1 {
+		return selectedCandidateIndex, nil
+	}
+
+	sortedCandidateIndexes := slices.Clone(selectedModelGroup.candidateIndexes)
+	preferredOrder := map[string]int{}
+	for i, sku := range preferredSkus {
+		preferredOrder[strings.ToLower(strings.TrimSpace(sku))] = i
+	}
+	const preferredDefaultRank = 1_000_000
+	slices.SortFunc(sortedCandidateIndexes, func(a, b int) int {
+		aSku := strings.ToLower(strings.TrimSpace(candidates[a].Sku.Name))
+		bSku := strings.ToLower(strings.TrimSpace(candidates[b].Sku.Name))
+
+		aRank, aHas := preferredOrder[aSku]
+		bRank, bHas := preferredOrder[bSku]
+		if !aHas {
+			aRank = preferredDefaultRank
+		}
+		if !bHas {
+			bRank = preferredDefaultRank
+		}
+
+		if aRank != bRank {
+			if aRank < bRank {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(aSku, bSku); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(
+			strings.ToLower(strings.TrimSpace(candidates[a].Sku.UsageName)),
+			strings.ToLower(strings.TrimSpace(candidates[b].Sku.UsageName)),
+		)
+	})
+
+	skuChoices := make([]*ux.SelectChoice, 0, len(sortedCandidateIndexes))
+	for _, candidateIndex := range sortedCandidateIndexes {
+		candidate := candidates[candidateIndex]
+		sku := candidate.Sku
+		label := fmt.Sprintf(
+			"%s (usage=%s, default capacity=%d, locations=%d)",
+			sku.Name,
+			sku.UsageName,
+			max(1, sku.CapacityDefault),
+			len(candidate.Locations),
+		)
+
+		skuChoices = append(skuChoices, &ux.SelectChoice{
+			Value: fmt.Sprintf("%d", candidateIndex),
+			Label: label,
+		})
+	}
+
+	skuSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         "Select an AI model SKU:",
+		HelpMessage:     helpMessage,
+		Choices:         skuChoices,
+		EnableFiltering: to.Ptr(true),
+		DisplayCount:    min(12, len(skuChoices)),
+	})
+
+	selectedSkuIndex, err := skuSelectPrompt.Ask(ctx)
+	if err != nil {
+		return 0, wrapErrorWithSuggestion(err)
+	}
+	if selectedSkuIndex == nil {
+		return 0, fmt.Errorf("no AI model SKU selected")
+	}
+
+	return sortedCandidateIndexes[*selectedSkuIndex], nil
+}
+
+func normalizedCapabilitiesKey(capabilities []string) string {
+	if len(capabilities) == 0 {
+		return ""
+	}
+
+	values := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		trimmed := strings.ToLower(strings.TrimSpace(capability))
+		if trimmed == "" {
+			continue
+		}
+
+		values = append(values, trimmed)
+	}
+
+	if len(values) == 0 {
+		return ""
+	}
+
+	slices.Sort(values)
+	values = slices.Compact(values)
+	return strings.Join(values, ",")
 }
 
 func (s *promptService) selectAiLocation(

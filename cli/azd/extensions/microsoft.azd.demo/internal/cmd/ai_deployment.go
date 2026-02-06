@@ -81,7 +81,7 @@ func newAiDeploymentCommand() *cobra.Command {
 					AllowedLocations: allowedLocations,
 					Requirements:     requirements,
 					LocationMessage:  "Select an Azure location for AI deployment:",
-					ModelMessage:     "Select an AI model deployment configuration:",
+					ModelMessage:     "Select an AI model:",
 					SelectionMode:    selectionMode,
 				})
 				if err != nil {
