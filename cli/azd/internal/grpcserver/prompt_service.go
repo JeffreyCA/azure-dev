@@ -1397,16 +1397,79 @@ func (s *promptService) promptAiModelCandidateSelection(
 	}
 	defer release()
 
-	selectedModelGroup := modelGroups[0]
-	if len(modelGroups) > 1 {
-		modelChoices := make([]*ux.SelectChoice, 0, len(modelGroups))
-		for _, entry := range modelGroups {
+	type modelTypeGroup struct {
+		kind        string
+		format      string
+		modelGroups []*group
+	}
+
+	typeGroupsByKey := map[string]*modelTypeGroup{}
+	for _, entry := range modelGroups {
+		typeKey := strings.Join([]string{
+			strings.ToLower(strings.TrimSpace(entry.kind)),
+			strings.ToLower(strings.TrimSpace(entry.format)),
+		}, "|")
+
+		typeGroup, has := typeGroupsByKey[typeKey]
+		if !has {
+			typeGroup = &modelTypeGroup{
+				kind:   entry.kind,
+				format: entry.format,
+			}
+			typeGroupsByKey[typeKey] = typeGroup
+		}
+
+		typeGroup.modelGroups = append(typeGroup.modelGroups, entry)
+	}
+
+	typeGroups := make([]*modelTypeGroup, 0, len(typeGroupsByKey))
+	for _, typeGroup := range typeGroupsByKey {
+		typeGroups = append(typeGroups, typeGroup)
+	}
+	slices.SortFunc(typeGroups, func(a, b *modelTypeGroup) int {
+		return strings.Compare(
+			strings.ToLower(aiModelTypeLabel(a.kind, a.format)),
+			strings.ToLower(aiModelTypeLabel(b.kind, b.format)),
+		)
+	})
+
+	selectedModelGroups := modelGroups
+	if len(typeGroups) > 1 {
+		typeChoices := make([]*ux.SelectChoice, 0, len(typeGroups))
+		for _, typeGroup := range typeGroups {
+			label := aiModelTypeLabel(typeGroup.kind, typeGroup.format)
+			typeChoices = append(typeChoices, &ux.SelectChoice{
+				Value: label,
+				Label: label,
+			})
+		}
+
+		typeSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+			Message:         "Select an AI model type:",
+			HelpMessage:     helpMessage,
+			Choices:         typeChoices,
+			EnableFiltering: to.Ptr(true),
+			DisplayCount:    min(12, len(typeChoices)),
+		})
+
+		selectedTypeIndex, err := typeSelectPrompt.Ask(ctx)
+		if err != nil {
+			return 0, wrapErrorWithSuggestion(err)
+		}
+		if selectedTypeIndex == nil {
+			return 0, fmt.Errorf("no AI model type selected")
+		}
+
+		selectedModelGroups = typeGroups[*selectedTypeIndex].modelGroups
+	}
+
+	selectedModelGroup := selectedModelGroups[0]
+	if len(selectedModelGroups) > 1 {
+		modelChoices := make([]*ux.SelectChoice, 0, len(selectedModelGroups))
+		for _, entry := range selectedModelGroups {
 			label := fmt.Sprintf("%s/%s", entry.modelName, entry.version)
 			if entry.isDefaultVersion {
 				label = fmt.Sprintf("%s (default)", label)
-			}
-			if entry.kind != "" || entry.format != "" {
-				label = fmt.Sprintf("%s [%s/%s]", label, entry.kind, entry.format)
 			}
 
 			modelChoices = append(modelChoices, &ux.SelectChoice{
@@ -1436,7 +1499,7 @@ func (s *promptService) promptAiModelCandidateSelection(
 			return 0, fmt.Errorf("no AI model selected")
 		}
 
-		selectedModelGroup = modelGroups[*selectedModelIndex]
+		selectedModelGroup = selectedModelGroups[*selectedModelIndex]
 	}
 
 	selectedCandidateIndex := selectedModelGroup.candidateIndexes[0]
@@ -1592,16 +1655,79 @@ func (s *promptService) promptAiModelConfigCandidateSelection(
 	}
 	defer release()
 
-	selectedModelGroup := modelGroups[0]
-	if len(modelGroups) > 1 {
-		modelChoices := make([]*ux.SelectChoice, 0, len(modelGroups))
-		for _, entry := range modelGroups {
+	type modelTypeGroup struct {
+		kind        string
+		format      string
+		modelGroups []*group
+	}
+
+	typeGroupsByKey := map[string]*modelTypeGroup{}
+	for _, entry := range modelGroups {
+		typeKey := strings.Join([]string{
+			strings.ToLower(strings.TrimSpace(entry.kind)),
+			strings.ToLower(strings.TrimSpace(entry.format)),
+		}, "|")
+
+		typeGroup, has := typeGroupsByKey[typeKey]
+		if !has {
+			typeGroup = &modelTypeGroup{
+				kind:   entry.kind,
+				format: entry.format,
+			}
+			typeGroupsByKey[typeKey] = typeGroup
+		}
+
+		typeGroup.modelGroups = append(typeGroup.modelGroups, entry)
+	}
+
+	typeGroups := make([]*modelTypeGroup, 0, len(typeGroupsByKey))
+	for _, typeGroup := range typeGroupsByKey {
+		typeGroups = append(typeGroups, typeGroup)
+	}
+	slices.SortFunc(typeGroups, func(a, b *modelTypeGroup) int {
+		return strings.Compare(
+			strings.ToLower(aiModelTypeLabel(a.kind, a.format)),
+			strings.ToLower(aiModelTypeLabel(b.kind, b.format)),
+		)
+	})
+
+	selectedModelGroups := modelGroups
+	if len(typeGroups) > 1 {
+		typeChoices := make([]*ux.SelectChoice, 0, len(typeGroups))
+		for _, typeGroup := range typeGroups {
+			label := aiModelTypeLabel(typeGroup.kind, typeGroup.format)
+			typeChoices = append(typeChoices, &ux.SelectChoice{
+				Value: label,
+				Label: label,
+			})
+		}
+
+		typeSelectPrompt := ux.NewSelect(&ux.SelectOptions{
+			Message:         "Select an AI model type:",
+			HelpMessage:     helpMessage,
+			Choices:         typeChoices,
+			EnableFiltering: to.Ptr(true),
+			DisplayCount:    min(12, len(typeChoices)),
+		})
+
+		selectedTypeIndex, err := typeSelectPrompt.Ask(ctx)
+		if err != nil {
+			return 0, wrapErrorWithSuggestion(err)
+		}
+		if selectedTypeIndex == nil {
+			return 0, fmt.Errorf("no AI model type selected")
+		}
+
+		selectedModelGroups = typeGroups[*selectedTypeIndex].modelGroups
+	}
+
+	selectedModelGroup := selectedModelGroups[0]
+	if len(selectedModelGroups) > 1 {
+		modelChoices := make([]*ux.SelectChoice, 0, len(selectedModelGroups))
+		for _, entry := range selectedModelGroups {
 			label := fmt.Sprintf("%s/%s", entry.modelName, entry.version)
 			if entry.isDefaultVersion {
 				label = fmt.Sprintf("%s (default)", label)
-			}
-			if entry.kind != "" || entry.format != "" {
-				label = fmt.Sprintf("%s [%s/%s]", label, entry.kind, entry.format)
 			}
 
 			modelChoices = append(modelChoices, &ux.SelectChoice{
@@ -1631,7 +1757,7 @@ func (s *promptService) promptAiModelConfigCandidateSelection(
 			return 0, fmt.Errorf("no AI model selected")
 		}
 
-		selectedModelGroup = modelGroups[*selectedModelIndex]
+		selectedModelGroup = selectedModelGroups[*selectedModelIndex]
 	}
 
 	selectedCandidateIndex := selectedModelGroup.candidateIndexes[0]
@@ -1734,6 +1860,22 @@ func normalizedCapabilitiesKey(capabilities []string) string {
 	slices.Sort(values)
 	values = slices.Compact(values)
 	return strings.Join(values, ",")
+}
+
+func aiModelTypeLabel(kind string, format string) string {
+	kind = strings.TrimSpace(kind)
+	format = strings.TrimSpace(format)
+
+	switch {
+	case kind != "" && format != "":
+		return fmt.Sprintf("%s / %s", kind, format)
+	case kind != "":
+		return kind
+	case format != "":
+		return format
+	default:
+		return "<unspecified type>"
+	}
 }
 
 func (s *promptService) selectAiLocation(
