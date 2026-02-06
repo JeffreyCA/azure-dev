@@ -22,10 +22,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AiService_ListLocations_FullMethodName          = "/azdext.AiService/ListLocations"
-	AiService_ListModelCatalog_FullMethodName       = "/azdext.AiService/ListModelCatalog"
-	AiService_ListUsages_FullMethodName             = "/azdext.AiService/ListUsages"
-	AiService_FindLocationsWithQuota_FullMethodName = "/azdext.AiService/FindLocationsWithQuota"
+	AiService_ListLocations_FullMethodName                  = "/azdext.AiService/ListLocations"
+	AiService_ListModelCatalog_FullMethodName               = "/azdext.AiService/ListModelCatalog"
+	AiService_ListUsages_FullMethodName                     = "/azdext.AiService/ListUsages"
+	AiService_FindLocationsWithQuota_FullMethodName         = "/azdext.AiService/FindLocationsWithQuota"
+	AiService_FindLocationsForModelWithQuota_FullMethodName = "/azdext.AiService/FindLocationsForModelWithQuota"
 )
 
 // AiServiceClient is the client API for AiService service.
@@ -40,6 +41,8 @@ type AiServiceClient interface {
 	ListUsages(ctx context.Context, in *AiListUsagesRequest, opts ...grpc.CallOption) (*AiListUsagesResponse, error)
 	// FindLocationsWithQuota resolves locations that satisfy all requested quota requirements.
 	FindLocationsWithQuota(ctx context.Context, in *AiFindLocationsWithQuotaRequest, opts ...grpc.CallOption) (*AiFindLocationsWithQuotaResponse, error)
+	// FindLocationsForModelWithQuota resolves locations where a model deployment is available and quota requirements are met.
+	FindLocationsForModelWithQuota(ctx context.Context, in *AiFindLocationsForModelWithQuotaRequest, opts ...grpc.CallOption) (*AiFindLocationsForModelWithQuotaResponse, error)
 }
 
 type aiServiceClient struct {
@@ -90,6 +93,16 @@ func (c *aiServiceClient) FindLocationsWithQuota(ctx context.Context, in *AiFind
 	return out, nil
 }
 
+func (c *aiServiceClient) FindLocationsForModelWithQuota(ctx context.Context, in *AiFindLocationsForModelWithQuotaRequest, opts ...grpc.CallOption) (*AiFindLocationsForModelWithQuotaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AiFindLocationsForModelWithQuotaResponse)
+	err := c.cc.Invoke(ctx, AiService_FindLocationsForModelWithQuota_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AiServiceServer is the server API for AiService service.
 // All implementations must embed UnimplementedAiServiceServer
 // for forward compatibility.
@@ -102,6 +115,8 @@ type AiServiceServer interface {
 	ListUsages(context.Context, *AiListUsagesRequest) (*AiListUsagesResponse, error)
 	// FindLocationsWithQuota resolves locations that satisfy all requested quota requirements.
 	FindLocationsWithQuota(context.Context, *AiFindLocationsWithQuotaRequest) (*AiFindLocationsWithQuotaResponse, error)
+	// FindLocationsForModelWithQuota resolves locations where a model deployment is available and quota requirements are met.
+	FindLocationsForModelWithQuota(context.Context, *AiFindLocationsForModelWithQuotaRequest) (*AiFindLocationsForModelWithQuotaResponse, error)
 	mustEmbedUnimplementedAiServiceServer()
 }
 
@@ -123,6 +138,9 @@ func (UnimplementedAiServiceServer) ListUsages(context.Context, *AiListUsagesReq
 }
 func (UnimplementedAiServiceServer) FindLocationsWithQuota(context.Context, *AiFindLocationsWithQuotaRequest) (*AiFindLocationsWithQuotaResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FindLocationsWithQuota not implemented")
+}
+func (UnimplementedAiServiceServer) FindLocationsForModelWithQuota(context.Context, *AiFindLocationsForModelWithQuotaRequest) (*AiFindLocationsForModelWithQuotaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FindLocationsForModelWithQuota not implemented")
 }
 func (UnimplementedAiServiceServer) mustEmbedUnimplementedAiServiceServer() {}
 func (UnimplementedAiServiceServer) testEmbeddedByValue()                   {}
@@ -217,6 +235,24 @@ func _AiService_FindLocationsWithQuota_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AiService_FindLocationsForModelWithQuota_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AiFindLocationsForModelWithQuotaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AiServiceServer).FindLocationsForModelWithQuota(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AiService_FindLocationsForModelWithQuota_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AiServiceServer).FindLocationsForModelWithQuota(ctx, req.(*AiFindLocationsForModelWithQuotaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AiService_ServiceDesc is the grpc.ServiceDesc for AiService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -239,6 +275,10 @@ var AiService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FindLocationsWithQuota",
 			Handler:    _AiService_FindLocationsWithQuota_Handler,
+		},
+		{
+			MethodName: "FindLocationsForModelWithQuota",
+			Handler:    _AiService_FindLocationsForModelWithQuota_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

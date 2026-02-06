@@ -18,6 +18,11 @@ service AiService {
 
   // FindLocationsWithQuota resolves locations that satisfy all requested quota requirements.
   rpc FindLocationsWithQuota (AiFindLocationsWithQuotaRequest) returns (AiFindLocationsWithQuotaResponse);
+
+  // FindLocationsForModelWithQuota resolves locations where a model deployment is available and quota requirements are met.
+  rpc FindLocationsForModelWithQuota (
+    AiFindLocationsForModelWithQuotaRequest
+  ) returns (AiFindLocationsForModelWithQuotaResponse);
 }
 
 message AiUsageRequirement {
@@ -116,4 +121,41 @@ message AiFindLocationsWithQuotaRequest {
 message AiFindLocationsWithQuotaResponse {
   repeated string matched_locations = 1;
   repeated AiLocationQuotaResult results = 2;
+}
+
+message AiModelDeployment {
+  string model_name = 1;
+  string version = 2;
+  bool is_default_version = 3;
+  string kind = 4;
+  string format = 5;
+  string status = 6;
+  repeated string capabilities = 7;
+  AiModelSku sku = 8;
+}
+
+message AiModelLocationQuotaResult {
+  string location = 1;
+  bool matched = 2;
+  AiModelDeployment deployment = 3;
+  repeated AiLocationQuotaUsage requirements = 4;
+  string error = 5;
+}
+
+message AiFindLocationsForModelWithQuotaRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  repeated string locations = 3;
+  repeated string versions = 4;
+  repeated string skus = 5;
+  repeated string kinds = 6;
+  repeated string formats = 7;
+  repeated string statuses = 8;
+  repeated string capabilities = 9;
+  repeated AiUsageRequirement requirements = 10;
+}
+
+message AiFindLocationsForModelWithQuotaResponse {
+  repeated string matched_locations = 1;
+  repeated AiModelLocationQuotaResult results = 2;
 }

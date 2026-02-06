@@ -36,6 +36,12 @@ type mockAiCatalogClient struct {
 		requirements []azapi.AiUsageRequirement,
 		options *azapi.AiLocationsWithQuotaOptions,
 	) (*azapi.AiLocationsWithQuotaResult, error)
+	findLocationsForModelWithQuotaFn func(
+		ctx context.Context,
+		subscriptionId string,
+		modelName string,
+		options *azapi.AiFindLocationsForModelWithQuotaOptions,
+	) (*azapi.AiLocationsForModelWithQuotaResult, error)
 }
 
 func (m *mockAiCatalogClient) ListAiLocations(
@@ -73,6 +79,15 @@ func (m *mockAiCatalogClient) FindAiLocationsWithQuota(
 	return m.findLocationsWithQuotaFn(ctx, subscriptionId, locations, requirements, options)
 }
 
+func (m *mockAiCatalogClient) FindAiLocationsForModelWithQuota(
+	ctx context.Context,
+	subscriptionId string,
+	modelName string,
+	options *azapi.AiFindLocationsForModelWithQuotaOptions,
+) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+	return m.findLocationsForModelWithQuotaFn(ctx, subscriptionId, modelName, options)
+}
+
 func TestAiService_ListLocations(t *testing.T) {
 	service := &aiService{
 		aiClient: &mockAiCatalogClient{
@@ -98,6 +113,14 @@ func TestAiService_ListLocations(t *testing.T) {
 				[]azapi.AiUsageRequirement,
 				*azapi.AiLocationsWithQuotaOptions,
 			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+			findLocationsForModelWithQuotaFn: func(
+				context.Context,
+				string,
+				string,
+				*azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
 				return nil, nil
 			},
 		},
@@ -135,6 +158,14 @@ func TestAiService_ListUsages(t *testing.T) {
 				[]azapi.AiUsageRequirement,
 				*azapi.AiLocationsWithQuotaOptions,
 			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+			findLocationsForModelWithQuotaFn: func(
+				context.Context,
+				string,
+				string,
+				*azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
 				return nil, nil
 			},
 		},
@@ -209,6 +240,14 @@ func TestAiService_ListModelCatalog(t *testing.T) {
 			) (*azapi.AiLocationsWithQuotaResult, error) {
 				return nil, nil
 			},
+			findLocationsForModelWithQuotaFn: func(
+				context.Context,
+				string,
+				string,
+				*azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+				return nil, nil
+			},
 		},
 	}
 
@@ -272,6 +311,14 @@ func TestAiService_FindLocationsWithQuota(t *testing.T) {
 					},
 				}, nil
 			},
+			findLocationsForModelWithQuotaFn: func(
+				context.Context,
+				string,
+				string,
+				*azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+				return nil, nil
+			},
 		},
 	}
 
@@ -295,4 +342,93 @@ func TestAiService_FindLocationsWithQuota(t *testing.T) {
 	require.Len(t, resp.Results[0].Requirements, 1)
 	require.Equal(t, int32(10), resp.Results[0].Requirements[0].RequiredCapacity)
 	require.Equal(t, float64(20), resp.Results[0].Requirements[0].AvailableCapacity)
+}
+
+func TestAiService_FindLocationsForModelWithQuota(t *testing.T) {
+	service := &aiService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(context.Context, string, azapi.AiModelCatalogFilters) ([]azapi.AiModelCatalogItem, error) {
+				return nil, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				context.Context,
+				string,
+				[]string,
+				[]azapi.AiUsageRequirement,
+				*azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+			findLocationsForModelWithQuotaFn: func(
+				_ context.Context,
+				subscriptionId string,
+				modelName string,
+				options *azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, "gpt-4o", modelName)
+				require.Equal(t, []string{"eastus"}, options.Locations)
+				require.True(t, options.RequireAccountQuota)
+				require.Equal(t, float64(2), options.MinimumAccountQuota)
+				require.Len(t, options.Requirements, 1)
+				require.Equal(t, "OpenAI.Standard", options.Requirements[0].UsageName)
+				require.Equal(t, float64(10), options.Requirements[0].RequiredCapacity)
+
+				return &azapi.AiLocationsForModelWithQuotaResult{
+					MatchedLocations: []string{"eastus"},
+					Results: []azapi.AiModelLocationQuotaResult{
+						{
+							Location: "eastus",
+							Matched:  true,
+							Deployment: &azapi.AiModelDeployment{
+								ModelName:        "gpt-4o",
+								Version:          "0613",
+								IsDefaultVersion: true,
+								Kind:             "Chat",
+								Format:           "OpenAI",
+								Status:           "GenerallyAvailable",
+								Capabilities:     []string{"ChatCompletion"},
+								Sku: azapi.AiModelSku{
+									Name:            "Standard",
+									UsageName:       "OpenAI.Standard",
+									CapacityDefault: 10,
+								},
+							},
+							Requirements: []azapi.AiLocationQuotaUsage{
+								{
+									UsageName:         "OpenAI.Standard",
+									RequiredCapacity:  10,
+									AvailableCapacity: 30,
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		},
+	}
+
+	resp, err := service.FindLocationsForModelWithQuota(context.Background(), &azdext.AiFindLocationsForModelWithQuotaRequest{
+		SubscriptionId: "sub-123",
+		ModelName:      "gpt-4o",
+		Locations:      []string{"eastus"},
+		Requirements: []*azdext.AiUsageRequirement{
+			{
+				UsageName:        "OpenAI.Standard",
+				RequiredCapacity: 10,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"eastus"}, resp.MatchedLocations)
+	require.Len(t, resp.Results, 1)
+	require.Equal(t, "gpt-4o", resp.Results[0].GetDeployment().GetModelName())
+	require.Equal(t, "Standard", resp.Results[0].GetDeployment().GetSku().GetName())
+	require.Len(t, resp.Results[0].Requirements, 1)
 }

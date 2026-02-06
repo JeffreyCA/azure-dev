@@ -224,6 +224,200 @@ func Test_FindAiLocationsWithQuota(t *testing.T) {
 	})
 }
 
+func Test_FindAiLocationsForModelWithQuota(t *testing.T) {
+	t.Run("returns matched locations with selected deployment metadata", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		azCli := newAzureClientFromMockContext(mockContext)
+
+		// Resource SKU locations
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/skus")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.ResourceSKUListResult{
+				Value: []*armcognitiveservices.ResourceSKU{
+					{
+						Kind:         to.Ptr("AIServices"),
+						Name:         to.Ptr("S0"),
+						Tier:         to.Ptr("Standard"),
+						ResourceType: to.Ptr("accounts"),
+						Locations:    []*string{to.Ptr("eastus"), to.Ptr("westus")},
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		mockModelListResponder := func(request *http.Request) (*http.Response, error) {
+			defaultCapacity := int32(10)
+			minCapacity := int32(1)
+			maxCapacity := int32(100)
+			capacityStep := int32(1)
+			response := armcognitiveservices.ModelListResult{
+				Value: []*armcognitiveservices.Model{
+					{
+						Kind: to.Ptr("Chat"),
+						Model: &armcognitiveservices.AccountModel{
+							Name:             to.Ptr("gpt-4o"),
+							Version:          to.Ptr("0613"),
+							Format:           to.Ptr("OpenAI"),
+							LifecycleStatus:  to.Ptr(armcognitiveservices.ModelLifecycleStatusGenerallyAvailable),
+							IsDefaultVersion: to.Ptr(true),
+							Capabilities: map[string]*string{
+								"ChatCompletion": to.Ptr("true"),
+							},
+							SKUs: []*armcognitiveservices.ModelSKU{
+								{
+									Name:      to.Ptr("Standard"),
+									UsageName: to.Ptr("OpenAI.Standard"),
+									Capacity: &armcognitiveservices.CapacityConfig{
+										Default: &defaultCapacity,
+										Minimum: &minCapacity,
+										Maximum: &maxCapacity,
+										Step:    &capacityStep,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		}
+
+		// Model catalog endpoints
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/eastus/models")
+		}).RespondFn(mockModelListResponder)
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/westus/models")
+		}).RespondFn(mockModelListResponder)
+
+		// EastUS satisfies model usage + account quota
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/eastus/usages")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.UsageListResult{
+				Value: []*armcognitiveservices.Usage{
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.Standard"),
+						},
+						CurrentValue: to.Ptr[float64](5),
+						Limit:        to.Ptr[float64](20),
+					},
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr(AiAccountQuotaUsageName),
+						},
+						CurrentValue: to.Ptr[float64](1),
+						Limit:        to.Ptr[float64](5),
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		// WestUS fails model usage quota requirement
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/westus/usages")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.UsageListResult{
+				Value: []*armcognitiveservices.Usage{
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.Standard"),
+						},
+						CurrentValue: to.Ptr[float64](18),
+						Limit:        to.Ptr[float64](20),
+					},
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr(AiAccountQuotaUsageName),
+						},
+						CurrentValue: to.Ptr[float64](1),
+						Limit:        to.Ptr[float64](5),
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		result, err := azCli.FindAiLocationsForModelWithQuota(
+			*mockContext.Context,
+			"SUBSCRIPTION_ID",
+			"gpt-4o",
+			&AiFindLocationsForModelWithQuotaOptions{
+				Locations: []string{"eastus", "westus"},
+			},
+		)
+		require.NoError(t, err)
+		require.Equal(t, []string{"eastus"}, result.MatchedLocations)
+		require.Len(t, result.Results, 2)
+
+		require.Equal(t, "eastus", result.Results[0].Location)
+		require.True(t, result.Results[0].Matched)
+		require.NotNil(t, result.Results[0].Deployment)
+		require.Equal(t, "gpt-4o", result.Results[0].Deployment.ModelName)
+		require.Equal(t, "Standard", result.Results[0].Deployment.Sku.Name)
+
+		require.Equal(t, "westus", result.Results[1].Location)
+		require.False(t, result.Results[1].Matched)
+		require.NotNil(t, result.Results[1].Deployment)
+	})
+
+	t.Run("returns error when model is not present", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		azCli := newAzureClientFromMockContext(mockContext)
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/skus")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.ResourceSKUListResult{
+				Value: []*armcognitiveservices.ResourceSKU{
+					{
+						Kind:         to.Ptr("AIServices"),
+						Name:         to.Ptr("S0"),
+						Tier:         to.Ptr("Standard"),
+						ResourceType: to.Ptr("accounts"),
+						Locations:    []*string{to.Ptr("eastus")},
+					},
+				},
+			}
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/eastus/models")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.ModelListResult{
+				Value: []*armcognitiveservices.Model{},
+			}
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		result, err := azCli.FindAiLocationsForModelWithQuota(
+			*mockContext.Context,
+			"SUBSCRIPTION_ID",
+			"gpt-4o",
+			nil,
+		)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "model 'gpt-4o' not found")
+	})
+}
+
 func Test_ToAiModelVersion_IgnoresCapabilitiesInVersionKey(t *testing.T) {
 	modelA := &armcognitiveservices.Model{
 		Kind: to.Ptr("OpenAI"),

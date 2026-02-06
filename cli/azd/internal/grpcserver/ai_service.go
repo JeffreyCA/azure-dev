@@ -36,6 +36,12 @@ type aiCatalogClient interface {
 		requirements []azapi.AiUsageRequirement,
 		options *azapi.AiLocationsWithQuotaOptions,
 	) (*azapi.AiLocationsWithQuotaResult, error)
+	FindAiLocationsForModelWithQuota(
+		ctx context.Context,
+		subscriptionId string,
+		modelName string,
+		options *azapi.AiFindLocationsForModelWithQuotaOptions,
+	) (*azapi.AiLocationsForModelWithQuotaResult, error)
 }
 
 type aiService struct {
@@ -209,6 +215,90 @@ func (s *aiService) FindLocationsWithQuota(
 
 	return &azdext.AiFindLocationsWithQuotaResponse{
 		MatchedLocations: locationsResult.MatchedLocations,
+		Results:          results,
+	}, nil
+}
+
+func (s *aiService) FindLocationsForModelWithQuota(
+	ctx context.Context,
+	req *azdext.AiFindLocationsForModelWithQuotaRequest,
+) (*azdext.AiFindLocationsForModelWithQuotaResponse, error) {
+	if s.aiClient == nil {
+		return nil, fmt.Errorf("ai service is unavailable")
+	}
+
+	requirements := make([]azapi.AiUsageRequirement, 0, len(req.GetRequirements()))
+	for _, requirement := range req.GetRequirements() {
+		requirements = append(requirements, azapi.AiUsageRequirement{
+			UsageName:        requirement.GetUsageName(),
+			RequiredCapacity: normalizeRequiredCapacity(requirement.GetRequiredCapacity()),
+		})
+	}
+
+	result, err := s.aiClient.FindAiLocationsForModelWithQuota(
+		ctx,
+		req.GetSubscriptionId(),
+		req.GetModelName(),
+		&azapi.AiFindLocationsForModelWithQuotaOptions{
+			Locations:           req.GetLocations(),
+			Versions:            req.GetVersions(),
+			Skus:                req.GetSkus(),
+			Kinds:               req.GetKinds(),
+			Formats:             req.GetFormats(),
+			Statuses:            req.GetStatuses(),
+			Capabilities:        req.GetCapabilities(),
+			Requirements:        requirements,
+			RequireAccountQuota: true,
+			MinimumAccountQuota: 2,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]*azdext.AiModelLocationQuotaResult, 0, len(result.Results))
+	for _, locationResult := range result.Results {
+		requirementResults := make([]*azdext.AiLocationQuotaUsage, 0, len(locationResult.Requirements))
+		for _, requirement := range locationResult.Requirements {
+			requirementResults = append(requirementResults, &azdext.AiLocationQuotaUsage{
+				UsageName:         requirement.UsageName,
+				RequiredCapacity:  requiredCapacityToInt32(requirement.RequiredCapacity),
+				AvailableCapacity: requirement.AvailableCapacity,
+			})
+		}
+
+		var deployment *azdext.AiModelDeployment
+		if locationResult.Deployment != nil {
+			deployment = &azdext.AiModelDeployment{
+				ModelName:        locationResult.Deployment.ModelName,
+				Version:          locationResult.Deployment.Version,
+				IsDefaultVersion: locationResult.Deployment.IsDefaultVersion,
+				Kind:             locationResult.Deployment.Kind,
+				Format:           locationResult.Deployment.Format,
+				Status:           locationResult.Deployment.Status,
+				Capabilities:     locationResult.Deployment.Capabilities,
+				Sku: &azdext.AiModelSku{
+					Name:            locationResult.Deployment.Sku.Name,
+					UsageName:       locationResult.Deployment.Sku.UsageName,
+					CapacityDefault: locationResult.Deployment.Sku.CapacityDefault,
+					CapacityMinimum: locationResult.Deployment.Sku.CapacityMinimum,
+					CapacityMaximum: locationResult.Deployment.Sku.CapacityMaximum,
+					CapacityStep:    locationResult.Deployment.Sku.CapacityStep,
+				},
+			}
+		}
+
+		results = append(results, &azdext.AiModelLocationQuotaResult{
+			Location:     locationResult.Location,
+			Matched:      locationResult.Matched,
+			Deployment:   deployment,
+			Requirements: requirementResults,
+			Error:        locationResult.Error,
+		})
+	}
+
+	return &azdext.AiFindLocationsForModelWithQuotaResponse{
+		MatchedLocations: result.MatchedLocations,
 		Results:          results,
 	}, nil
 }

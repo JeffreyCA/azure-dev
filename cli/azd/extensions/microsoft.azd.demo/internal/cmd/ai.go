@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -128,11 +130,6 @@ func newAiQuotaCommand() *cobra.Command {
 					return err
 				}
 
-				requirements, err := promptQuotaRequirements(ctx, azdClient)
-				if err != nil {
-					return err
-				}
-
 				limitLocationResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
 					Options: &azdext.ConfirmOptions{
 						Message:      "Limit quota check to one location?",
@@ -153,6 +150,17 @@ func newAiQuotaCommand() *cobra.Command {
 					locations = []string{location}
 				}
 
+				usageLocation, usageMeters, err := resolveUsageMetersForPrompt(ctx, azdClient, scope.SubscriptionId, locations)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Using usage meters from: %s\n", usageLocation)
+
+				requirements, err := promptQuotaRequirements(ctx, azdClient, usageMeters)
+				if err != nil {
+					return err
+				}
+
 				req, err := buildAiFindLocationsWithQuotaRequest(scope.SubscriptionId, locations, requirements)
 				if err != nil {
 					return err
@@ -164,9 +172,13 @@ func newAiQuotaCommand() *cobra.Command {
 				}
 
 				if len(resp.MatchedLocations) == 0 {
-					fmt.Println("No matching locations found.")
+					fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("No matching locations found."))
 				} else {
-					fmt.Printf("Matched locations: %s\n", strings.Join(resp.MatchedLocations, ", "))
+					fmt.Printf(
+						"%s %s\n",
+						color.New(color.FgGreen, color.Bold).Sprint("Matched locations:"),
+						strings.Join(resp.MatchedLocations, ", "),
+					)
 				}
 
 				printQuotaSummary(resp.Results)
@@ -200,9 +212,20 @@ func newAiPromptCommand() *cobra.Command {
 					return err
 				}
 
-				requirements := []string{}
+				requirements := []*azdext.AiUsageRequirement{}
 				if filterByQuotaResp.GetValue() {
-					requirements, err = promptQuotaRequirements(ctx, azdClient)
+					usageLocation, usageMeters, err := resolveUsageMetersForPrompt(
+						ctx,
+						azdClient,
+						scope.SubscriptionId,
+						nil,
+					)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("Using usage meters from: %s\n", usageLocation)
+
+					requirements, err = promptQuotaRequirements(ctx, azdClient, usageMeters)
 					if err != nil {
 						return err
 					}
@@ -316,30 +339,28 @@ func promptLocationForScope(
 func promptQuotaRequirements(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,
-) ([]string, error) {
-	requirements := []string{}
+	usageMeters []*azdext.AiUsage,
+) ([]*azdext.AiUsageRequirement, error) {
+	requirements := []*azdext.AiUsageRequirement{}
 	for {
-		requirementResponse, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
-			Options: &azdext.PromptOptions{
-				Message:      "Enter quota requirement (usageName[,capacity])",
-				Required:     true,
-				Placeholder:  "OpenAI.S0.AccountCount,1",
-				DefaultValue: "OpenAI.S0.AccountCount,1",
-			},
-		})
+		selectedUsage, err := promptUsageSelection(ctx, azdClient, usageMeters)
 		if err != nil {
 			return nil, err
 		}
 
-		requirement := strings.TrimSpace(requirementResponse.GetValue())
-		if requirement == "" {
-			return nil, fmt.Errorf("quota requirement is required")
+		requiredCapacity, err := promptRequiredCapacity(ctx, azdClient, selectedUsage)
+		if err != nil {
+			return nil, err
 		}
-		requirements = append(requirements, requirement)
+
+		requirements = append(requirements, &azdext.AiUsageRequirement{
+			UsageName:        selectedUsage.GetName(),
+			RequiredCapacity: requiredCapacity,
+		})
 
 		addAnotherResponse, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
 			Options: &azdext.ConfirmOptions{
-				Message:      "Add another quota requirement?",
+				Message:      "Add another usage requirement?",
 				DefaultValue: boolPtr(false),
 			},
 		})
@@ -352,6 +373,80 @@ func promptQuotaRequirements(
 	}
 
 	return requirements, nil
+}
+
+func resolveUsageMetersForPrompt(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	subscriptionID string,
+	locations []string,
+) (string, []*azdext.AiUsage, error) {
+	candidateLocations := slices.Clone(locations)
+	if len(candidateLocations) == 0 {
+		locationsResp, err := azdClient.Ai().ListLocations(ctx, &azdext.AiListLocationsRequest{
+			SubscriptionId: subscriptionID,
+		})
+		if err != nil {
+			return "", nil, err
+		}
+
+		candidateLocations = locationsResp.GetLocations()
+	}
+
+	for _, location := range candidateLocations {
+		usagesResp, err := azdClient.Ai().ListUsages(ctx, &azdext.AiListUsagesRequest{
+			SubscriptionId: subscriptionID,
+			Location:       location,
+		})
+		if err != nil {
+			continue
+		}
+		if len(usagesResp.GetUsages()) == 0 {
+			continue
+		}
+
+		return location, usagesResp.GetUsages(), nil
+	}
+
+	return "", nil, fmt.Errorf("unable to retrieve usage meters for interactive selection")
+}
+
+func promptRequiredCapacity(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	usage *azdext.AiUsage,
+) (int32, error) {
+	if usage == nil {
+		return 0, fmt.Errorf("usage meter is required")
+	}
+
+	usageName := strings.TrimSpace(usage.GetName())
+	if usageName == "" {
+		usageName = "selected usage meter"
+	}
+
+	response, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
+		Options: &azdext.PromptOptions{
+			Message:      fmt.Sprintf("Required capacity for %s", usageName),
+			Required:     true,
+			DefaultValue: "1",
+			HelpMessage:  fmt.Sprintf("Current %.0f / Limit %.0f", usage.GetCurrent(), usage.GetLimit()),
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	trimmed := strings.TrimSpace(response.GetValue())
+	capacity, err := strconv.ParseInt(trimmed, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid capacity '%s': must be a positive integer", trimmed)
+	}
+	if capacity <= 0 {
+		return 0, fmt.Errorf("capacity must be greater than 0")
+	}
+
+	return int32(capacity), nil
 }
 
 func boolPtr(value bool) *bool {
@@ -374,8 +469,10 @@ func promptUsageSelection(
 			name = "<unnamed usage>"
 		}
 
+		usageStats := color.HiBlackString("(current %.0f / limit %.0f)", usage.GetCurrent(), usage.GetLimit())
+
 		choices = append(choices, &azdext.SelectChoice{
-			Label: name,
+			Label: fmt.Sprintf("%s %s", name, usageStats),
 			Value: name,
 		})
 	}
@@ -427,15 +524,33 @@ func printUsageDetails(usage *azdext.AiUsage, location string) {
 }
 
 func printQuotaSummary(results []*azdext.AiLocationQuotaResult) {
-	unmatched := 0
+	matchedCount := 0
 	for _, result := range results {
 		if result.GetMatched() {
+			matchedCount++
+		}
+	}
+
+	fmt.Printf("Quota check summary: %d/%d locations matched\n", matchedCount, len(results))
+
+	for _, result := range results {
+		location := result.GetLocation()
+		if location == "" {
+			location = "<unknown>"
+		}
+
+		if result.GetMatched() {
+			fmt.Printf("  %s %s\n", color.New(color.FgGreen).Sprint("[MATCH]"), location)
 			continue
 		}
 
-		unmatched++
 		if result.GetError() != "" {
-			fmt.Printf("- %s: %s\n", result.GetLocation(), result.GetError())
+			fmt.Printf(
+				"  %s %s - %s\n",
+				color.New(color.FgHiBlack).Sprint("[SKIP]"),
+				location,
+				summarizeQuotaError(result.GetError()),
+			)
 			continue
 		}
 
@@ -452,12 +567,23 @@ func printQuotaSummary(results []*azdext.AiLocationQuotaResult) {
 			}
 		}
 
-		fmt.Printf("- %s: %s\n", result.GetLocation(), reason)
+		fmt.Printf("  %s %s - %s\n", color.New(color.FgYellow).Sprint("[MISS]"), location, reason)
+	}
+}
+
+func summarizeQuotaError(raw string) string {
+	errorText := strings.TrimSpace(raw)
+	if errorText == "" {
+		return "quota lookup unavailable in this location"
 	}
 
-	if unmatched == 0 {
-		fmt.Println("All evaluated locations satisfied the requirements.")
+	codeRegex := regexp.MustCompile(`ERROR CODE:\s*([A-Za-z0-9]+)`)
+	matches := codeRegex.FindStringSubmatch(errorText)
+	if len(matches) >= 2 {
+		return fmt.Sprintf("quota lookup unavailable (%s)", matches[1])
 	}
+
+	return "quota lookup unavailable in this location"
 }
 
 func printCatalogSummary(models []*azdext.AiModelCatalogItem) {
@@ -644,83 +770,29 @@ func printAiModelSelection(model *azdext.AiModelSelection) {
 func buildAiFindLocationsWithQuotaRequest(
 	subscriptionID string,
 	locations []string,
-	requirements []string,
+	requirements []*azdext.AiUsageRequirement,
 ) (*azdext.AiFindLocationsWithQuotaRequest, error) {
-	parsedRequirements, err := parseAiUsageRequirements(requirements)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(parsedRequirements) == 0 {
-		return nil, fmt.Errorf("at least one --require value must be provided")
+	if len(requirements) == 0 {
+		return nil, fmt.Errorf("at least one usage requirement must be provided")
 	}
 
 	return &azdext.AiFindLocationsWithQuotaRequest{
 		SubscriptionId: subscriptionID,
 		Locations:      locations,
-		Requirements:   parsedRequirements,
+		Requirements:   requirements,
 	}, nil
 }
 
 func buildPromptAiLocationRequest(
 	scope *azdext.AzureScope,
 	allowedLocations []string,
-	requirements []string,
+	requirements []*azdext.AiUsageRequirement,
 ) (*azdext.PromptAiLocationRequest, error) {
-	parsedRequirements, err := parseAiUsageRequirements(requirements)
-	if err != nil {
-		return nil, err
-	}
-
 	return &azdext.PromptAiLocationRequest{
 		AzureContext: &azdext.AzureContext{
 			Scope: scope,
 		},
 		AllowedLocations: allowedLocations,
-		Requirements:     parsedRequirements,
-	}, nil
-}
-
-func parseAiUsageRequirements(values []string) ([]*azdext.AiUsageRequirement, error) {
-	requirements := make([]*azdext.AiUsageRequirement, 0, len(values))
-	for _, value := range values {
-		requirement, err := parseAiUsageRequirementArg(value)
-		if err != nil {
-			return nil, err
-		}
-
-		requirements = append(requirements, requirement)
-	}
-
-	return requirements, nil
-}
-
-func parseAiUsageRequirementArg(value string) (*azdext.AiUsageRequirement, error) {
-	parts := strings.Split(strings.TrimSpace(value), ",")
-	if len(parts) == 0 || len(parts) > 2 {
-		return nil, fmt.Errorf("invalid requirement format '%s' (expected usageName[,capacity])", value)
-	}
-
-	usageName := strings.TrimSpace(parts[0])
-	if usageName == "" {
-		return nil, fmt.Errorf("invalid requirement '%s': usage name is required", value)
-	}
-
-	requiredCapacity := int32(1)
-	if len(parts) == 2 {
-		parsedCapacity, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("invalid requirement '%s': capacity must be an integer", value)
-		}
-		if parsedCapacity <= 0 {
-			return nil, fmt.Errorf("invalid requirement '%s': capacity must be greater than 0", value)
-		}
-
-		requiredCapacity = int32(parsedCapacity)
-	}
-
-	return &azdext.AiUsageRequirement{
-		UsageName:        usageName,
-		RequiredCapacity: requiredCapacity,
+		Requirements:     requirements,
 	}, nil
 }

@@ -110,9 +110,57 @@ type AiLocationsWithQuotaResult struct {
 	Results          []AiLocationQuotaResult
 }
 
+// AiFindLocationsForModelWithQuotaOptions controls model + quota lookup behavior.
+type AiFindLocationsForModelWithQuotaOptions struct {
+	Locations           []string
+	Versions            []string
+	Skus                []string
+	Kinds               []string
+	Formats             []string
+	Statuses            []string
+	Capabilities        []string
+	Requirements        []AiUsageRequirement
+	RequireAccountQuota bool
+	MinimumAccountQuota float64
+	MaxConcurrency      int
+}
+
+// AiModelDeployment describes a model deployment candidate.
+type AiModelDeployment struct {
+	ModelName        string
+	Version          string
+	IsDefaultVersion bool
+	Kind             string
+	Format           string
+	Status           string
+	Capabilities     []string
+	Sku              AiModelSku
+}
+
+// AiModelLocationQuotaResult captures model and quota evaluation for one location.
+type AiModelLocationQuotaResult struct {
+	Location     string
+	Matched      bool
+	Deployment   *AiModelDeployment
+	Requirements []AiLocationQuotaUsage
+	Error        string
+}
+
+// AiLocationsForModelWithQuotaResult contains locations where a model deployment matched all quota requirements.
+type AiLocationsForModelWithQuotaResult struct {
+	MatchedLocations []string
+	Results          []AiModelLocationQuotaResult
+}
+
 type versionByKey struct {
 	key     string
 	version AiModelVersion
+}
+
+type aiModelQuotaCandidate struct {
+	location     string
+	deployment   AiModelDeployment
+	requirements []AiUsageRequirement
 }
 
 // ParseAiUsageRequirement parses usage requirement values in format "usageName[,capacity]".
@@ -521,6 +569,189 @@ func (cli *AzureClient) FindAiLocationsWithQuota(
 	}, nil
 }
 
+// FindAiLocationsForModelWithQuota checks where a model deployment is available and quota requirements are met.
+func (cli *AzureClient) FindAiLocationsForModelWithQuota(
+	ctx context.Context,
+	subscriptionId string,
+	modelName string,
+	options *AiFindLocationsForModelWithQuotaOptions,
+) (*AiLocationsForModelWithQuotaResult, error) {
+	trimmedModelName := strings.TrimSpace(modelName)
+	if trimmedModelName == "" {
+		return nil, fmt.Errorf("model name is required")
+	}
+
+	resolvedOptions := AiFindLocationsForModelWithQuotaOptions{
+		RequireAccountQuota: true,
+		MinimumAccountQuota: 2,
+		MaxConcurrency:      defaultAiLookupConcurrency,
+	}
+	if options != nil {
+		resolvedOptions = *options
+	}
+	if resolvedOptions.MinimumAccountQuota <= 0 {
+		resolvedOptions.MinimumAccountQuota = 2
+	}
+	if resolvedOptions.MaxConcurrency <= 0 {
+		resolvedOptions.MaxConcurrency = defaultAiLookupConcurrency
+	}
+
+	models, err := cli.ListAiModelCatalog(ctx, subscriptionId, AiModelCatalogFilters{
+		Locations:    resolvedOptions.Locations,
+		Kinds:        resolvedOptions.Kinds,
+		Formats:      resolvedOptions.Formats,
+		Statuses:     resolvedOptions.Statuses,
+		Capabilities: resolvedOptions.Capabilities,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing AI model catalog: %w", err)
+	}
+
+	var selectedModel *AiModelCatalogItem
+	for i := range models {
+		if strings.EqualFold(models[i].Name, trimmedModelName) {
+			selectedModel = &models[i]
+			break
+		}
+	}
+	if selectedModel == nil {
+		return nil, fmt.Errorf("model '%s' not found", trimmedModelName)
+	}
+
+	versionFilter := normalizeFilter(resolvedOptions.Versions)
+	skuFilter := normalizeFilter(resolvedOptions.Skus)
+
+	candidatesByLocation := map[string][]aiModelQuotaCandidate{}
+	for _, location := range selectedModel.Locations {
+		locationName := strings.ToLower(strings.TrimSpace(location.Location))
+		if locationName == "" {
+			continue
+		}
+
+		for _, version := range location.Versions {
+			if !matchesFilter(version.Version, versionFilter) {
+				continue
+			}
+
+			for _, sku := range version.Skus {
+				if !matchesFilter(sku.Name, skuFilter) {
+					continue
+				}
+
+				usageName := strings.TrimSpace(sku.UsageName)
+				if usageName == "" {
+					continue
+				}
+
+				deploymentRequirements := slices.Clone(resolvedOptions.Requirements)
+				requiredCapacity := float64(sku.CapacityDefault)
+				if requiredCapacity <= 0 {
+					requiredCapacity = 1
+				}
+
+				deploymentRequirements = append(deploymentRequirements, AiUsageRequirement{
+					UsageName:        usageName,
+					RequiredCapacity: requiredCapacity,
+				})
+
+				candidatesByLocation[locationName] = append(candidatesByLocation[locationName], aiModelQuotaCandidate{
+					location: locationName,
+					deployment: AiModelDeployment{
+						ModelName:        selectedModel.Name,
+						Version:          version.Version,
+						IsDefaultVersion: version.IsDefaultVersion,
+						Kind:             version.Kind,
+						Format:           version.Format,
+						Status:           version.Status,
+						Capabilities:     slices.Clone(version.Capabilities),
+						Sku:              sku,
+					},
+					requirements: mergeAiRequirements(deploymentRequirements),
+				})
+			}
+		}
+	}
+
+	evaluationLocations := make([]string, 0, len(candidatesByLocation))
+	for location := range candidatesByLocation {
+		evaluationLocations = append(evaluationLocations, location)
+	}
+	if len(resolvedOptions.Locations) > 0 {
+		evaluationLocations = normalizeLocations(resolvedOptions.Locations)
+	}
+	if len(evaluationLocations) == 0 {
+		return nil, fmt.Errorf("no model deployments found for model '%s' with the requested filters", trimmedModelName)
+	}
+
+	results := make([]AiModelLocationQuotaResult, 0, len(evaluationLocations))
+	for _, location := range evaluationLocations {
+		candidates := candidatesByLocation[strings.ToLower(location)]
+		if len(candidates) == 0 {
+			results = append(results, AiModelLocationQuotaResult{
+				Location: strings.ToLower(location),
+				Matched:  false,
+				Error:    "model deployment is unavailable for this location with the requested filters",
+			})
+			continue
+		}
+
+		slices.SortFunc(candidates, compareAiModelQuotaCandidates)
+		candidatesByLocation[strings.ToLower(location)] = candidates
+	}
+
+	var (
+		wg  sync.WaitGroup
+		mu  sync.Mutex
+		sem = make(chan struct{}, resolvedOptions.MaxConcurrency)
+	)
+
+	for _, location := range evaluationLocations {
+		candidateSet := candidatesByLocation[strings.ToLower(location)]
+		if len(candidateSet) == 0 {
+			continue
+		}
+
+		wg.Add(1)
+		go func(location string, candidates []aiModelQuotaCandidate) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			result := evaluateModelQuotaCandidates(
+				ctx,
+				cli,
+				subscriptionId,
+				strings.ToLower(location),
+				candidates,
+				resolvedOptions.RequireAccountQuota,
+				resolvedOptions.MinimumAccountQuota,
+			)
+
+			mu.Lock()
+			results = append(results, result)
+			mu.Unlock()
+		}(location, candidateSet)
+	}
+
+	wg.Wait()
+
+	slices.SortFunc(results, func(a, b AiModelLocationQuotaResult) int {
+		return strings.Compare(strings.ToLower(a.Location), strings.ToLower(b.Location))
+	})
+
+	matchedLocations := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.Matched {
+			matchedLocations = append(matchedLocations, result.Location)
+		}
+	}
+
+	return &AiLocationsForModelWithQuotaResult{
+		MatchedLocations: matchedLocations,
+		Results:          results,
+	}, nil
+}
+
 func mergeAiRequirements(requirements []AiUsageRequirement) []AiUsageRequirement {
 	if len(requirements) == 0 {
 		return nil
@@ -556,6 +787,120 @@ func mergeAiRequirements(requirements []AiUsageRequirement) []AiUsageRequirement
 	}
 
 	return merged
+}
+
+func normalizeLocations(locations []string) []string {
+	normalized := make([]string, 0, len(locations))
+	seen := map[string]struct{}{}
+	for _, location := range locations {
+		trimmed := strings.ToLower(strings.TrimSpace(location))
+		if trimmed == "" {
+			continue
+		}
+		if _, has := seen[trimmed]; has {
+			continue
+		}
+
+		normalized = append(normalized, trimmed)
+		seen[trimmed] = struct{}{}
+	}
+
+	return normalized
+}
+
+func compareAiModelQuotaCandidates(a, b aiModelQuotaCandidate) int {
+	if a.deployment.IsDefaultVersion != b.deployment.IsDefaultVersion {
+		if a.deployment.IsDefaultVersion {
+			return -1
+		}
+
+		return 1
+	}
+
+	if versionCompare := strings.Compare(a.deployment.Version, b.deployment.Version); versionCompare != 0 {
+		return versionCompare
+	}
+
+	return strings.Compare(strings.ToLower(a.deployment.Sku.Name), strings.ToLower(b.deployment.Sku.Name))
+}
+
+func evaluateModelQuotaCandidates(
+	ctx context.Context,
+	cli *AzureClient,
+	subscriptionId string,
+	location string,
+	candidates []aiModelQuotaCandidate,
+	requireAccountQuota bool,
+	minimumAccountQuota float64,
+) AiModelLocationQuotaResult {
+	result := AiModelLocationQuotaResult{
+		Location:   location,
+		Matched:    false,
+		Deployment: &candidates[0].deployment,
+	}
+
+	usages, err := cli.GetAiUsages(ctx, subscriptionId, location)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+
+	usageByName := make(map[string]*armcognitiveservices.Usage, len(usages))
+	for _, usage := range usages {
+		usageName := safeUsageName(usage)
+		if usageName == "" {
+			continue
+		}
+
+		usageByName[strings.ToLower(usageName)] = usage
+	}
+
+	bestRequirements := []AiLocationQuotaUsage{}
+	for _, candidate := range candidates {
+		allRequirements := slices.Clone(candidate.requirements)
+		if requireAccountQuota {
+			allRequirements = append(allRequirements, AiUsageRequirement{
+				UsageName:        AiAccountQuotaUsageName,
+				RequiredCapacity: minimumAccountQuota,
+			})
+		}
+		allRequirements = mergeAiRequirements(allRequirements)
+
+		evaluatedRequirements := make([]AiLocationQuotaUsage, 0, len(allRequirements))
+		candidateMatched := true
+		for _, requirement := range allRequirements {
+			usage, has := usageByName[strings.ToLower(requirement.UsageName)]
+			available := 0.0
+			if has {
+				available = safeUsageLimit(usage) - safeUsageCurrentValue(usage)
+			}
+
+			evaluatedRequirements = append(evaluatedRequirements, AiLocationQuotaUsage{
+				UsageName:         requirement.UsageName,
+				RequiredCapacity:  requirement.RequiredCapacity,
+				AvailableCapacity: available,
+			})
+
+			if !has || available < requirement.RequiredCapacity {
+				candidateMatched = false
+			}
+		}
+
+		if candidateMatched {
+			result.Matched = true
+			result.Deployment = &candidate.deployment
+			result.Requirements = evaluatedRequirements
+			return result
+		}
+
+		if len(bestRequirements) == 0 {
+			bestRequirements = evaluatedRequirements
+			result.Deployment = &candidate.deployment
+		}
+	}
+
+	result.Requirements = bestRequirements
+	return result
 }
 
 func normalizeFilter(values []string) map[string]struct{} {

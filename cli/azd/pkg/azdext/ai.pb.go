@@ -1000,6 +1000,350 @@ func (x *AiFindLocationsWithQuotaResponse) GetResults() []*AiLocationQuotaResult
 	return nil
 }
 
+type AiModelDeployment struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ModelName        string                 `protobuf:"bytes,1,opt,name=model_name,json=modelName,proto3" json:"model_name,omitempty"`
+	Version          string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	IsDefaultVersion bool                   `protobuf:"varint,3,opt,name=is_default_version,json=isDefaultVersion,proto3" json:"is_default_version,omitempty"`
+	Kind             string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	Format           string                 `protobuf:"bytes,5,opt,name=format,proto3" json:"format,omitempty"`
+	Status           string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Capabilities     []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Sku              *AiModelSku            `protobuf:"bytes,8,opt,name=sku,proto3" json:"sku,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *AiModelDeployment) Reset() {
+	*x = AiModelDeployment{}
+	mi := &file_ai_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AiModelDeployment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AiModelDeployment) ProtoMessage() {}
+
+func (x *AiModelDeployment) ProtoReflect() protoreflect.Message {
+	mi := &file_ai_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AiModelDeployment.ProtoReflect.Descriptor instead.
+func (*AiModelDeployment) Descriptor() ([]byte, []int) {
+	return file_ai_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *AiModelDeployment) GetModelName() string {
+	if x != nil {
+		return x.ModelName
+	}
+	return ""
+}
+
+func (x *AiModelDeployment) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *AiModelDeployment) GetIsDefaultVersion() bool {
+	if x != nil {
+		return x.IsDefaultVersion
+	}
+	return false
+}
+
+func (x *AiModelDeployment) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AiModelDeployment) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *AiModelDeployment) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AiModelDeployment) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *AiModelDeployment) GetSku() *AiModelSku {
+	if x != nil {
+		return x.Sku
+	}
+	return nil
+}
+
+type AiModelLocationQuotaResult struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Location      string                  `protobuf:"bytes,1,opt,name=location,proto3" json:"location,omitempty"`
+	Matched       bool                    `protobuf:"varint,2,opt,name=matched,proto3" json:"matched,omitempty"`
+	Deployment    *AiModelDeployment      `protobuf:"bytes,3,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	Requirements  []*AiLocationQuotaUsage `protobuf:"bytes,4,rep,name=requirements,proto3" json:"requirements,omitempty"`
+	Error         string                  `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AiModelLocationQuotaResult) Reset() {
+	*x = AiModelLocationQuotaResult{}
+	mi := &file_ai_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AiModelLocationQuotaResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AiModelLocationQuotaResult) ProtoMessage() {}
+
+func (x *AiModelLocationQuotaResult) ProtoReflect() protoreflect.Message {
+	mi := &file_ai_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AiModelLocationQuotaResult.ProtoReflect.Descriptor instead.
+func (*AiModelLocationQuotaResult) Descriptor() ([]byte, []int) {
+	return file_ai_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *AiModelLocationQuotaResult) GetLocation() string {
+	if x != nil {
+		return x.Location
+	}
+	return ""
+}
+
+func (x *AiModelLocationQuotaResult) GetMatched() bool {
+	if x != nil {
+		return x.Matched
+	}
+	return false
+}
+
+func (x *AiModelLocationQuotaResult) GetDeployment() *AiModelDeployment {
+	if x != nil {
+		return x.Deployment
+	}
+	return nil
+}
+
+func (x *AiModelLocationQuotaResult) GetRequirements() []*AiLocationQuotaUsage {
+	if x != nil {
+		return x.Requirements
+	}
+	return nil
+}
+
+func (x *AiModelLocationQuotaResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type AiFindLocationsForModelWithQuotaRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	ModelName      string                 `protobuf:"bytes,2,opt,name=model_name,json=modelName,proto3" json:"model_name,omitempty"`
+	Locations      []string               `protobuf:"bytes,3,rep,name=locations,proto3" json:"locations,omitempty"`
+	Versions       []string               `protobuf:"bytes,4,rep,name=versions,proto3" json:"versions,omitempty"`
+	Skus           []string               `protobuf:"bytes,5,rep,name=skus,proto3" json:"skus,omitempty"`
+	Kinds          []string               `protobuf:"bytes,6,rep,name=kinds,proto3" json:"kinds,omitempty"`
+	Formats        []string               `protobuf:"bytes,7,rep,name=formats,proto3" json:"formats,omitempty"`
+	Statuses       []string               `protobuf:"bytes,8,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	Capabilities   []string               `protobuf:"bytes,9,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Requirements   []*AiUsageRequirement  `protobuf:"bytes,10,rep,name=requirements,proto3" json:"requirements,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) Reset() {
+	*x = AiFindLocationsForModelWithQuotaRequest{}
+	mi := &file_ai_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AiFindLocationsForModelWithQuotaRequest) ProtoMessage() {}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ai_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AiFindLocationsForModelWithQuotaRequest.ProtoReflect.Descriptor instead.
+func (*AiFindLocationsForModelWithQuotaRequest) Descriptor() ([]byte, []int) {
+	return file_ai_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetSubscriptionId() string {
+	if x != nil {
+		return x.SubscriptionId
+	}
+	return ""
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetModelName() string {
+	if x != nil {
+		return x.ModelName
+	}
+	return ""
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetLocations() []string {
+	if x != nil {
+		return x.Locations
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetVersions() []string {
+	if x != nil {
+		return x.Versions
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetSkus() []string {
+	if x != nil {
+		return x.Skus
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetKinds() []string {
+	if x != nil {
+		return x.Kinds
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetFormats() []string {
+	if x != nil {
+		return x.Formats
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetStatuses() []string {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaRequest) GetRequirements() []*AiUsageRequirement {
+	if x != nil {
+		return x.Requirements
+	}
+	return nil
+}
+
+type AiFindLocationsForModelWithQuotaResponse struct {
+	state            protoimpl.MessageState        `protogen:"open.v1"`
+	MatchedLocations []string                      `protobuf:"bytes,1,rep,name=matched_locations,json=matchedLocations,proto3" json:"matched_locations,omitempty"`
+	Results          []*AiModelLocationQuotaResult `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *AiFindLocationsForModelWithQuotaResponse) Reset() {
+	*x = AiFindLocationsForModelWithQuotaResponse{}
+	mi := &file_ai_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AiFindLocationsForModelWithQuotaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AiFindLocationsForModelWithQuotaResponse) ProtoMessage() {}
+
+func (x *AiFindLocationsForModelWithQuotaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ai_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AiFindLocationsForModelWithQuotaResponse.ProtoReflect.Descriptor instead.
+func (*AiFindLocationsForModelWithQuotaResponse) Descriptor() ([]byte, []int) {
+	return file_ai_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *AiFindLocationsForModelWithQuotaResponse) GetMatchedLocations() []string {
+	if x != nil {
+		return x.MatchedLocations
+	}
+	return nil
+}
+
+func (x *AiFindLocationsForModelWithQuotaResponse) GetResults() []*AiModelLocationQuotaResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 var File_ai_proto protoreflect.FileDescriptor
 
 const file_ai_proto_rawDesc = "" +
@@ -1075,13 +1419,48 @@ const file_ai_proto_rawDesc = "" +
 	"\frequirements\x18\x03 \x03(\v2\x1a.azdext.AiUsageRequirementR\frequirements\"\x88\x01\n" +
 	" AiFindLocationsWithQuotaResponse\x12+\n" +
 	"\x11matched_locations\x18\x01 \x03(\tR\x10matchedLocations\x127\n" +
-	"\aresults\x18\x02 \x03(\v2\x1d.azdext.AiLocationQuotaResultR\aresults2\xee\x02\n" +
+	"\aresults\x18\x02 \x03(\v2\x1d.azdext.AiLocationQuotaResultR\aresults\"\x88\x02\n" +
+	"\x11AiModelDeployment\x12\x1d\n" +
+	"\n" +
+	"model_name\x18\x01 \x01(\tR\tmodelName\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12,\n" +
+	"\x12is_default_version\x18\x03 \x01(\bR\x10isDefaultVersion\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06format\x18\x05 \x01(\tR\x06format\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\"\n" +
+	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x12$\n" +
+	"\x03sku\x18\b \x01(\v2\x12.azdext.AiModelSkuR\x03sku\"\xe5\x01\n" +
+	"\x1aAiModelLocationQuotaResult\x12\x1a\n" +
+	"\blocation\x18\x01 \x01(\tR\blocation\x12\x18\n" +
+	"\amatched\x18\x02 \x01(\bR\amatched\x129\n" +
+	"\n" +
+	"deployment\x18\x03 \x01(\v2\x19.azdext.AiModelDeploymentR\n" +
+	"deployment\x12@\n" +
+	"\frequirements\x18\x04 \x03(\v2\x1c.azdext.AiLocationQuotaUsageR\frequirements\x12\x14\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\"\xef\x02\n" +
+	"'AiFindLocationsForModelWithQuotaRequest\x12'\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionId\x12\x1d\n" +
+	"\n" +
+	"model_name\x18\x02 \x01(\tR\tmodelName\x12\x1c\n" +
+	"\tlocations\x18\x03 \x03(\tR\tlocations\x12\x1a\n" +
+	"\bversions\x18\x04 \x03(\tR\bversions\x12\x12\n" +
+	"\x04skus\x18\x05 \x03(\tR\x04skus\x12\x14\n" +
+	"\x05kinds\x18\x06 \x03(\tR\x05kinds\x12\x18\n" +
+	"\aformats\x18\a \x03(\tR\aformats\x12\x1a\n" +
+	"\bstatuses\x18\b \x03(\tR\bstatuses\x12\"\n" +
+	"\fcapabilities\x18\t \x03(\tR\fcapabilities\x12>\n" +
+	"\frequirements\x18\n" +
+	" \x03(\v2\x1a.azdext.AiUsageRequirementR\frequirements\"\x95\x01\n" +
+	"(AiFindLocationsForModelWithQuotaResponse\x12+\n" +
+	"\x11matched_locations\x18\x01 \x03(\tR\x10matchedLocations\x12<\n" +
+	"\aresults\x18\x02 \x03(\v2\".azdext.AiModelLocationQuotaResultR\aresults2\xf4\x03\n" +
 	"\tAiService\x12P\n" +
 	"\rListLocations\x12\x1e.azdext.AiListLocationsRequest\x1a\x1f.azdext.AiListLocationsResponse\x12Y\n" +
 	"\x10ListModelCatalog\x12!.azdext.AiListModelCatalogRequest\x1a\".azdext.AiListModelCatalogResponse\x12G\n" +
 	"\n" +
 	"ListUsages\x12\x1b.azdext.AiListUsagesRequest\x1a\x1c.azdext.AiListUsagesResponse\x12k\n" +
-	"\x16FindLocationsWithQuota\x12'.azdext.AiFindLocationsWithQuotaRequest\x1a(.azdext.AiFindLocationsWithQuotaResponseB/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
+	"\x16FindLocationsWithQuota\x12'.azdext.AiFindLocationsWithQuotaRequest\x1a(.azdext.AiFindLocationsWithQuotaResponse\x12\x83\x01\n" +
+	"\x1eFindLocationsForModelWithQuota\x12/.azdext.AiFindLocationsForModelWithQuotaRequest\x1a0.azdext.AiFindLocationsForModelWithQuotaResponseB/Z-github.com/azure/azure-dev/cli/azd/pkg/azdextb\x06proto3"
 
 var (
 	file_ai_proto_rawDescOnce sync.Once
@@ -1095,24 +1474,28 @@ func file_ai_proto_rawDescGZIP() []byte {
 	return file_ai_proto_rawDescData
 }
 
-var file_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_ai_proto_goTypes = []any{
-	(*AiUsageRequirement)(nil),               // 0: azdext.AiUsageRequirement
-	(*AiListLocationsRequest)(nil),           // 1: azdext.AiListLocationsRequest
-	(*AiListLocationsResponse)(nil),          // 2: azdext.AiListLocationsResponse
-	(*AiListUsagesRequest)(nil),              // 3: azdext.AiListUsagesRequest
-	(*AiUsage)(nil),                          // 4: azdext.AiUsage
-	(*AiListUsagesResponse)(nil),             // 5: azdext.AiListUsagesResponse
-	(*AiModelSku)(nil),                       // 6: azdext.AiModelSku
-	(*AiModelVersion)(nil),                   // 7: azdext.AiModelVersion
-	(*AiModelLocation)(nil),                  // 8: azdext.AiModelLocation
-	(*AiModelCatalogItem)(nil),               // 9: azdext.AiModelCatalogItem
-	(*AiListModelCatalogRequest)(nil),        // 10: azdext.AiListModelCatalogRequest
-	(*AiListModelCatalogResponse)(nil),       // 11: azdext.AiListModelCatalogResponse
-	(*AiLocationQuotaUsage)(nil),             // 12: azdext.AiLocationQuotaUsage
-	(*AiLocationQuotaResult)(nil),            // 13: azdext.AiLocationQuotaResult
-	(*AiFindLocationsWithQuotaRequest)(nil),  // 14: azdext.AiFindLocationsWithQuotaRequest
-	(*AiFindLocationsWithQuotaResponse)(nil), // 15: azdext.AiFindLocationsWithQuotaResponse
+	(*AiUsageRequirement)(nil),                       // 0: azdext.AiUsageRequirement
+	(*AiListLocationsRequest)(nil),                   // 1: azdext.AiListLocationsRequest
+	(*AiListLocationsResponse)(nil),                  // 2: azdext.AiListLocationsResponse
+	(*AiListUsagesRequest)(nil),                      // 3: azdext.AiListUsagesRequest
+	(*AiUsage)(nil),                                  // 4: azdext.AiUsage
+	(*AiListUsagesResponse)(nil),                     // 5: azdext.AiListUsagesResponse
+	(*AiModelSku)(nil),                               // 6: azdext.AiModelSku
+	(*AiModelVersion)(nil),                           // 7: azdext.AiModelVersion
+	(*AiModelLocation)(nil),                          // 8: azdext.AiModelLocation
+	(*AiModelCatalogItem)(nil),                       // 9: azdext.AiModelCatalogItem
+	(*AiListModelCatalogRequest)(nil),                // 10: azdext.AiListModelCatalogRequest
+	(*AiListModelCatalogResponse)(nil),               // 11: azdext.AiListModelCatalogResponse
+	(*AiLocationQuotaUsage)(nil),                     // 12: azdext.AiLocationQuotaUsage
+	(*AiLocationQuotaResult)(nil),                    // 13: azdext.AiLocationQuotaResult
+	(*AiFindLocationsWithQuotaRequest)(nil),          // 14: azdext.AiFindLocationsWithQuotaRequest
+	(*AiFindLocationsWithQuotaResponse)(nil),         // 15: azdext.AiFindLocationsWithQuotaResponse
+	(*AiModelDeployment)(nil),                        // 16: azdext.AiModelDeployment
+	(*AiModelLocationQuotaResult)(nil),               // 17: azdext.AiModelLocationQuotaResult
+	(*AiFindLocationsForModelWithQuotaRequest)(nil),  // 18: azdext.AiFindLocationsForModelWithQuotaRequest
+	(*AiFindLocationsForModelWithQuotaResponse)(nil), // 19: azdext.AiFindLocationsForModelWithQuotaResponse
 }
 var file_ai_proto_depIdxs = []int32{
 	4,  // 0: azdext.AiListUsagesResponse.usages:type_name -> azdext.AiUsage
@@ -1123,19 +1506,26 @@ var file_ai_proto_depIdxs = []int32{
 	12, // 5: azdext.AiLocationQuotaResult.requirements:type_name -> azdext.AiLocationQuotaUsage
 	0,  // 6: azdext.AiFindLocationsWithQuotaRequest.requirements:type_name -> azdext.AiUsageRequirement
 	13, // 7: azdext.AiFindLocationsWithQuotaResponse.results:type_name -> azdext.AiLocationQuotaResult
-	1,  // 8: azdext.AiService.ListLocations:input_type -> azdext.AiListLocationsRequest
-	10, // 9: azdext.AiService.ListModelCatalog:input_type -> azdext.AiListModelCatalogRequest
-	3,  // 10: azdext.AiService.ListUsages:input_type -> azdext.AiListUsagesRequest
-	14, // 11: azdext.AiService.FindLocationsWithQuota:input_type -> azdext.AiFindLocationsWithQuotaRequest
-	2,  // 12: azdext.AiService.ListLocations:output_type -> azdext.AiListLocationsResponse
-	11, // 13: azdext.AiService.ListModelCatalog:output_type -> azdext.AiListModelCatalogResponse
-	5,  // 14: azdext.AiService.ListUsages:output_type -> azdext.AiListUsagesResponse
-	15, // 15: azdext.AiService.FindLocationsWithQuota:output_type -> azdext.AiFindLocationsWithQuotaResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	6,  // 8: azdext.AiModelDeployment.sku:type_name -> azdext.AiModelSku
+	16, // 9: azdext.AiModelLocationQuotaResult.deployment:type_name -> azdext.AiModelDeployment
+	12, // 10: azdext.AiModelLocationQuotaResult.requirements:type_name -> azdext.AiLocationQuotaUsage
+	0,  // 11: azdext.AiFindLocationsForModelWithQuotaRequest.requirements:type_name -> azdext.AiUsageRequirement
+	17, // 12: azdext.AiFindLocationsForModelWithQuotaResponse.results:type_name -> azdext.AiModelLocationQuotaResult
+	1,  // 13: azdext.AiService.ListLocations:input_type -> azdext.AiListLocationsRequest
+	10, // 14: azdext.AiService.ListModelCatalog:input_type -> azdext.AiListModelCatalogRequest
+	3,  // 15: azdext.AiService.ListUsages:input_type -> azdext.AiListUsagesRequest
+	14, // 16: azdext.AiService.FindLocationsWithQuota:input_type -> azdext.AiFindLocationsWithQuotaRequest
+	18, // 17: azdext.AiService.FindLocationsForModelWithQuota:input_type -> azdext.AiFindLocationsForModelWithQuotaRequest
+	2,  // 18: azdext.AiService.ListLocations:output_type -> azdext.AiListLocationsResponse
+	11, // 19: azdext.AiService.ListModelCatalog:output_type -> azdext.AiListModelCatalogResponse
+	5,  // 20: azdext.AiService.ListUsages:output_type -> azdext.AiListUsagesResponse
+	15, // 21: azdext.AiService.FindLocationsWithQuota:output_type -> azdext.AiFindLocationsWithQuotaResponse
+	19, // 22: azdext.AiService.FindLocationsForModelWithQuota:output_type -> azdext.AiFindLocationsForModelWithQuotaResponse
+	18, // [18:23] is the sub-list for method output_type
+	13, // [13:18] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_ai_proto_init() }
@@ -1149,7 +1539,7 @@ func file_ai_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ai_proto_rawDesc), len(file_ai_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
