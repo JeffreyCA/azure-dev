@@ -1,0 +1,241 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+syntax = "proto3";
+
+package azdext;
+
+option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext";
+
+service AiModelService {
+  // ListModels lists AI models, optionally filtered by location, capabilities, format, kind, status.
+  // If no location is specified, aggregates across all available locations concurrently.
+  rpc ListModels (ListModelsRequest) returns (ListModelsResponse);
+
+  // ListModelVersions gets available versions for a specific model in a location.
+  rpc ListModelVersions (ListModelVersionsRequest) returns (ListModelVersionsResponse);
+
+  // ListModelSkus gets available SKUs for a specific model and version in a location.
+  rpc ListModelSkus (ListModelSkusRequest) returns (ListModelSkusResponse);
+
+  // GetModelDeployment gets deployment configuration for a model, resolving defaults for version, SKU, and capacity.
+  rpc GetModelDeployment (GetModelDeploymentRequest) returns (GetModelDeploymentResponse);
+
+  // ResolveModelDeployment resolves a deployment configuration with quota validation.
+  // Attempts to find a deployment that satisfies the specified preferences AND has available quota.
+  // Falls back through SKU/location alternatives if the preferred configuration lacks quota.
+  rpc ResolveModelDeployment (ResolveModelDeploymentRequest) returns (ResolveModelDeploymentResponse);
+
+  // ValidateModelAvailability checks whether a model can be deployed in a location.
+  // Returns availability status and, if unavailable, alternative locations and models.
+  rpc ValidateModelAvailability (ValidateModelAvailabilityRequest) returns (ValidateModelAvailabilityResponse);
+
+  // ListUsages gets quota and usage for AI services in a location (TPM allocation, remaining capacity).
+  rpc ListUsages (ListUsagesRequest) returns (ListUsagesResponse);
+
+  // ListLocationsWithQuota finds locations that have sufficient quota for specified usage requirements.
+  rpc ListLocationsWithQuota (ListLocationsWithQuotaRequest) returns (ListLocationsWithQuotaResponse);
+
+  // ListSkuLocations gets available locations for AI Services resource SKUs.
+  rpc ListSkuLocations (ListSkuLocationsRequest) returns (ListSkuLocationsResponse);
+}
+
+// AiModelFilterOptions defines filtering criteria for AI models.
+message AiModelFilterOptions {
+  repeated string capabilities = 1;  // e.g. ["chat", "embeddings"]
+  repeated string statuses = 2;      // lifecycle status filter
+  repeated string formats = 3;       // e.g. ["OpenAI"]
+  repeated string kinds = 4;         // e.g. ["OpenAI", "AIServices"]
+  repeated string locations = 5;     // filter by specific locations
+}
+
+// -- ListModels --
+
+message ListModelsRequest {
+  string subscription_id = 1;
+  // If empty, aggregates models across all locations concurrently.
+  optional string location = 2;
+  AiModelFilterOptions filter = 3;
+}
+
+message ListModelsResponse {
+  repeated AiModel models = 1;
+}
+
+message AiModel {
+  string name = 1;
+  map<string, AiModelLocationDetails> details_by_location = 2;
+}
+
+message AiModelLocationDetails {
+  repeated AiModelVersion versions = 1;
+}
+
+message AiModelVersion {
+  string version = 1;
+  string format = 2;
+  string kind = 3;
+  bool is_default_version = 4;
+  string lifecycle_status = 5;
+  map<string, string> capabilities = 6;
+  repeated AiModelSku skus = 7;
+}
+
+message AiModelSku {
+  string name = 1;           // e.g. "Standard", "GlobalStandard"
+  string usage_name = 2;     // e.g. "OpenAI.Standard.gpt-4o"
+  AiModelSkuCapacity capacity = 3;
+}
+
+message AiModelSkuCapacity {
+  int32 default_value = 1;
+  int32 maximum = 2;
+  int32 minimum = 3;
+  int32 step = 4;
+}
+
+// -- ListModelVersions --
+
+message ListModelVersionsRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  string location = 3;
+}
+
+message ListModelVersionsResponse {
+  repeated string versions = 1;
+  string default_version = 2;
+}
+
+// -- ListModelSkus --
+
+message ListModelSkusRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  string location = 3;
+  string version = 4;
+}
+
+message ListModelSkusResponse {
+  repeated string skus = 1;
+}
+
+// -- GetModelDeployment --
+
+message GetModelDeploymentRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  repeated string preferred_locations = 3;
+  repeated string preferred_versions = 4;
+  // Defaults to ["GlobalStandard", "Standard"] if empty.
+  repeated string preferred_skus = 5;
+}
+
+message GetModelDeploymentResponse {
+  string name = 1;
+  string format = 2;
+  string version = 3;
+  string location = 4;
+  AiModelDeploymentSku sku = 5;
+}
+
+message AiModelDeploymentSku {
+  string name = 1;
+  string usage_name = 2;
+  int32 capacity = 3;
+}
+
+// -- ListUsages --
+
+message ListUsagesRequest {
+  string subscription_id = 1;
+  string location = 2;
+}
+
+message ListUsagesResponse {
+  repeated AiUsage usages = 1;
+}
+
+message AiUsage {
+  string name = 1;           // e.g. "OpenAI.S0.AccountCount"
+  double current_value = 2;
+  double limit = 3;
+}
+
+// -- ListLocationsWithQuota --
+
+message ListLocationsWithQuotaRequest {
+  string subscription_id = 1;
+  // Candidate locations to check. If empty, checks all AI Services locations.
+  repeated string locations = 2;
+  repeated QuotaRequirement requirements = 3;
+}
+
+message QuotaRequirement {
+  string usage_name = 1;    // e.g. "OpenAI.Standard.gpt-4o"
+  double capacity = 2;      // minimum required remaining capacity
+}
+
+message ListLocationsWithQuotaResponse {
+  repeated string locations = 1;
+}
+
+// -- ListSkuLocations --
+
+message ListSkuLocationsRequest {
+  string subscription_id = 1;
+  string kind = 2;           // e.g. "AIServices"
+  string sku_name = 3;       // e.g. "S0"
+  string tier = 4;           // e.g. "Standard"
+  string resource_type = 5;  // e.g. "accounts"
+}
+
+message ListSkuLocationsResponse {
+  repeated string locations = 1;
+}
+
+// -- ResolveModelDeployment --
+
+message ResolveModelDeploymentRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  // Preferred location. If the model lacks quota here, other locations are tried.
+  string preferred_location = 3;
+  // Preferred versions in priority order. Defaults to the model's default version.
+  repeated string preferred_versions = 4;
+  // Preferred SKUs in priority order. Defaults to ["GlobalStandard", "DataZoneStandard", "Standard"].
+  repeated string preferred_skus = 5;
+  // Minimum capacity required. Defaults to the SKU's default capacity.
+  optional int32 min_capacity = 6;
+  // Optional filter to constrain model search (capabilities, format, kind).
+  AiModelFilterOptions filter = 7;
+}
+
+message ResolveModelDeploymentResponse {
+  // The resolved deployment configuration (version, SKU, location, capacity).
+  GetModelDeploymentResponse deployment = 1;
+  // Whether quota was validated and sufficient.
+  bool quota_validated = 2;
+  // Available remaining capacity for this deployment's usage name in the resolved location.
+  double available_capacity = 3;
+}
+
+// -- ValidateModelAvailability --
+
+message ValidateModelAvailabilityRequest {
+  string subscription_id = 1;
+  string model_name = 2;
+  string location = 3;
+  // Optional filter to constrain alternatives (capabilities, format, kind).
+  AiModelFilterOptions filter = 4;
+  // Maximum number of alternatives to return (default: 10).
+  optional int32 max_alternatives = 5;
+}
+
+message ValidateModelAvailabilityResponse {
+  // Whether the model is available in the requested location.
+  bool available = 1;
+  // Locations where this model IS available (if not available in requested location).
+  repeated string alternative_locations = 2;
+  // Other models available in the requested location (if model is not available there).
+  repeated string alternative_models = 3;
+}

@@ -684,6 +684,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.MustRegisterSingleton(python.NewCli)
 	container.MustRegisterSingleton(swa.NewCli)
 	container.MustRegisterScoped(ai.NewPythonBridge)
+	container.MustRegisterScoped(ai.NewModelService)
 	container.MustRegisterScoped(project.NewAiHelper)
 	container.MustRegisterSingleton(az.NewCli)
 
@@ -902,6 +903,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.MustRegisterScoped(grpcserver.NewProjectService)
 	container.MustRegisterScoped(grpcserver.NewEnvironmentService)
 	container.MustRegisterScoped(grpcserver.NewPromptService)
+	container.MustRegisterScoped(grpcserver.NewAiModelService)
 	container.MustRegisterScoped(grpcserver.NewDeploymentService)
 	container.MustRegisterScoped(grpcserver.NewEventService)
 	container.MustRegisterScoped(grpcserver.NewContainerService)

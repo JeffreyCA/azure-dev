@@ -7,6 +7,7 @@ package azdext;
 option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext";
 
 import "models.proto";
+import "ai_model.proto";
 
 service PromptService {
   // PromptSubscription prompts the user to select a subscription.
@@ -35,6 +36,15 @@ service PromptService {
 
   // PromptResourceGroupResource prompts the user to select a resource from a resource group.
   rpc PromptResourceGroupResource(PromptResourceGroupResourceRequest) returns (PromptResourceGroupResourceResponse);
+
+  // PromptAiModel prompts the user to select an AI model.
+  // Loads the model catalog, applies filters, and handles location-model mismatch
+  // (offers "pick different model" vs "pick different location").
+  rpc PromptAiModel (PromptAiModelRequest) returns (PromptAiModelResponse);
+
+  // PromptAiModelDeployment prompts the user to configure a model deployment.
+  // Walks through version, SKU, and capacity selection with smart defaults.
+  rpc PromptAiModelDeployment (PromptAiModelDeploymentRequest) returns (PromptAiModelDeploymentResponse);
 }
 
 message PromptSubscriptionRequest {
@@ -189,4 +199,34 @@ message PromptResourceSelectOptions {
 
 message PromptResourceGroupOptions {
   PromptResourceSelectOptions select_options = 1;
+}
+
+message PromptAiModelRequest {
+  AzureContext azure_context = 1;         // subscription + location context
+  AiModelFilterOptions filter = 2;        // optional filtering criteria
+  string message = 3;                     // custom prompt message (default: "Select an AI model")
+  optional string default_model = 4;      // pre-selected model name
+}
+
+message PromptAiModelResponse {
+  string model_name = 1;                  // selected model name
+  string location = 2;                    // resolved location (may differ if user switched)
+  bool location_changed = 3;              // true if user chose a different location
+}
+
+message PromptAiModelDeploymentRequest {
+  AzureContext azure_context = 1;         // subscription + location context
+  string model_name = 2;                  // the model to configure
+  repeated string preferred_skus = 3;     // SKU preference order (default: GlobalStandard, Standard)
+  optional string default_version = 4;    // override default version selection
+  optional int32 default_capacity = 5;    // override default capacity
+}
+
+message PromptAiModelDeploymentResponse {
+  string model_name = 1;
+  string format = 2;
+  string version = 3;
+  string sku_name = 4;
+  string sku_usage_name = 5;
+  int32 capacity = 6;
 }

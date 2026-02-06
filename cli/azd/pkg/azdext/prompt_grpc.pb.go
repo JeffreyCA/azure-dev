@@ -31,6 +31,8 @@ const (
 	PromptService_MultiSelect_FullMethodName                 = "/azdext.PromptService/MultiSelect"
 	PromptService_PromptSubscriptionResource_FullMethodName  = "/azdext.PromptService/PromptSubscriptionResource"
 	PromptService_PromptResourceGroupResource_FullMethodName = "/azdext.PromptService/PromptResourceGroupResource"
+	PromptService_PromptAiModel_FullMethodName               = "/azdext.PromptService/PromptAiModel"
+	PromptService_PromptAiModelDeployment_FullMethodName     = "/azdext.PromptService/PromptAiModelDeployment"
 )
 
 // PromptServiceClient is the client API for PromptService service.
@@ -55,6 +57,13 @@ type PromptServiceClient interface {
 	PromptSubscriptionResource(ctx context.Context, in *PromptSubscriptionResourceRequest, opts ...grpc.CallOption) (*PromptSubscriptionResourceResponse, error)
 	// PromptResourceGroupResource prompts the user to select a resource from a resource group.
 	PromptResourceGroupResource(ctx context.Context, in *PromptResourceGroupResourceRequest, opts ...grpc.CallOption) (*PromptResourceGroupResourceResponse, error)
+	// PromptAiModel prompts the user to select an AI model.
+	// Loads the model catalog, applies filters, and handles location-model mismatch
+	// (offers "pick different model" vs "pick different location").
+	PromptAiModel(ctx context.Context, in *PromptAiModelRequest, opts ...grpc.CallOption) (*PromptAiModelResponse, error)
+	// PromptAiModelDeployment prompts the user to configure a model deployment.
+	// Walks through version, SKU, and capacity selection with smart defaults.
+	PromptAiModelDeployment(ctx context.Context, in *PromptAiModelDeploymentRequest, opts ...grpc.CallOption) (*PromptAiModelDeploymentResponse, error)
 }
 
 type promptServiceClient struct {
@@ -155,6 +164,26 @@ func (c *promptServiceClient) PromptResourceGroupResource(ctx context.Context, i
 	return out, nil
 }
 
+func (c *promptServiceClient) PromptAiModel(ctx context.Context, in *PromptAiModelRequest, opts ...grpc.CallOption) (*PromptAiModelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromptAiModelResponse)
+	err := c.cc.Invoke(ctx, PromptService_PromptAiModel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *promptServiceClient) PromptAiModelDeployment(ctx context.Context, in *PromptAiModelDeploymentRequest, opts ...grpc.CallOption) (*PromptAiModelDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromptAiModelDeploymentResponse)
+	err := c.cc.Invoke(ctx, PromptService_PromptAiModelDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PromptServiceServer is the server API for PromptService service.
 // All implementations must embed UnimplementedPromptServiceServer
 // for forward compatibility.
@@ -177,6 +206,13 @@ type PromptServiceServer interface {
 	PromptSubscriptionResource(context.Context, *PromptSubscriptionResourceRequest) (*PromptSubscriptionResourceResponse, error)
 	// PromptResourceGroupResource prompts the user to select a resource from a resource group.
 	PromptResourceGroupResource(context.Context, *PromptResourceGroupResourceRequest) (*PromptResourceGroupResourceResponse, error)
+	// PromptAiModel prompts the user to select an AI model.
+	// Loads the model catalog, applies filters, and handles location-model mismatch
+	// (offers "pick different model" vs "pick different location").
+	PromptAiModel(context.Context, *PromptAiModelRequest) (*PromptAiModelResponse, error)
+	// PromptAiModelDeployment prompts the user to configure a model deployment.
+	// Walks through version, SKU, and capacity selection with smart defaults.
+	PromptAiModelDeployment(context.Context, *PromptAiModelDeploymentRequest) (*PromptAiModelDeploymentResponse, error)
 	mustEmbedUnimplementedPromptServiceServer()
 }
 
@@ -213,6 +249,12 @@ func (UnimplementedPromptServiceServer) PromptSubscriptionResource(context.Conte
 }
 func (UnimplementedPromptServiceServer) PromptResourceGroupResource(context.Context, *PromptResourceGroupResourceRequest) (*PromptResourceGroupResourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PromptResourceGroupResource not implemented")
+}
+func (UnimplementedPromptServiceServer) PromptAiModel(context.Context, *PromptAiModelRequest) (*PromptAiModelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PromptAiModel not implemented")
+}
+func (UnimplementedPromptServiceServer) PromptAiModelDeployment(context.Context, *PromptAiModelDeploymentRequest) (*PromptAiModelDeploymentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PromptAiModelDeployment not implemented")
 }
 func (UnimplementedPromptServiceServer) mustEmbedUnimplementedPromptServiceServer() {}
 func (UnimplementedPromptServiceServer) testEmbeddedByValue()                       {}
@@ -397,6 +439,42 @@ func _PromptService_PromptResourceGroupResource_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PromptService_PromptAiModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromptAiModelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).PromptAiModel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_PromptAiModel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).PromptAiModel(ctx, req.(*PromptAiModelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PromptService_PromptAiModelDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromptAiModelDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).PromptAiModelDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_PromptAiModelDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).PromptAiModelDeployment(ctx, req.(*PromptAiModelDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PromptService_ServiceDesc is the grpc.ServiceDesc for PromptService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -439,6 +517,14 @@ var PromptService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PromptResourceGroupResource",
 			Handler:    _PromptService_PromptResourceGroupResource_Handler,
+		},
+		{
+			MethodName: "PromptAiModel",
+			Handler:    _PromptService_PromptAiModel_Handler,
+		},
+		{
+			MethodName: "PromptAiModelDeployment",
+			Handler:    _PromptService_PromptAiModelDeployment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

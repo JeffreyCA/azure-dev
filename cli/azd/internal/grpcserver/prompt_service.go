@@ -11,6 +11,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/azure/azure-dev/cli/azd/internal"
+	"github.com/azure/azure-dev/cli/azd/internal/mapper"
+	"github.com/azure/azure-dev/cli/azd/pkg/ai"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
@@ -22,6 +24,7 @@ type promptService struct {
 	prompter        prompt.PromptService
 	resourceService *azapi.ResourceService
 	globalOptions   *internal.GlobalCommandOptions
+	modelService    *ai.ModelService
 	lock            *promptLock
 }
 
@@ -29,11 +32,13 @@ func NewPromptService(
 	prompter prompt.PromptService,
 	resourceService *azapi.ResourceService,
 	globalOptions *internal.GlobalCommandOptions,
+	modelService *ai.ModelService,
 ) azdext.PromptServiceServer {
 	return &promptService{
 		prompter:        prompter,
 		resourceService: resourceService,
 		globalOptions:   globalOptions,
+		modelService:    modelService,
 		lock:            newPromptLock(),
 	}
 }
@@ -373,6 +378,226 @@ func (s *promptService) PromptResourceGroupResource(
 			Location: resource.Location,
 			Kind:     resource.Kind,
 		},
+	}, nil
+}
+
+func (s *promptService) PromptAiModel(
+	ctx context.Context,
+	req *azdext.PromptAiModelRequest,
+) (*azdext.PromptAiModelResponse, error) {
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	subscriptionId := req.AzureContext.Scope.SubscriptionId
+	location := req.AzureContext.Scope.Location
+
+	var filter *ai.FilterOptions
+	if err := mapper.Convert(req.Filter, &filter); err != nil {
+		return nil, fmt.Errorf("converting filter: %w", err)
+	}
+
+	message := req.Message
+	if message == "" {
+		message = "Select an AI model"
+	}
+
+	models, err := s.modelService.ListModels(ctx, subscriptionId, location, filter)
+	if err != nil {
+		return nil, fmt.Errorf("listing models: %w", err)
+	}
+
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no AI models found matching the specified criteria")
+	}
+
+	// Build display choices
+	choices := make([]*ux.SelectChoice, len(models))
+	for i, m := range models {
+		choices[i] = &ux.SelectChoice{
+			Value: m.Name,
+			Label: m.Name,
+		}
+	}
+
+	var selectedIndex *int
+	if req.DefaultModel != nil {
+		for i, m := range models {
+			if m.Name == *req.DefaultModel {
+				idx := i
+				selectedIndex = &idx
+				break
+			}
+		}
+	}
+
+	if s.globalOptions.NoPrompt {
+		if selectedIndex != nil {
+			return &azdext.PromptAiModelResponse{
+				ModelName: models[*selectedIndex].Name,
+				Location:  location,
+			}, nil
+		}
+		// In no-prompt mode with no default, return first model
+		return &azdext.PromptAiModelResponse{
+			ModelName: models[0].Name,
+			Location:  location,
+		}, nil
+	}
+
+	selectPrompt := ux.NewSelect(&ux.SelectOptions{
+		SelectedIndex:   selectedIndex,
+		Message:         message,
+		Choices:         choices,
+		EnableFiltering: to.Ptr(true),
+	})
+
+	value, err := selectPrompt.Ask(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if value == nil {
+		return nil, fmt.Errorf("no model selected")
+	}
+
+	return &azdext.PromptAiModelResponse{
+		ModelName: models[*value].Name,
+		Location:  location,
+	}, nil
+}
+
+func (s *promptService) PromptAiModelDeployment(
+	ctx context.Context,
+	req *azdext.PromptAiModelDeploymentRequest,
+) (*azdext.PromptAiModelDeploymentResponse, error) {
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	subscriptionId := req.AzureContext.Scope.SubscriptionId
+	location := req.AzureContext.Scope.Location
+
+	// Get versions
+	versions, defaultVersion, err := s.modelService.ListModelVersions(
+		ctx, subscriptionId, req.ModelName, location)
+	if err != nil {
+		return nil, fmt.Errorf("listing model versions: %w", err)
+	}
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no versions found for model '%s' in location '%s'", req.ModelName, location)
+	}
+
+	if req.DefaultVersion != nil {
+		defaultVersion = *req.DefaultVersion
+	}
+
+	// Select version
+	selectedVersion := defaultVersion
+	if !s.globalOptions.NoPrompt && len(versions) > 1 {
+		versionChoices := make([]*ux.SelectChoice, len(versions))
+		var defaultIdx *int
+		for i, v := range versions {
+			versionChoices[i] = &ux.SelectChoice{Value: v, Label: v}
+			if v == defaultVersion {
+				idx := i
+				defaultIdx = &idx
+			}
+		}
+
+		selectPrompt := ux.NewSelect(&ux.SelectOptions{
+			SelectedIndex: defaultIdx,
+			Message:       "Select model version",
+			Choices:       versionChoices,
+		})
+		value, err := selectPrompt.Ask(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if value != nil {
+			selectedVersion = versions[*value]
+		}
+	} else if len(versions) == 1 {
+		selectedVersion = versions[0]
+	}
+
+	// Get SKUs for selected version
+	skus, err := s.modelService.ListModelSkus(ctx, subscriptionId, req.ModelName, location, selectedVersion)
+	if err != nil {
+		return nil, fmt.Errorf("listing model SKUs: %w", err)
+	}
+	if len(skus) == 0 {
+		return nil, fmt.Errorf("no SKUs found for model '%s' version '%s'", req.ModelName, selectedVersion)
+	}
+
+	// Resolve SKU with preference chain
+	preferredSkus := req.PreferredSkus
+	if len(preferredSkus) == 0 {
+		preferredSkus = []string{"GlobalStandard", "DataZoneStandard", "Standard"}
+	}
+
+	selectedSku := skus[0] // default fallback
+	for _, preferred := range preferredSkus {
+		for _, sku := range skus {
+			if sku == preferred {
+				selectedSku = sku
+				goto skuResolved
+			}
+		}
+	}
+skuResolved:
+
+	if !s.globalOptions.NoPrompt && len(skus) > 1 {
+		skuChoices := make([]*ux.SelectChoice, len(skus))
+		var defaultIdx *int
+		for i, sk := range skus {
+			skuChoices[i] = &ux.SelectChoice{Value: sk, Label: sk}
+			if sk == selectedSku {
+				idx := i
+				defaultIdx = &idx
+			}
+		}
+
+		selectPrompt := ux.NewSelect(&ux.SelectOptions{
+			SelectedIndex: defaultIdx,
+			Message:       "Select model SKU",
+			Choices:       skuChoices,
+		})
+		value, err := selectPrompt.Ask(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if value != nil {
+			selectedSku = skus[*value]
+		}
+	}
+
+	// Resolve deployment to get format and capacity
+	deployment, err := s.modelService.GetModelDeployment(
+		ctx, subscriptionId, req.ModelName,
+		[]string{location},
+		[]string{selectedVersion},
+		[]string{selectedSku},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolving deployment configuration: %w", err)
+	}
+
+	capacity := deployment.Sku.Capacity
+	if req.DefaultCapacity != nil {
+		capacity = *req.DefaultCapacity
+	}
+
+	return &azdext.PromptAiModelDeploymentResponse{
+		ModelName:    req.ModelName,
+		Format:       deployment.Format,
+		Version:      selectedVersion,
+		SkuName:      selectedSku,
+		SkuUsageName: deployment.Sku.UsageName,
+		Capacity:     capacity,
 	}, nil
 }
 

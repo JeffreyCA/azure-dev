@@ -22,7 +22,7 @@ import (
 
 func Test_PromptService_Confirm_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	resp, err := service.Confirm(context.Background(), &azdext.ConfirmRequest{
 		Options: &azdext.ConfirmOptions{
@@ -38,7 +38,7 @@ func Test_PromptService_Confirm_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Confirm_NoPromptWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	_, err := service.Confirm(context.Background(), &azdext.ConfirmRequest{
 		Options: &azdext.ConfirmOptions{
@@ -52,7 +52,7 @@ func Test_PromptService_Confirm_NoPromptWithoutDefault(t *testing.T) {
 
 func Test_PromptService_Select_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	resp, err := service.Select(context.Background(), &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
@@ -72,7 +72,7 @@ func Test_PromptService_Select_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Select_NoPromptWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	_, err := service.Select(context.Background(), &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
@@ -89,7 +89,7 @@ func Test_PromptService_Select_NoPromptWithoutDefault(t *testing.T) {
 
 func Test_PromptService_MultiSelect_NoPrompt(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	resp, err := service.MultiSelect(context.Background(), &azdext.MultiSelectRequest{
 		Options: &azdext.MultiSelectOptions{
@@ -110,7 +110,7 @@ func Test_PromptService_MultiSelect_NoPrompt(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	resp, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -126,7 +126,7 @@ func Test_PromptService_Prompt_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptRequiredWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	_, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -141,7 +141,7 @@ func Test_PromptService_Prompt_NoPromptRequiredWithoutDefault(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptNotRequiredWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, globalOptions, nil)
 
 	resp, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -168,7 +168,7 @@ func Test_PromptService_PromptSubscription(t *testing.T) {
 		On("PromptSubscription", mock.Anything, mock.Anything).
 		Return(expectedSub, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptSubscription(context.Background(), &azdext.PromptSubscriptionRequest{
 		Message:     "Select subscription:",
@@ -197,7 +197,7 @@ func Test_PromptService_PromptLocation(t *testing.T) {
 		On("PromptLocation", mock.Anything, mock.Anything, mock.Anything).
 		Return(expectedLocation, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptLocation(context.Background(), &azdext.PromptLocationRequest{
 		AzureContext: &azdext.AzureContext{
@@ -237,7 +237,7 @@ func Test_PromptService_PromptResourceGroup(t *testing.T) {
 		})).
 		Return(expectedRg, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
@@ -276,7 +276,7 @@ func Test_PromptService_PromptResourceGroup_NilOptions(t *testing.T) {
 		On("PromptResourceGroup", mock.Anything, mock.Anything, (*prompt.ResourceGroupOptions)(nil)).
 		Return(expectedRg, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
@@ -323,7 +323,7 @@ func Test_PromptService_PromptSubscriptionResource(t *testing.T) {
 		).
 		Return(expectedResource, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptSubscriptionResource(context.Background(), &azdext.PromptSubscriptionResourceRequest{
 		AzureContext: &azdext.AzureContext{
@@ -381,7 +381,7 @@ func Test_PromptService_PromptResourceGroupResource(t *testing.T) {
 		).
 		Return(expectedResource, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	resp, err := service.PromptResourceGroupResource(context.Background(), &azdext.PromptResourceGroupResourceRequest{
 		AzureContext: &azdext.AzureContext{
@@ -604,7 +604,7 @@ func Test_PromptService_PromptSubscription_ErrorWithSuggestion(t *testing.T) {
 		On("PromptSubscription", mock.Anything, mock.Anything).
 		Return(nil, authErr)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	_, err := service.PromptSubscription(context.Background(), &azdext.PromptSubscriptionRequest{
 		Message: "Select subscription:",
@@ -630,7 +630,7 @@ func Test_PromptService_PromptResourceGroup_ErrorWithSuggestion(t *testing.T) {
 		On("PromptResourceGroup", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, authErr)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, globalOptions, nil)
 
 	_, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
