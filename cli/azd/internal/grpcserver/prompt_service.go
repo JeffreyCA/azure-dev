@@ -508,6 +508,52 @@ func (s *promptService) PromptAiModel(
 	}, nil
 }
 
+func (s *promptService) PromptAiDeployment(
+	ctx context.Context,
+	req *azdext.PromptAiDeploymentRequest,
+) (*azdext.PromptAiDeploymentResponse, error) {
+	locationResp, err := s.PromptAiLocation(ctx, &azdext.PromptAiLocationRequest{
+		AzureContext:     req.GetAzureContext(),
+		AllowedLocations: req.GetAllowedLocations(),
+		Requirements:     req.GetRequirements(),
+		Message:          req.GetLocationMessage(),
+		HelpMessage:      req.GetLocationHelpMessage(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if locationResp.GetLocation() == nil || locationResp.GetLocation().GetName() == "" {
+		return nil, fmt.Errorf("no AI location selected")
+	}
+
+	modelResp, err := s.PromptAiModel(ctx, &azdext.PromptAiModelRequest{
+		AzureContext:  req.GetAzureContext(),
+		Location:      locationResp.GetLocation().GetName(),
+		Kinds:         req.GetKinds(),
+		Statuses:      req.GetStatuses(),
+		Formats:       req.GetFormats(),
+		Capabilities:  req.GetCapabilities(),
+		PreferredSkus: req.GetPreferredSkus(),
+		Message:       req.GetModelMessage(),
+		HelpMessage:   req.GetModelHelpMessage(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if modelResp.GetModel() == nil {
+		return nil, fmt.Errorf("no AI model selected")
+	}
+
+	// Ensure location is always set on the deployment selection payload.
+	if modelResp.GetModel().GetLocation() == "" {
+		modelResp.Model.Location = locationResp.GetLocation().GetName()
+	}
+
+	return &azdext.PromptAiDeploymentResponse{
+		Model: modelResp.GetModel(),
+	}, nil
+}
+
 func (s *promptService) PromptResourceGroup(
 	ctx context.Context,
 	req *azdext.PromptResourceGroupRequest,

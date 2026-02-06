@@ -844,3 +844,101 @@ func Test_PromptService_PromptAiModel_NoPromptAmbiguous(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot select deterministically")
 }
+
+func Test_PromptService_PromptAiDeployment_NoPrompt(t *testing.T) {
+	service := &promptService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(
+				_ context.Context,
+				subscriptionId string,
+				filters azapi.AiModelCatalogFilters,
+			) ([]azapi.AiModelCatalogItem, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, []string{"westus"}, filters.Locations)
+				require.Equal(t, []string{"Chat"}, filters.Kinds)
+
+				return []azapi.AiModelCatalogItem{
+					{
+						Name: "gpt-4o",
+						Locations: []azapi.AiModelLocation{
+							{
+								Location: "westus",
+								Versions: []azapi.AiModelVersion{
+									{
+										Version:          "2024-05-13",
+										IsDefaultVersion: true,
+										Kind:             "Chat",
+										Format:           "OpenAI",
+										Status:           "GenerallyAvailable",
+										Capabilities:     []string{"ChatCompletion"},
+										Skus: []azapi.AiModelSku{
+											{
+												Name:            "Standard",
+												UsageName:       "OpenAI.Standard",
+												CapacityDefault: 10,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				_ context.Context,
+				subscriptionId string,
+				locations []string,
+				requirements []azapi.AiUsageRequirement,
+				_ *azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, []string{"eastus", "westus"}, locations)
+				require.Len(t, requirements, 1)
+				require.Equal(t, "OpenAI.Standard", requirements[0].UsageName)
+
+				return &azapi.AiLocationsWithQuotaResult{
+					MatchedLocations: []string{"westus"},
+				}, nil
+			},
+			findLocationsForModelWithQuotaFn: func(
+				context.Context,
+				string,
+				string,
+				*azapi.AiFindLocationsForModelWithQuotaOptions,
+			) (*azapi.AiLocationsForModelWithQuotaResult, error) {
+				return nil, nil
+			},
+		},
+		globalOptions: &internal.GlobalCommandOptions{NoPrompt: true},
+		lock:          newPromptLock(),
+	}
+
+	resp, err := service.PromptAiDeployment(context.Background(), &azdext.PromptAiDeploymentRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: &azdext.AzureScope{
+				SubscriptionId: "sub-123",
+				Location:       "westus",
+			},
+		},
+		AllowedLocations: []string{"eastus", "westus"},
+		Requirements: []*azdext.AiUsageRequirement{
+			{
+				UsageName:        "OpenAI.Standard",
+				RequiredCapacity: 5,
+			},
+		},
+		Kinds: []string{"Chat"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetModel())
+	require.Equal(t, "westus", resp.GetModel().GetLocation())
+	require.Equal(t, "gpt-4o", resp.GetModel().GetName())
+	require.Equal(t, "Standard", resp.GetModel().GetSku().GetName())
+}

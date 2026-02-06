@@ -1,0 +1,211 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+)
+
+var quotaErrorCodeRegex = regexp.MustCompile(`ERROR CODE:\s*([A-Za-z0-9]+)`)
+
+func newAiQuotaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "quota",
+		Short: "Interactively find locations that can deploy a model and satisfy quota.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
+				scope, err := promptSubscriptionScope(ctx, azdClient)
+				if err != nil {
+					return err
+				}
+
+				limitLocationResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+					Options: &azdext.ConfirmOptions{
+						Message:      "Limit quota check to one location?",
+						DefaultValue: boolPtr(false),
+					},
+				})
+				if err != nil {
+					return err
+				}
+
+				locations := []string{}
+				if limitLocationResp.GetValue() {
+					location, err := promptLocationForScope(ctx, azdClient, scope)
+					if err != nil {
+						return err
+					}
+
+					locations = []string{location}
+				}
+
+				requirements := []*azdext.AiUsageRequirement{}
+				addAdditionalResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+					Options: &azdext.ConfirmOptions{
+						Message:      "Add extra usage requirements?",
+						DefaultValue: boolPtr(false),
+					},
+				})
+				if err != nil {
+					return err
+				}
+				if addAdditionalResp.GetValue() {
+					usageMeters, err := resolveUsageMetersForPrompt(ctx, azdClient, scope.SubscriptionId, locations)
+					if err != nil {
+						return err
+					}
+
+					requirements, err = promptQuotaRequirements(ctx, azdClient, usageMeters)
+					if err != nil {
+						return err
+					}
+				}
+
+				deploymentResp, err := azdClient.Prompt().PromptAiDeployment(ctx, &azdext.PromptAiDeploymentRequest{
+					AzureContext: &azdext.AzureContext{
+						Scope: scope,
+					},
+					AllowedLocations: locations,
+					Requirements:     requirements,
+					LocationMessage:  "Select a location for AI deployment:",
+					ModelMessage:     "Select an AI model deployment configuration:",
+				})
+				if err != nil {
+					return err
+				}
+				modelSelection := deploymentResp.GetModel()
+				if modelSelection == nil {
+					return fmt.Errorf("no AI deployment selection returned")
+				}
+				fmt.Println("Model deployment selection:")
+				printAiModelSelection(modelSelection)
+
+				req, err := buildAiFindLocationsForModelWithQuotaRequest(
+					scope.SubscriptionId,
+					locations,
+					modelSelection,
+					requirements,
+				)
+				if err != nil {
+					return err
+				}
+
+				resp, err := azdClient.Ai().FindLocationsForModelWithQuota(ctx, req)
+				if err != nil {
+					return err
+				}
+
+				if len(resp.MatchedLocations) == 0 {
+					fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("No matching locations found."))
+				} else {
+					fmt.Printf(
+						"%s %s\n",
+						color.New(color.FgGreen, color.Bold).Sprint("Matched locations:"),
+						strings.Join(resp.MatchedLocations, ", "),
+					)
+				}
+
+				printModelQuotaSummary(resp.Results)
+				return nil
+			})
+		},
+	}
+
+	return cmd
+}
+
+func printModelQuotaSummary(results []*azdext.AiModelLocationQuotaResult) {
+	matchedCount := 0
+	for _, result := range results {
+		if result.GetMatched() {
+			matchedCount++
+		}
+	}
+
+	fmt.Printf("Quota check summary: %d/%d locations matched\n", matchedCount, len(results))
+
+	for _, result := range results {
+		location := result.GetLocation()
+		if location == "" {
+			location = "<unknown>"
+		}
+
+		if result.GetMatched() {
+			fmt.Printf("  %s %s\n", color.New(color.FgGreen).Sprint("[MATCH]"), location)
+			continue
+		}
+
+		if result.GetError() != "" {
+			fmt.Printf(
+				"  %s %s - %s\n",
+				color.New(color.FgHiBlack).Sprint("[SKIP]"),
+				location,
+				summarizeQuotaError(result.GetError()),
+			)
+			continue
+		}
+
+		reason := "does not satisfy one or more requirements"
+		for _, requirement := range result.GetRequirements() {
+			if requirement.GetAvailableCapacity() < float64(requirement.GetRequiredCapacity()) {
+				usageName := color.New(color.FgCyan, color.Bold).Sprintf("%s", requirement.GetUsageName())
+				requiredValue := color.New(color.FgYellow, color.Bold).Sprintf("%d", requirement.GetRequiredCapacity())
+				availableValue := color.New(color.FgYellow, color.Bold).Sprintf("%.0f", requirement.GetAvailableCapacity())
+				reason = fmt.Sprintf(
+					"%s requires %s but has %s",
+					usageName,
+					requiredValue,
+					availableValue,
+				)
+				break
+			}
+		}
+
+		fmt.Printf("  %s %s - %s\n", color.New(color.FgYellow).Sprint("[MISS]"), location, reason)
+	}
+}
+
+func summarizeQuotaError(raw string) string {
+	errorText := strings.TrimSpace(raw)
+	if errorText == "" {
+		return "quota lookup unavailable in this location"
+	}
+
+	matches := quotaErrorCodeRegex.FindStringSubmatch(errorText)
+	if len(matches) >= 2 {
+		return fmt.Sprintf("quota lookup unavailable (%s)", matches[1])
+	}
+
+	return "quota lookup unavailable in this location"
+}
+
+func buildAiFindLocationsForModelWithQuotaRequest(
+	subscriptionID string,
+	locations []string,
+	modelSelection *azdext.AiModelSelection,
+	requirements []*azdext.AiUsageRequirement,
+) (*azdext.AiFindLocationsForModelWithQuotaRequest, error) {
+	if modelSelection == nil || strings.TrimSpace(modelSelection.GetName()) == "" {
+		return nil, fmt.Errorf("model selection is required")
+	}
+	if modelSelection.GetSku() == nil || strings.TrimSpace(modelSelection.GetSku().GetName()) == "" {
+		return nil, fmt.Errorf("model SKU selection is required")
+	}
+
+	return &azdext.AiFindLocationsForModelWithQuotaRequest{
+		SubscriptionId: subscriptionID,
+		ModelName:      modelSelection.GetName(),
+		Locations:      locations,
+		Versions:       []string{modelSelection.GetVersion()},
+		Skus:           []string{modelSelection.GetSku().GetName()},
+		Requirements:   requirements,
+	}, nil
+}
