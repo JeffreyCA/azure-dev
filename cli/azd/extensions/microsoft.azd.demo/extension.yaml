@@ -31,5 +31,5 @@ examples:
     description: List AI model catalog entries.
     usage: azd demo ai catalog
   - name: ai quota
-    description: Find locations with required AI quota.
+    description: Find locations that can deploy a model and satisfy AI quota.
     usage: azd demo ai quota

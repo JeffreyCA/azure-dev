@@ -86,7 +86,7 @@ azd demo ai usages
 
 #### `azd demo ai quota`
 
-Finds locations that satisfy quota requirements using `AiService.FindLocationsWithQuota`.
+Finds locations that can deploy a selected model and satisfy quota using `AiService.FindLocationsForModelWithQuota`.
 
 Example:
 

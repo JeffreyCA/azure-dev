@@ -10,10 +10,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildAiFindLocationsWithQuotaRequest(t *testing.T) {
-	req, err := buildAiFindLocationsWithQuotaRequest(
+func TestBuildAiFindLocationsForModelWithQuotaRequest(t *testing.T) {
+	req, err := buildAiFindLocationsForModelWithQuotaRequest(
 		"sub-123",
 		[]string{"eastus", "westus"},
+		&azdext.AiModelSelection{
+			Name:    "gpt-4o",
+			Version: "0613",
+			Sku: &azdext.AiModelSku{
+				Name: "Standard",
+			},
+		},
 		[]*azdext.AiUsageRequirement{
 			{
 				UsageName:        "OpenAI.Standard",
@@ -27,7 +34,10 @@ func TestBuildAiFindLocationsWithQuotaRequest(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "sub-123", req.SubscriptionId)
+	require.Equal(t, "gpt-4o", req.ModelName)
 	require.Equal(t, []string{"eastus", "westus"}, req.Locations)
+	require.Equal(t, []string{"0613"}, req.Versions)
+	require.Equal(t, []string{"Standard"}, req.Skus)
 	require.Len(t, req.Requirements, 2)
 	require.Equal(t, "OpenAI.Standard", req.Requirements[0].UsageName)
 	require.Equal(t, int32(10), req.Requirements[0].RequiredCapacity)
@@ -35,11 +45,25 @@ func TestBuildAiFindLocationsWithQuotaRequest(t *testing.T) {
 	require.Equal(t, int32(2), req.Requirements[1].RequiredCapacity)
 }
 
-func TestBuildAiFindLocationsWithQuotaRequest_RequiresAtLeastOneRequirement(t *testing.T) {
-	req, err := buildAiFindLocationsWithQuotaRequest("sub-123", []string{"eastus"}, nil)
+func TestBuildAiFindLocationsForModelWithQuotaRequest_RequiresModelSelection(t *testing.T) {
+	req, err := buildAiFindLocationsForModelWithQuotaRequest("sub-123", []string{"eastus"}, nil, nil)
 	require.Error(t, err)
 	require.Nil(t, req)
-	require.Contains(t, err.Error(), "at least one usage requirement must be provided")
+	require.Contains(t, err.Error(), "model selection is required")
+}
+
+func TestBuildAiFindLocationsForModelWithQuotaRequest_RequiresSkuSelection(t *testing.T) {
+	req, err := buildAiFindLocationsForModelWithQuotaRequest(
+		"sub-123",
+		[]string{"eastus"},
+		&azdext.AiModelSelection{
+			Name: "gpt-4o",
+		},
+		nil,
+	)
+	require.Error(t, err)
+	require.Nil(t, req)
+	require.Contains(t, err.Error(), "model SKU selection is required")
 }
 
 func TestSummarizeQuotaError(t *testing.T) {
