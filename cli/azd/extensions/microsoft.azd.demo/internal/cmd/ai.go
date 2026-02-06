@@ -7,47 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
 )
-
-type aiSharedFlags struct {
-	subscriptionID string
-}
-
-type aiCatalogFlags struct {
-	aiSharedFlags
-	locations    []string
-	kinds        []string
-	formats      []string
-	statuses     []string
-	capabilities []string
-}
-
-type aiUsagesFlags struct {
-	aiSharedFlags
-	location   string
-	namePrefix string
-}
-
-type aiQuotaFlags struct {
-	aiSharedFlags
-	locations    []string
-	requirements []string
-}
-
-type aiPromptFlags struct {
-	aiSharedFlags
-	location     string
-	requirements []string
-	kinds        []string
-	formats      []string
-	statuses     []string
-	capabilities []string
-}
 
 func newAiCommand() *cobra.Command {
 	aiCmd := &cobra.Command{
@@ -64,25 +30,24 @@ func newAiCommand() *cobra.Command {
 }
 
 func newAiCatalogCommand() *cobra.Command {
-	flags := &aiCatalogFlags{}
-
 	cmd := &cobra.Command{
 		Use:   "catalog",
-		Short: "List AI model catalog entries exposed by azd.",
+		Short: "Interactively explore AI model catalog entries.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
-				subscriptionID, err := resolveSubscriptionID(ctx, azdClient, flags.subscriptionID)
+				scope, err := promptSubscriptionScope(ctx, azdClient)
+				if err != nil {
+					return err
+				}
+
+				location, err := promptLocationForScope(ctx, azdClient, scope)
 				if err != nil {
 					return err
 				}
 
 				resp, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
-					SubscriptionId: subscriptionID,
-					Locations:      flags.locations,
-					Kinds:          flags.kinds,
-					Formats:        flags.formats,
-					Statuses:       flags.statuses,
-					Capabilities:   flags.capabilities,
+					SubscriptionId: scope.SubscriptionId,
+					Locations:      []string{location},
 				})
 				if err != nil {
 					return err
@@ -93,86 +58,47 @@ func newAiCatalogCommand() *cobra.Command {
 					return nil
 				}
 
-				for _, model := range resp.Models {
-					fmt.Printf("Model: %s\n", model.Name)
-					for _, location := range model.Locations {
-						for _, version := range location.Versions {
-							defaultVersion := ""
-							if version.IsDefaultVersion {
-								defaultVersion = " (default)"
-							}
-
-							if len(version.Skus) == 0 {
-								fmt.Printf(
-									"  - version=%s%s | location=%s | kind=%s | format=%s | status=%s\n",
-									version.Version,
-									defaultVersion,
-									location.Location,
-									version.Kind,
-									version.Format,
-									version.Status,
-								)
-								continue
-							}
-
-							for _, sku := range version.Skus {
-								fmt.Printf(
-									"  - version=%s%s | sku=%s | usage=%s | default_capacity=%d | location=%s\n",
-									version.Version,
-									defaultVersion,
-									sku.Name,
-									sku.UsageName,
-									sku.CapacityDefault,
-									location.Location,
-								)
-							}
-						}
-					}
-					fmt.Println()
+				selection, err := promptForModelCatalogSelection(ctx, azdClient, resp.Models, location)
+				if err != nil {
+					return err
 				}
+
+				fmt.Println("Catalog selection:")
+				printAiModelSelection(selection)
 
 				return nil
 			})
 		},
 	}
 
-	cmd.Flags().StringVar(
-		&flags.subscriptionID,
-		"subscription-id",
-		"",
-		"Azure subscription ID (defaults from current azd context)",
-	)
-	cmd.Flags().StringSliceVar(&flags.locations, "location", nil, "Filter by location (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.kinds, "kind", nil, "Filter by model kind (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.formats, "format", nil, "Filter by model format (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.statuses, "status", nil, "Filter by model lifecycle status (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.capabilities, "capability", nil, "Filter by model capability (repeatable)")
-
 	return cmd
 }
 
 func newAiUsagesCommand() *cobra.Command {
-	flags := &aiUsagesFlags{}
-
 	cmd := &cobra.Command{
 		Use:   "usages",
-		Short: "List AI quota usage for a location.",
+		Short: "Interactively list AI quota usage.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
-				subscriptionID, err := resolveSubscriptionID(ctx, azdClient, flags.subscriptionID)
+				scope, err := promptSubscriptionScope(ctx, azdClient)
 				if err != nil {
 					return err
 				}
 
-				location, err := resolveLocation(ctx, azdClient, subscriptionID, flags.location)
+				location, err := promptLocationForScope(ctx, azdClient, scope)
+				if err != nil {
+					return err
+				}
+
+				namePrefix, err := promptUsageNamePrefix(ctx, azdClient)
 				if err != nil {
 					return err
 				}
 
 				resp, err := azdClient.Ai().ListUsages(ctx, &azdext.AiListUsagesRequest{
-					SubscriptionId: subscriptionID,
+					SubscriptionId: scope.SubscriptionId,
 					Location:       location,
-					NamePrefix:     flags.namePrefix,
+					NamePrefix:     namePrefix,
 				})
 				if err != nil {
 					return err
@@ -183,53 +109,53 @@ func newAiUsagesCommand() *cobra.Command {
 					return nil
 				}
 
-				fmt.Printf("%-45s %-10s %-10s %-10s\n", "USAGE NAME", "CURRENT", "LIMIT", "REMAINING")
-				for _, usage := range resp.Usages {
-					fmt.Printf(
-						"%-45s %-10.0f %-10.0f %-10.0f\n",
-						usage.Name,
-						usage.Current,
-						usage.Limit,
-						usage.Remaining,
-					)
-				}
+				printUsageSummary(resp.Usages)
 
 				return nil
 			})
 		},
 	}
 
-	cmd.Flags().StringVar(
-		&flags.subscriptionID,
-		"subscription-id",
-		"",
-		"Azure subscription ID (defaults from current azd context)",
-	)
-	cmd.Flags().StringVar(&flags.location, "location", "", "Azure location")
-	cmd.Flags().StringVar(&flags.namePrefix, "name-prefix", "", "Optional usage name prefix filter")
-
 	return cmd
 }
 
 func newAiQuotaCommand() *cobra.Command {
-	flags := &aiQuotaFlags{}
-
 	cmd := &cobra.Command{
 		Use:   "quota",
-		Short: "Find locations that satisfy AI quota requirements.",
+		Short: "Interactively find locations that satisfy AI quota requirements.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
-				subscriptionID, err := resolveSubscriptionID(ctx, azdClient, flags.subscriptionID)
+				scope, err := promptSubscriptionScope(ctx, azdClient)
 				if err != nil {
 					return err
 				}
 
-				requirements, err := resolveQuotaRequirements(ctx, azdClient, flags.requirements)
+				requirements, err := promptQuotaRequirements(ctx, azdClient)
 				if err != nil {
 					return err
 				}
 
-				req, err := buildAiFindLocationsWithQuotaRequest(subscriptionID, flags.locations, requirements)
+				limitLocationResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+					Options: &azdext.ConfirmOptions{
+						Message:      "Limit quota check to one location?",
+						DefaultValue: boolPtr(false),
+					},
+				})
+				if err != nil {
+					return err
+				}
+
+				locations := []string{}
+				if limitLocationResp.GetValue() {
+					location, err := promptLocationForScope(ctx, azdClient, scope)
+					if err != nil {
+						return err
+					}
+
+					locations = []string{location}
+				}
+
+				req, err := buildAiFindLocationsWithQuotaRequest(scope.SubscriptionId, locations, requirements)
 				if err != nil {
 					return err
 				}
@@ -245,77 +171,46 @@ func newAiQuotaCommand() *cobra.Command {
 					fmt.Printf("Matched locations: %s\n", strings.Join(resp.MatchedLocations, ", "))
 				}
 
-				if len(resp.Results) > 0 {
-					fmt.Println("Diagnostics:")
-				}
-				for _, result := range resp.Results {
-					if result.Error != "" {
-						fmt.Printf("- %s: error=%s\n", result.Location, result.Error)
-						continue
-					}
-
-					status := "matched"
-					if !result.Matched {
-						status = "unmatched"
-					}
-					fmt.Printf("- %s: %s\n", result.Location, status)
-					for _, requirement := range result.Requirements {
-						meetsQuota := requirement.AvailableCapacity >= float64(requirement.RequiredCapacity)
-						check := "fail"
-						if meetsQuota {
-							check = "ok"
-						}
-						fmt.Printf(
-							"  * %s required=%d available=%.0f (%s)\n",
-							requirement.UsageName,
-							requirement.RequiredCapacity,
-							requirement.AvailableCapacity,
-							check,
-						)
-					}
-				}
+				printQuotaSummary(resp.Results)
 
 				return nil
 			})
 		},
 	}
 
-	cmd.Flags().StringVar(
-		&flags.subscriptionID,
-		"subscription-id",
-		"",
-		"Azure subscription ID (defaults from current azd context)",
-	)
-	cmd.Flags().StringSliceVar(&flags.locations, "location", nil, "Candidate location allow-list (repeatable)")
-	cmd.Flags().StringSliceVar(
-		&flags.requirements,
-		"require",
-		nil,
-		"Quota requirement in format usageName[,capacity] (repeatable)",
-	)
-
 	return cmd
 }
 
 func newAiPromptCommand() *cobra.Command {
-	flags := &aiPromptFlags{}
-
 	cmd := &cobra.Command{
 		Use:   "prompt",
-		Short: "Run AI location/model prompt helpers.",
+		Short: "Run step-by-step AI location and model prompts.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
-				subscriptionID, err := resolveSubscriptionID(ctx, azdClient, flags.subscriptionID)
+				scope, err := promptSubscriptionScope(ctx, azdClient)
 				if err != nil {
 					return err
 				}
 
-				scope, err := resolveAzureScope(ctx, azdClient, subscriptionID, flags.location)
+				filterByQuotaResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+					Options: &azdext.ConfirmOptions{
+						Message:      "Filter location choices by quota requirements?",
+						DefaultValue: boolPtr(true),
+					},
+				})
 				if err != nil {
 					return err
 				}
 
-				locationPromptReq, err := buildPromptAiLocationRequest(scope, nil, flags.requirements)
+				requirements := []string{}
+				if filterByQuotaResp.GetValue() {
+					requirements, err = promptQuotaRequirements(ctx, azdClient)
+					if err != nil {
+						return err
+					}
+				}
+
+				locationPromptReq, err := buildPromptAiLocationRequest(scope, nil, requirements)
 				if err != nil {
 					return err
 				}
@@ -325,59 +220,34 @@ func newAiPromptCommand() *cobra.Command {
 					return err
 				}
 
-				modelResp, err := azdClient.Prompt().PromptAiModel(ctx, &azdext.PromptAiModelRequest{
-					AzureContext: &azdext.AzureContext{
-						Scope: &azdext.AzureScope{
-							TenantId:       scope.TenantId,
-							SubscriptionId: scope.SubscriptionId,
-							Location:       locationResp.GetLocation().GetName(),
-						},
-					},
-					Location:     locationResp.GetLocation().GetName(),
-					Kinds:        flags.kinds,
-					Formats:      flags.formats,
-					Statuses:     flags.statuses,
-					Capabilities: flags.capabilities,
+				catalogResp, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
+					SubscriptionId: scope.SubscriptionId,
+					Locations:      []string{locationResp.GetLocation().GetName()},
 				})
 				if err != nil {
 					return err
 				}
 
-				model := modelResp.GetModel()
-				if model == nil {
-					return fmt.Errorf("no AI model selected")
+				if len(catalogResp.Models) == 0 {
+					return fmt.Errorf("no AI models found matching the provided filters")
 				}
 
 				fmt.Println("Selection:")
-				fmt.Printf("  location: %s\n", locationResp.GetLocation().GetName())
-				fmt.Printf("  model: %s\n", model.GetName())
-				fmt.Printf("  version: %s\n", model.GetVersion())
-				fmt.Printf("  sku: %s\n", model.GetSku().GetName())
-				fmt.Printf("  usage_name: %s\n", model.GetSku().GetUsageName())
-				fmt.Printf("  capacity_default: %d\n", model.GetSku().GetCapacityDefault())
+				selection, err := promptForModelCatalogSelection(
+					ctx,
+					azdClient,
+					catalogResp.Models,
+					locationResp.GetLocation().GetName(),
+				)
+				if err != nil {
+					return err
+				}
+				printAiModelSelection(selection)
 
 				return nil
 			})
 		},
 	}
-
-	cmd.Flags().StringVar(
-		&flags.subscriptionID,
-		"subscription-id",
-		"",
-		"Azure subscription ID (defaults from current azd context)",
-	)
-	cmd.Flags().StringVar(&flags.location, "location", "", "Optional starting location")
-	cmd.Flags().StringSliceVar(
-		&flags.requirements,
-		"require",
-		nil,
-		"Quota requirement in format usageName[,capacity] (repeatable)",
-	)
-	cmd.Flags().StringSliceVar(&flags.kinds, "kind", nil, "Filter by model kind (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.formats, "format", nil, "Filter by model format (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.statuses, "status", nil, "Filter by model status (repeatable)")
-	cmd.Flags().StringSliceVar(&flags.capabilities, "capability", nil, "Filter by model capability (repeatable)")
 
 	return cmd
 }
@@ -401,56 +271,33 @@ func runWithAzdClient(cmd *cobra.Command, run func(context.Context, *azdext.AzdC
 	return run(ctx, azdClient)
 }
 
-func resolveSubscriptionID(ctx context.Context, azdClient *azdext.AzdClient, provided string) (string, error) {
-	if strings.TrimSpace(provided) != "" {
-		return strings.TrimSpace(provided), nil
-	}
-
-	deploymentCtx, err := azdClient.Deployment().GetDeploymentContext(ctx, &azdext.EmptyRequest{})
-	if err == nil && deploymentCtx.GetAzureContext() != nil && deploymentCtx.GetAzureContext().GetScope() != nil {
-		if deploymentCtx.GetAzureContext().GetScope().GetSubscriptionId() != "" {
-			return deploymentCtx.GetAzureContext().GetScope().GetSubscriptionId(), nil
-		}
-	}
-
-	scope, err := resolveCurrentScopeFromEnvironment(ctx, azdClient)
-	if err != nil {
-		return "", err
-	}
-
-	if scope.SubscriptionId == "" {
-		subscriptionResponse, err := azdClient.Prompt().PromptSubscription(ctx, &azdext.PromptSubscriptionRequest{
-			Message: "Select an Azure subscription for this command:",
-		})
-		if err != nil {
-			return "", err
-		}
-		if subscriptionResponse.GetSubscription() == nil || subscriptionResponse.GetSubscription().GetId() == "" {
-			return "", fmt.Errorf("subscription id is required")
-		}
-
-		return subscriptionResponse.GetSubscription().GetId(), nil
-	}
-
-	return scope.SubscriptionId, nil
-}
-
-func resolveLocation(
+func promptSubscriptionScope(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,
-	subscriptionID string,
-	provided string,
-) (string, error) {
-	if strings.TrimSpace(provided) != "" {
-		return strings.TrimSpace(provided), nil
+) (*azdext.AzureScope, error) {
+	subscriptionResponse, err := azdClient.Prompt().PromptSubscription(ctx, &azdext.PromptSubscriptionRequest{
+		Message: "Select an Azure subscription for this command:",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if subscriptionResponse.GetSubscription() == nil || subscriptionResponse.GetSubscription().GetId() == "" {
+		return nil, fmt.Errorf("subscription id is required")
 	}
 
-	scope, err := resolveAzureScope(ctx, azdClient, subscriptionID, "")
-	if err != nil {
-		return "", err
-	}
-	if scope.GetLocation() != "" {
-		return scope.GetLocation(), nil
+	return &azdext.AzureScope{
+		SubscriptionId: subscriptionResponse.GetSubscription().GetId(),
+		TenantId:       subscriptionResponse.GetSubscription().GetTenantId(),
+	}, nil
+}
+
+func promptLocationForScope(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	scope *azdext.AzureScope,
+) (string, error) {
+	if scope == nil || scope.GetSubscriptionId() == "" {
+		return "", fmt.Errorf("azure scope with subscription id is required")
 	}
 
 	locationResponse, err := azdClient.Prompt().PromptLocation(ctx, &azdext.PromptLocationRequest{
@@ -468,15 +315,10 @@ func resolveLocation(
 	return strings.TrimSpace(locationResponse.GetLocation().GetName()), nil
 }
 
-func resolveQuotaRequirements(
+func promptQuotaRequirements(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,
-	provided []string,
 ) ([]string, error) {
-	if len(provided) > 0 {
-		return provided, nil
-	}
-
 	requirements := []string{}
 	for {
 		requirementResponse, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
@@ -518,61 +360,254 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
-func resolveAzureScope(
+func promptUsageNamePrefix(
 	ctx context.Context,
 	azdClient *azdext.AzdClient,
-	subscriptionID string,
-	locationOverride string,
-) (*azdext.AzureScope, error) {
-	scope, err := resolveCurrentScopeFromEnvironment(ctx, azdClient)
-	if err != nil {
-		return nil, err
-	}
-
-	scope.SubscriptionId = subscriptionID
-	if strings.TrimSpace(locationOverride) != "" {
-		scope.Location = strings.TrimSpace(locationOverride)
-	}
-
-	if scope.TenantId == "" {
-		tenantResponse, err := azdClient.Account().LookupTenant(ctx, &azdext.LookupTenantRequest{
-			SubscriptionId: scope.SubscriptionId,
-		})
-		if err == nil {
-			scope.TenantId = tenantResponse.TenantId
-		}
-	}
-
-	return scope, nil
-}
-
-func resolveCurrentScopeFromEnvironment(ctx context.Context, azdClient *azdext.AzdClient) (*azdext.AzureScope, error) {
-	scope := &azdext.AzureScope{}
-
-	currentEnv, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyRequest{})
-	if err != nil || currentEnv.GetEnvironment() == nil {
-		return scope, nil
-	}
-
-	envValues, err := azdClient.Environment().GetValues(ctx, &azdext.GetEnvironmentRequest{
-		Name: currentEnv.Environment.Name,
+) (string, error) {
+	response, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
+		Options: &azdext.PromptOptions{
+			Message:      "Optional usage name prefix (press enter for all usages)",
+			DefaultValue: "OpenAI.",
+		},
 	})
 	if err != nil {
-		return scope, nil
+		return "", err
 	}
 
-	for _, kv := range envValues.KeyValues {
-		switch kv.Key {
-		case "AZURE_SUBSCRIPTION_ID":
-			scope.SubscriptionId = kv.Value
-		case "AZURE_LOCATION":
-			scope.Location = kv.Value
-		case "AZURE_TENANT_ID":
-			scope.TenantId = kv.Value
+	return strings.TrimSpace(response.GetValue()), nil
+}
+
+func printUsageSummary(usages []*azdext.AiUsage) {
+	const maxRows = 15
+
+	fmt.Printf("Usage records: %d\n", len(usages))
+	for i, usage := range usages {
+		if i >= maxRows {
+			fmt.Printf("... and %d more (use --name-prefix to narrow)\n", len(usages)-maxRows)
+			break
+		}
+
+		fmt.Printf(
+			"- %s: %.0f / %.0f remaining %.0f\n",
+			usage.Name,
+			usage.Current,
+			usage.Limit,
+			usage.Remaining,
+		)
+	}
+}
+
+func printQuotaSummary(results []*azdext.AiLocationQuotaResult) {
+	unmatched := 0
+	for _, result := range results {
+		if result.GetMatched() {
+			continue
+		}
+
+		unmatched++
+		if result.GetError() != "" {
+			fmt.Printf("- %s: %s\n", result.GetLocation(), result.GetError())
+			continue
+		}
+
+		reason := "does not satisfy one or more requirements"
+		for _, requirement := range result.GetRequirements() {
+			if requirement.GetAvailableCapacity() < float64(requirement.GetRequiredCapacity()) {
+				reason = fmt.Sprintf(
+					"%s requires %d but has %.0f",
+					requirement.GetUsageName(),
+					requirement.GetRequiredCapacity(),
+					requirement.GetAvailableCapacity(),
+				)
+				break
+			}
+		}
+
+		fmt.Printf("- %s: %s\n", result.GetLocation(), reason)
+	}
+
+	if unmatched == 0 {
+		fmt.Println("All evaluated locations satisfied the requirements.")
+	}
+}
+
+func printCatalogSummary(models []*azdext.AiModelCatalogItem) {
+	const maxRows = 20
+
+	fmt.Printf("Models found: %d\n", len(models))
+	for i, model := range models {
+		if i >= maxRows {
+			fmt.Printf("... and %d more (add filters to narrow)\n", len(models)-maxRows)
+			break
+		}
+
+		versionCount := 0
+		skuCount := 0
+		for _, location := range model.GetLocations() {
+			versionCount += len(location.GetVersions())
+			for _, version := range location.GetVersions() {
+				skuCount += len(version.GetSkus())
+			}
+		}
+
+		fmt.Printf(
+			"- %s (locations=%d versions=%d skus=%d)\n",
+			model.GetName(),
+			len(model.GetLocations()),
+			versionCount,
+			skuCount,
+		)
+	}
+}
+
+func promptForModelCatalogSelection(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	models []*azdext.AiModelCatalogItem,
+	location string,
+) (*azdext.AiModelSelection, error) {
+	filteredModels := make([]*azdext.AiModelCatalogItem, 0, len(models))
+	for _, model := range models {
+		for _, modelLocation := range model.GetLocations() {
+			if strings.EqualFold(modelLocation.GetLocation(), location) {
+				filteredModels = append(filteredModels, model)
+				break
+			}
 		}
 	}
 
-	return scope, nil
+	if len(filteredModels) == 0 {
+		return nil, fmt.Errorf("no models found in location '%s'", location)
+	}
+
+	slices.SortFunc(filteredModels, func(a *azdext.AiModelCatalogItem, b *azdext.AiModelCatalogItem) int {
+		return strings.Compare(strings.ToLower(a.GetName()), strings.ToLower(b.GetName()))
+	})
+
+	selectedModel := filteredModels[0]
+	if len(filteredModels) > 1 {
+		choices := make([]*azdext.SelectChoice, 0, len(filteredModels))
+		for _, model := range filteredModels {
+			choices = append(choices, &azdext.SelectChoice{
+				Label: model.GetName(),
+				Value: model.GetName(),
+			})
+		}
+
+		modelResp, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+			Options: &azdext.SelectOptions{
+				Message: "Select an AI model",
+				Choices: choices,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to prompt for model selection: %w", err)
+		}
+		selectedModel = filteredModels[modelResp.GetValue()]
+	}
+
+	var selectedLocation *azdext.AiModelLocation
+	for _, modelLocation := range selectedModel.GetLocations() {
+		if strings.EqualFold(modelLocation.GetLocation(), location) {
+			selectedLocation = modelLocation
+			break
+		}
+	}
+	if selectedLocation == nil {
+		return nil, fmt.Errorf("selected model is not available in location '%s'", location)
+	}
+	if len(selectedLocation.GetVersions()) == 0 {
+		return nil, fmt.Errorf("no model versions found for '%s' in '%s'", selectedModel.GetName(), location)
+	}
+
+	selectedVersion := selectedLocation.GetVersions()[0]
+	if len(selectedLocation.GetVersions()) > 1 {
+		choices := make([]*azdext.SelectChoice, 0, len(selectedLocation.GetVersions()))
+		for _, version := range selectedLocation.GetVersions() {
+			label := version.GetVersion()
+			if version.GetIsDefaultVersion() {
+				label = fmt.Sprintf("%s (default)", label)
+			}
+			choices = append(choices, &azdext.SelectChoice{
+				Label: label,
+				Value: version.GetVersion(),
+			})
+		}
+
+		versionResp, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+			Options: &azdext.SelectOptions{
+				Message: "Select a model version",
+				Choices: choices,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to prompt for model version selection: %w", err)
+		}
+		selectedVersion = selectedLocation.GetVersions()[versionResp.GetValue()]
+	}
+
+	if len(selectedVersion.GetSkus()) == 0 {
+		return nil, fmt.Errorf("no SKUs found for model '%s' version '%s'", selectedModel.GetName(), selectedVersion.GetVersion())
+	}
+
+	selectedSku := selectedVersion.GetSkus()[0]
+	if len(selectedVersion.GetSkus()) > 1 {
+		choices := make([]*azdext.SelectChoice, 0, len(selectedVersion.GetSkus()))
+		for _, sku := range selectedVersion.GetSkus() {
+			label := fmt.Sprintf(
+				"%s (usage=%s, default_capacity=%d)",
+				sku.GetName(),
+				sku.GetUsageName(),
+				sku.GetCapacityDefault(),
+			)
+			choices = append(choices, &azdext.SelectChoice{
+				Label: label,
+				Value: sku.GetName(),
+			})
+		}
+
+		skuResp, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+			Options: &azdext.SelectOptions{
+				Message: "Select a model SKU",
+				Choices: choices,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to prompt for model SKU selection: %w", err)
+		}
+		selectedSku = selectedVersion.GetSkus()[skuResp.GetValue()]
+	}
+
+	return &azdext.AiModelSelection{
+		Name:             selectedModel.GetName(),
+		Location:         location,
+		Version:          selectedVersion.GetVersion(),
+		IsDefaultVersion: selectedVersion.GetIsDefaultVersion(),
+		Kind:             selectedVersion.GetKind(),
+		Format:           selectedVersion.GetFormat(),
+		Status:           selectedVersion.GetStatus(),
+		Capabilities:     selectedVersion.GetCapabilities(),
+		Sku:              selectedSku,
+	}, nil
+}
+
+func printAiModelSelection(model *azdext.AiModelSelection) {
+	if model == nil {
+		fmt.Println("  no model selected")
+		return
+	}
+
+	fmt.Printf("  location: %s\n", model.GetLocation())
+	fmt.Printf("  model: %s\n", model.GetName())
+	fmt.Printf("  version: %s\n", model.GetVersion())
+	fmt.Printf("  kind: %s\n", model.GetKind())
+	fmt.Printf("  format: %s\n", model.GetFormat())
+	fmt.Printf("  status: %s\n", model.GetStatus())
+	if model.GetSku() != nil {
+		fmt.Printf("  sku: %s\n", model.GetSku().GetName())
+		fmt.Printf("  usage_name: %s\n", model.GetSku().GetUsageName())
+		fmt.Printf("  capacity_default: %d\n", model.GetSku().GetCapacityDefault())
+	}
 }
 
 func buildAiFindLocationsWithQuotaRequest(
