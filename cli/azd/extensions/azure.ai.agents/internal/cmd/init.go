@@ -22,7 +22,6 @@ import (
 	"azureaiagent/internal/pkg/agents/agent_yaml"
 	"azureaiagent/internal/pkg/agents/registry_api"
 	"azureaiagent/internal/pkg/azure"
-	"azureaiagent/internal/pkg/azure/ai"
 	"azureaiagent/internal/project"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -61,14 +60,13 @@ type InitAction struct {
 	//azureClient       *azure.AzureClient
 	azureContext *azdext.AzureContext
 	//composedResources []*azdext.ComposedResource
-	console             input.Console
-	credential          azcore.TokenCredential
-	modelCatalog        map[string]*ai.AiModel
-	modelCatalogService *ai.ModelCatalogService
-	projectConfig       *azdext.ProjectConfig
-	environment         *azdext.Environment
-	flags               *initFlags
-	deploymentDetails   []project.Deployment
+	console           input.Console
+	credential        azcore.TokenCredential
+	modelCatalog      map[string]*azdext.AiModelCatalogItem
+	projectConfig     *azdext.ProjectConfig
+	environment       *azdext.Environment
+	flags             *initFlags
+	deploymentDetails []project.Deployment
 }
 
 // GitHubUrlInfo holds parsed information from a GitHub URL
@@ -141,12 +139,11 @@ func newInitCommand(rootFlags rootFlagsDefinition) *cobra.Command {
 				// azureClient:         azure.NewAzureClient(credential),
 				azureContext: azureContext,
 				// composedResources:   getComposedResourcesResponse.Resources,
-				console:             console,
-				credential:          credential,
-				modelCatalogService: ai.NewModelCatalogService(credential),
-				projectConfig:       projectConfig,
-				environment:         environment,
-				flags:               flags,
+				console:       console,
+				credential:    credential,
+				projectConfig: projectConfig,
+				environment:   environment,
+				flags:         flags,
 			}
 
 			if err := action.Run(ctx); err != nil {
@@ -1910,18 +1907,155 @@ func (a *InitAction) loadAiCatalog(ctx context.Context) error {
 		return fmt.Errorf("failed to start spinner: %w", err)
 	}
 
-	aiModelCatalog, err := a.modelCatalogService.ListAllModels(ctx, a.azureContext.Scope.SubscriptionId, "")
-
+	aiModelCatalog, err := a.azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
+		SubscriptionId: a.azureContext.Scope.SubscriptionId,
+	})
 	if err != nil {
+		_ = spinner.Stop(ctx)
 		return fmt.Errorf("failed to load the model catalog: %w", err)
+	}
+
+	a.modelCatalog = make(map[string]*azdext.AiModelCatalogItem, len(aiModelCatalog.GetModels()))
+	for _, model := range aiModelCatalog.GetModels() {
+		a.modelCatalog[model.GetName()] = model
 	}
 
 	if err := spinner.Stop(ctx); err != nil {
 		return err
 	}
 
-	a.modelCatalog = aiModelCatalog
 	return nil
+}
+
+type aiModelDeployment struct {
+	Name    string
+	Format  string
+	Version string
+	Sku     aiModelDeploymentSku
+}
+
+type aiModelDeploymentSku struct {
+	Name      string
+	UsageName string
+	Capacity  int32
+}
+
+func findModelLocation(model *azdext.AiModelCatalogItem, location string) (*azdext.AiModelLocation, bool) {
+	for _, modelLocation := range model.GetLocations() {
+		if strings.EqualFold(modelLocation.GetLocation(), location) {
+			return modelLocation, true
+		}
+	}
+
+	return nil, false
+}
+
+func getModelLocationNames(model *azdext.AiModelCatalogItem) []string {
+	locationNames := make([]string, 0, len(model.GetLocations()))
+	for _, modelLocation := range model.GetLocations() {
+		locationNames = append(locationNames, modelLocation.GetLocation())
+	}
+
+	slices.Sort(locationNames)
+	return locationNames
+}
+
+func listModelVersions(model *azdext.AiModelCatalogItem, location string) ([]string, string, error) {
+	modelLocation, hasLocation := findModelLocation(model, location)
+	if !hasLocation {
+		return nil, "", fmt.Errorf("no model details found for location '%s'", location)
+	}
+
+	versions := map[string]struct{}{}
+	defaultVersion := ""
+	for _, version := range modelLocation.GetVersions() {
+		versions[version.GetVersion()] = struct{}{}
+		if version.GetIsDefaultVersion() {
+			defaultVersion = version.GetVersion()
+		}
+	}
+
+	versionList := make([]string, 0, len(versions))
+	for version := range versions {
+		versionList = append(versionList, version)
+	}
+
+	slices.Sort(versionList)
+	return versionList, defaultVersion, nil
+}
+
+func listModelSkus(model *azdext.AiModelCatalogItem, location string, modelVersion string) ([]string, error) {
+	modelLocation, hasLocation := findModelLocation(model, location)
+	if !hasLocation {
+		return nil, fmt.Errorf("no model details found for location '%s'", location)
+	}
+
+	skus := map[string]struct{}{}
+	for _, version := range modelLocation.GetVersions() {
+		if version.GetVersion() != modelVersion {
+			continue
+		}
+
+		for _, sku := range version.GetSkus() {
+			skus[sku.GetName()] = struct{}{}
+		}
+	}
+
+	skuList := make([]string, 0, len(skus))
+	for sku := range skus {
+		skuList = append(skuList, sku)
+	}
+
+	slices.Sort(skuList)
+	return skuList, nil
+}
+
+func resolveModelDeployment(
+	model *azdext.AiModelCatalogItem,
+	location string,
+	modelVersion string,
+	modelSku string,
+) (*aiModelDeployment, error) {
+	modelLocation, hasLocation := findModelLocation(model, location)
+	if !hasLocation {
+		return nil, fmt.Errorf("no model details found for location '%s'", location)
+	}
+
+	for _, version := range modelLocation.GetVersions() {
+		if version.GetVersion() != modelVersion {
+			continue
+		}
+
+		for _, sku := range version.GetSkus() {
+			if sku.GetName() != modelSku {
+				continue
+			}
+
+			capacity := sku.GetCapacityDefault()
+			if capacity <= 0 {
+				capacity = -1
+			}
+
+			return &aiModelDeployment{
+				Name:    model.GetName(),
+				Format:  version.GetFormat(),
+				Version: version.GetVersion(),
+				Sku: aiModelDeploymentSku{
+					Name:      sku.GetName(),
+					UsageName: sku.GetUsageName(),
+					Capacity:  capacity,
+				},
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf(
+		"no model deployment found for model '%s', location '%s', version '%s', and SKU '%s'",
+		model.GetName(),
+		location,
+		modelVersion,
+		modelSku,
+	)
 }
 
 // // generateResourceName generates a unique resource name, similar to the AI builder pattern
@@ -2133,14 +2267,14 @@ func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_
 
 var defaultSkuPriority = []string{"GlobalStandard", "DataZoneStandard", "Standard"}
 
-func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai.AiModelDeployment, error) {
+func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*aiModelDeployment, error) {
 	// Load the AI model catalog if not already loaded
 	if err := a.loadAiCatalog(ctx); err != nil {
 		return nil, err
 	}
 
 	// Check if the model exists in the catalog
-	var model *ai.AiModel
+	var model *azdext.AiModelCatalogItem
 	model, exists := a.modelCatalog[modelName]
 	if !exists {
 		// Model not found - prompt user for alternative
@@ -2157,7 +2291,7 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 
 	// Check if the model is available in the current location
 	currentLocation := a.azureContext.Scope.Location
-	if _, hasLocation := model.ModelDetailsByLocation[currentLocation]; !hasLocation {
+	if _, hasLocation := findModelLocation(model, currentLocation); !hasLocation {
 		// Model not available in current location - prompt user for action
 		resolvedModel, resolvedLocation, err := a.promptForModelLocationMismatch(ctx, model, currentLocation)
 		if err != nil {
@@ -2171,7 +2305,7 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 		currentLocation = resolvedLocation
 	}
 
-	availableVersions, defaultVersion, err := a.modelCatalogService.ListModelVersions(ctx, model, currentLocation)
+	availableVersions, defaultVersion, err := listModelVersions(model, currentLocation)
 	if err != nil {
 		return nil, fmt.Errorf("listing versions for model '%s': %w", modelName, err)
 	}
@@ -2181,7 +2315,7 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 		return nil, err
 	}
 
-	availableSkus, err := a.modelCatalogService.ListModelSkus(ctx, model, currentLocation, modelVersion)
+	availableSkus, err := listModelSkus(model, currentLocation, modelVersion)
 	if err != nil {
 		return nil, fmt.Errorf("listing SKUs for model '%s': %w", modelName, err)
 	}
@@ -2200,12 +2334,7 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 		return nil, err
 	}
 
-	deploymentOptions := ai.AiModelDeploymentOptions{
-		Versions: []string{modelVersion},
-		Skus:     []string{skuSelection},
-	}
-
-	modelDeployment, err := a.modelCatalogService.GetModelDeployment(ctx, model, &deploymentOptions)
+	modelDeployment, err := resolveModelDeployment(model, currentLocation, modelVersion, skuSelection)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model deployment: %w", err)
 	}
@@ -2233,7 +2362,10 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 	return modelDeployment, nil
 }
 
-func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalModelName string) (*ai.AiModel, error) {
+func (a *InitAction) promptForAlternativeModel(
+	ctx context.Context,
+	originalModelName string,
+) (*azdext.AiModelCatalogItem, error) {
 	fmt.Println(output.WithErrorFormat("The model '%s' could not be found in the model catalog for your subscription in any region.\n", originalModelName))
 
 	// Ask if they want to select a different model or exit
@@ -2279,7 +2411,7 @@ func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalMode
 	if regionChoices[*regionResp.Value].Value == "region" {
 		// Filter models that have the current region
 		for name, model := range a.modelCatalog {
-			if _, hasLocation := model.ModelDetailsByLocation[a.azureContext.Scope.Location]; hasLocation {
+			if _, hasLocation := findModelLocation(model, a.azureContext.Scope.Location); hasLocation {
 				modelNames = append(modelNames, name)
 			}
 		}
@@ -2320,8 +2452,12 @@ func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalMode
 	return a.modelCatalog[selectedModelName], nil
 }
 
-func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *ai.AiModel, currentLocation string) (*ai.AiModel, string, error) {
-	fmt.Println(output.WithErrorFormat("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation))
+func (a *InitAction) promptForModelLocationMismatch(
+	ctx context.Context,
+	model *azdext.AiModelCatalogItem,
+	currentLocation string,
+) (*azdext.AiModelCatalogItem, string, error) {
+	fmt.Println(output.WithErrorFormat("The model '%s' is not available in your current location '%s'.", model.GetName(), currentLocation))
 	fmt.Println("Would you like to use a different model, or select a different location?")
 	fmt.Println(output.WithWarningFormat(
 		"WARNING: If you switch locations:\n" +
@@ -2358,16 +2494,11 @@ func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *
 
 	if selectedChoice == "location" {
 		// Get available locations for this model
-		var locationNames []string
-		for locationName := range model.ModelDetailsByLocation {
-			locationNames = append(locationNames, locationName)
-		}
+		locationNames := getModelLocationNames(model)
 
 		if len(locationNames) == 0 {
-			return nil, "", fmt.Errorf("no locations available for model '%s'", model.Name)
+			return nil, "", fmt.Errorf("no locations available for model '%s'", model.GetName())
 		}
-
-		slices.Sort(locationNames)
 
 		// Create choices for location selection
 		locationChoices := make([]*azdext.SelectChoice, len(locationNames))
@@ -2380,7 +2511,7 @@ func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *
 
 		locationResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
 			Options: &azdext.SelectOptions{
-				Message: fmt.Sprintf("Select a location for model '%s'", model.Name),
+				Message: fmt.Sprintf("Select a location for model '%s'", model.GetName()),
 				Choices: locationChoices,
 			},
 		})
@@ -2415,7 +2546,7 @@ func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *
 	// Get models available in the current location
 	var modelNames []string
 	for name, m := range a.modelCatalog {
-		if _, hasLocation := m.ModelDetailsByLocation[currentLocation]; hasLocation {
+		if _, hasLocation := findModelLocation(m, currentLocation); hasLocation {
 			modelNames = append(modelNames, name)
 		}
 	}

@@ -164,9 +164,14 @@ func newAiUsagesCommand() *cobra.Command {
 					return err
 				}
 
+				location, err := resolveLocation(ctx, azdClient, subscriptionID, flags.location)
+				if err != nil {
+					return err
+				}
+
 				resp, err := azdClient.Ai().ListUsages(ctx, &azdext.AiListUsagesRequest{
 					SubscriptionId: subscriptionID,
-					Location:       flags.location,
+					Location:       location,
 					NamePrefix:     flags.namePrefix,
 				})
 				if err != nil {
@@ -202,7 +207,6 @@ func newAiUsagesCommand() *cobra.Command {
 	)
 	cmd.Flags().StringVar(&flags.location, "location", "", "Azure location")
 	cmd.Flags().StringVar(&flags.namePrefix, "name-prefix", "", "Optional usage name prefix filter")
-	_ = cmd.MarkFlagRequired("location")
 
 	return cmd
 }
@@ -220,7 +224,12 @@ func newAiQuotaCommand() *cobra.Command {
 					return err
 				}
 
-				req, err := buildAiFindLocationsWithQuotaRequest(subscriptionID, flags.locations, flags.requirements)
+				requirements, err := resolveQuotaRequirements(ctx, azdClient, flags.requirements)
+				if err != nil {
+					return err
+				}
+
+				req, err := buildAiFindLocationsWithQuotaRequest(subscriptionID, flags.locations, requirements)
 				if err != nil {
 					return err
 				}
@@ -284,7 +293,6 @@ func newAiQuotaCommand() *cobra.Command {
 		nil,
 		"Quota requirement in format usageName[,capacity] (repeatable)",
 	)
-	_ = cmd.MarkFlagRequired("require")
 
 	return cmd
 }
@@ -411,10 +419,103 @@ func resolveSubscriptionID(ctx context.Context, azdClient *azdext.AzdClient, pro
 	}
 
 	if scope.SubscriptionId == "" {
-		return "", fmt.Errorf("subscription id is required; pass --subscription-id or initialize azd environment")
+		subscriptionResponse, err := azdClient.Prompt().PromptSubscription(ctx, &azdext.PromptSubscriptionRequest{
+			Message: "Select an Azure subscription for this command:",
+		})
+		if err != nil {
+			return "", err
+		}
+		if subscriptionResponse.GetSubscription() == nil || subscriptionResponse.GetSubscription().GetId() == "" {
+			return "", fmt.Errorf("subscription id is required")
+		}
+
+		return subscriptionResponse.GetSubscription().GetId(), nil
 	}
 
 	return scope.SubscriptionId, nil
+}
+
+func resolveLocation(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	subscriptionID string,
+	provided string,
+) (string, error) {
+	if strings.TrimSpace(provided) != "" {
+		return strings.TrimSpace(provided), nil
+	}
+
+	scope, err := resolveAzureScope(ctx, azdClient, subscriptionID, "")
+	if err != nil {
+		return "", err
+	}
+	if scope.GetLocation() != "" {
+		return scope.GetLocation(), nil
+	}
+
+	locationResponse, err := azdClient.Prompt().PromptLocation(ctx, &azdext.PromptLocationRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: scope,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if locationResponse.GetLocation() == nil || strings.TrimSpace(locationResponse.GetLocation().GetName()) == "" {
+		return "", fmt.Errorf("location is required")
+	}
+
+	return strings.TrimSpace(locationResponse.GetLocation().GetName()), nil
+}
+
+func resolveQuotaRequirements(
+	ctx context.Context,
+	azdClient *azdext.AzdClient,
+	provided []string,
+) ([]string, error) {
+	if len(provided) > 0 {
+		return provided, nil
+	}
+
+	requirements := []string{}
+	for {
+		requirementResponse, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
+			Options: &azdext.PromptOptions{
+				Message:      "Enter quota requirement (usageName[,capacity])",
+				Required:     true,
+				Placeholder:  "OpenAI.S0.AccountCount,1",
+				DefaultValue: "OpenAI.S0.AccountCount,1",
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		requirement := strings.TrimSpace(requirementResponse.GetValue())
+		if requirement == "" {
+			return nil, fmt.Errorf("quota requirement is required")
+		}
+		requirements = append(requirements, requirement)
+
+		addAnotherResponse, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+			Options: &azdext.ConfirmOptions{
+				Message:      "Add another quota requirement?",
+				DefaultValue: boolPtr(false),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !addAnotherResponse.GetValue() {
+			break
+		}
+	}
+
+	return requirements, nil
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func resolveAzureScope(

@@ -7,14 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 
+	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azureutil"
-	"github.com/azure/azure-dev/cli/azd/pkg/convert"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
@@ -120,7 +118,11 @@ func (a *AddAction) promptOpenAi(
 	}
 
 	slices.SortFunc(allModels, func(a ModelList, b ModelList) int {
-		return strings.Compare(b.Model.SystemData.CreatedAt, a.Model.SystemData.CreatedAt)
+		if cmp := strings.Compare(strings.ToLower(a.Model.Name), strings.ToLower(b.Model.Name)); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(strings.ToLower(b.Model.Version), strings.ToLower(a.Model.Version))
 	})
 
 	displayModels := make([]string, 0, len(allModels))
@@ -156,45 +158,50 @@ func (a *AddAction) promptOpenAi(
 }
 
 func (a *AddAction) supportedModelsInLocation(ctx context.Context, subId, location string) ([]ModelList, error) {
-	models, err := a.azureClient.GetAiModels(ctx, subId, location)
+	catalog, err := a.azureClient.ListAiModelCatalog(ctx, subId, azapi.AiModelCatalogFilters{
+		Locations: []string{location},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("getting models: %w", err)
 	}
-	var modelList []ModelList
-	for _, model := range models {
-		var skus []ModelSku
-		for _, sku := range model.Model.SKUs {
-			skus = append(skus, ModelSku{
-				Name:      *sku.Name,
-				UsageName: *sku.UsageName,
-				Capacity: ModelSkuCapacity{
-					Maximum: convert.ToValueWithDefault(sku.Capacity.Maximum, 0),
-					Minimum: convert.ToValueWithDefault(sku.Capacity.Minimum, 0),
-					Step:    convert.ToValueWithDefault(sku.Capacity.Step, 0),
-					Default: convert.ToValueWithDefault(sku.Capacity.Default, 0),
-				},
-			})
-		}
-		modelList = append(modelList, ModelList{
-			Kind: *model.Kind,
-			Model: Model{
-				Name:    *model.Model.Name,
-				Skus:    skus,
-				Version: *model.Model.Version,
-				SystemData: ModelSystemData{
-					CreatedAt: model.Model.SystemData.CreatedAt.String(),
-				},
-				Format:           *model.Model.Format,
-				IsDefaultVersion: *model.Model.IsDefaultVersion,
-			},
-		})
-	}
-	return modelList, nil
-}
 
-type ModelResponse struct {
-	Value    []ModelList `json:"value"`
-	NextLink *string     `json:"nextLink"`
+	modelList := []ModelList{}
+	for _, model := range catalog {
+		for _, modelLocation := range model.Locations {
+			if !strings.EqualFold(modelLocation.Location, location) {
+				continue
+			}
+
+			for _, version := range modelLocation.Versions {
+				skus := make([]ModelSku, 0, len(version.Skus))
+				for _, sku := range version.Skus {
+					skus = append(skus, ModelSku{
+						Name:      sku.Name,
+						UsageName: sku.UsageName,
+						Capacity: ModelSkuCapacity{
+							Maximum: sku.CapacityMaximum,
+							Minimum: sku.CapacityMinimum,
+							Step:    sku.CapacityStep,
+							Default: sku.CapacityDefault,
+						},
+					})
+				}
+
+				modelList = append(modelList, ModelList{
+					Kind: version.Kind,
+					Model: Model{
+						Name:             model.Name,
+						Skus:             skus,
+						Version:          version.Version,
+						Format:           version.Format,
+						IsDefaultVersion: version.IsDefaultVersion,
+					},
+				})
+			}
+		}
+	}
+
+	return modelList, nil
 }
 
 type ModelList struct {
@@ -203,12 +210,11 @@ type ModelList struct {
 }
 
 type Model struct {
-	Name             string          `json:"name"`
-	Skus             []ModelSku      `json:"skus"`
-	Version          string          `json:"version"`
-	SystemData       ModelSystemData `json:"systemData"`
-	Format           string          `json:"format"`
-	IsDefaultVersion bool            `json:"isDefaultVersion"`
+	Name             string     `json:"name"`
+	Skus             []ModelSku `json:"skus"`
+	Version          string     `json:"version"`
+	Format           string     `json:"format"`
+	IsDefaultVersion bool       `json:"isDefaultVersion"`
 }
 
 type ModelSku struct {
@@ -222,10 +228,6 @@ type ModelSkuCapacity struct {
 	Minimum int32 `json:"minimum"`
 	Step    int32 `json:"step"`
 	Default int32 `json:"default"`
-}
-
-type ModelSystemData struct {
-	CreatedAt string `json:"createdAt"`
 }
 
 func (a *AddAction) selectAiModel(
@@ -349,124 +351,128 @@ func selectFromSkus(ctx context.Context, console input.Console, q string, s []Mo
 
 func (a *AddAction) aiDeploymentCatalog(
 	ctx context.Context, subId string, excludeModels []project.AiServicesModel) (map[string]ModelCatalogKind, error) {
-	allLocations, err := a.accountManager.GetLocations(ctx, subId)
+	a.console.ShowSpinner(ctx, "Retrieving available models...", input.Step)
+	catalog, err := a.azureClient.ListAiModelCatalog(ctx, subId, azapi.AiModelCatalogFilters{})
+	a.console.StopSpinner(ctx, "", input.StepDone)
 	if err != nil {
-		return nil, fmt.Errorf("getting locations: %w", err)
+		return nil, fmt.Errorf("getting model catalog: %w", err)
 	}
 
-	var sharedResults sync.Map
-	var wg sync.WaitGroup
-
-	a.console.ShowSpinner(ctx, "Retrieving available models...", input.Step)
-
-	for _, location := range allLocations {
-		wg.Add(1)
-		go func(location string) {
-			defer wg.Done()
-			results, err := a.supportedModelsInLocation(ctx, subId, location)
-			if err != nil {
-				// log the error and continue. Do not fail the entire operation when pulling location error
-				log.Println("error getting models in location", location, ":", err, "skipping")
-				return
-			}
-			var filterSkusWithZeroCapacity []ModelList
-			for _, model := range results {
-				if len(model.Model.Skus) == 0 {
+	combinedResults := map[string]ModelCatalogKind{}
+	for _, model := range catalog {
+		for _, modelLocation := range model.Locations {
+			for _, version := range modelLocation.Versions {
+				if version.Kind == "OpenAI" {
+					// OpenAI kind is handled by `add openai`, where clients connect directly without an AI Project.
 					continue
 				}
-				var skus []ModelSku
-				for _, sku := range model.Model.Skus {
-					if sku.Capacity.Default > 0 {
-						skus = append(skus, sku)
+
+				skus := make([]ModelSku, 0, len(version.Skus))
+				for _, sku := range version.Skus {
+					if sku.CapacityDefault <= 0 {
+						continue
 					}
+
+					skus = append(skus, ModelSku{
+						Name:      sku.Name,
+						UsageName: sku.UsageName,
+						Capacity: ModelSkuCapacity{
+							Maximum: sku.CapacityMaximum,
+							Minimum: sku.CapacityMinimum,
+							Step:    sku.CapacityStep,
+							Default: sku.CapacityDefault,
+						},
+					})
 				}
 				if len(skus) == 0 {
 					continue
 				}
-				model.Model.Skus = skus
-				filterSkusWithZeroCapacity = append(filterSkusWithZeroCapacity, model)
-			}
-			sharedResults.Store(location, filterSkusWithZeroCapacity)
-		}(location.Name)
-	}
-	wg.Wait()
-	a.console.StopSpinner(ctx, "", input.StepDone)
 
-	combinedResults := map[string]ModelCatalogKind{}
-	sharedResults.Range(func(key, value any) bool {
-		// cast should be safe as the call to sharedResults.Store() use a string key
-		locationNameKey := key.(string)
-		models := value.([]ModelList)
-		for _, model := range models {
-			if model.Kind == "OpenAI" {
-				// OpenAI kind is part of the `Add OpenAI` where clients connect directly to the service w/o an AIProject
-				continue
-			}
-			nameKey := model.Model.Name
-			// check if model is in the exclude list
-			if slices.ContainsFunc(excludeModels, func(m project.AiServicesModel) bool {
-				return nameKey == m.Name &&
-					model.Model.Format == m.Format &&
-					model.Model.Version == m.Version &&
-					slices.ContainsFunc(model.Model.Skus, func(sku ModelSku) bool { return sku.Name == m.Sku.Name })
-			}) {
-				// skip this model as it is in the exclude list
-				// exclude list is used to remove models which might have been added to the project already
-				// This validation is also blocking adding same model with different sku
-				continue
-			}
-			kindKey := model.Kind
-			versionKey := model.Model.Version
-			modelKey, exists := combinedResults[nameKey]
-			if !exists {
-				combinedResults[nameKey] = ModelCatalogKind{
-					Kinds: map[string]ModelCatalogVersions{
-						kindKey: {
-							Versions: map[string]ModelCatalog{
-								versionKey: {
-									ModelList: model,
-									Locations: []string{locationNameKey},
-								},
-							},
-						},
+				modelList := ModelList{
+					Kind: version.Kind,
+					Model: Model{
+						Name:             model.Name,
+						Skus:             skus,
+						Version:          version.Version,
+						Format:           version.Format,
+						IsDefaultVersion: version.IsDefaultVersion,
 					},
 				}
-			} else {
-				// nameKey exists - check if kindKey exists
-				kindKeyMap, kindExists := modelKey.Kinds[kindKey]
-				if !kindExists {
-					// kindKey does not exist - add it
-					modelKey.Kinds[kindKey] = ModelCatalogVersions{
-						Versions: map[string]ModelCatalog{
-							versionKey: {
-								ModelList: model,
-								Locations: []string{locationNameKey},
-							},
-						},
-					}
-				} else {
-					// kindKey exists - check if versionKey exists
-					versionList, versionExists := kindKeyMap.Versions[versionKey]
-					if !versionExists {
-						// versionKey does not exist - add it
-						kindKeyMap.Versions[versionKey] = ModelCatalog{
-							ModelList: model,
-							Locations: []string{locationNameKey},
-						}
-					} else {
-						// versionKey exists - add location to existing version
-						versionList.Locations = append(versionList.Locations, locationNameKey)
-						kindKeyMap.Versions[versionKey] = versionList
-					}
-					modelKey.Kinds[kindKey] = kindKeyMap
+
+				if slices.ContainsFunc(excludeModels, func(m project.AiServicesModel) bool {
+					return modelList.Model.Name == m.Name &&
+						modelList.Model.Format == m.Format &&
+						modelList.Model.Version == m.Version &&
+						slices.ContainsFunc(modelList.Model.Skus, func(sku ModelSku) bool { return sku.Name == m.Sku.Name })
+				}) {
+					continue
 				}
-				// update the combinedResults map
-				combinedResults[nameKey] = modelKey
+
+				upsertModelCatalogEntry(combinedResults, modelList, modelLocation.Location)
 			}
 		}
-		return true
-	})
+	}
+
 	return combinedResults, nil
+}
+
+func upsertModelCatalogEntry(
+	catalog map[string]ModelCatalogKind,
+	model ModelList,
+	location string,
+) {
+	nameKey := model.Model.Name
+	kindKey := model.Kind
+	versionKey := model.Model.Version
+
+	modelCatalogKind, exists := catalog[nameKey]
+	if !exists {
+		catalog[nameKey] = ModelCatalogKind{
+			Kinds: map[string]ModelCatalogVersions{
+				kindKey: {
+					Versions: map[string]ModelCatalog{
+						versionKey: {
+							ModelList: model,
+							Locations: []string{location},
+						},
+					},
+				},
+			},
+		}
+		return
+	}
+
+	modelCatalogVersions, kindExists := modelCatalogKind.Kinds[kindKey]
+	if !kindExists {
+		modelCatalogKind.Kinds[kindKey] = ModelCatalogVersions{
+			Versions: map[string]ModelCatalog{
+				versionKey: {
+					ModelList: model,
+					Locations: []string{location},
+				},
+			},
+		}
+		catalog[nameKey] = modelCatalogKind
+		return
+	}
+
+	modelCatalogEntry, versionExists := modelCatalogVersions.Versions[versionKey]
+	if !versionExists {
+		modelCatalogVersions.Versions[versionKey] = ModelCatalog{
+			ModelList: model,
+			Locations: []string{location},
+		}
+		modelCatalogKind.Kinds[kindKey] = modelCatalogVersions
+		catalog[nameKey] = modelCatalogKind
+		return
+	}
+
+	if !slices.Contains(modelCatalogEntry.Locations, location) {
+		modelCatalogEntry.Locations = append(modelCatalogEntry.Locations, location)
+	}
+	modelCatalogVersions.Versions[versionKey] = modelCatalogEntry
+	modelCatalogKind.Kinds[kindKey] = modelCatalogVersions
+	catalog[nameKey] = modelCatalogKind
 }
 
 type ModelCatalog struct {
