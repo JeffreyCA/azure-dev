@@ -58,6 +58,52 @@ Displays a list of Azure resources based on the current logged in user, and subs
 
 Displays a list of Azure resources based on the current logged in user, subscription and resource group filtered by resource type and kind.
 
+### `ai`
+
+Run `ai` commands to inspect the AI extension framework service and prompt helpers.
+
+#### Usage: `azd demo ai <subcommand>`
+
+#### `azd demo ai catalog`
+
+Lists model catalog entries (model/version/sku/location) using `AiService.ListModelCatalog`.
+
+Example:
+
+```bash
+azd demo ai catalog --location eastus --kind Chat --capability ChatCompletion
+```
+
+#### `azd demo ai usages`
+
+Lists AI quota usage values for a location using `AiService.ListUsages`.
+
+Example:
+
+```bash
+azd demo ai usages --location eastus --name-prefix OpenAI
+```
+
+#### `azd demo ai quota`
+
+Finds locations that satisfy quota requirements using `AiService.FindLocationsWithQuota`.
+
+Example:
+
+```bash
+azd demo ai quota --require OpenAI.Standard,10 --require OpenAI.S0.AccountCount,2
+```
+
+#### `azd demo ai prompt`
+
+Runs `PromptAiLocation` then `PromptAiModel` and prints the selected location/model/sku metadata.
+
+Example:
+
+```bash
+azd demo ai prompt --require OpenAI.Standard,10 --kind Chat
+```
+
 ### `metadata`
 
 The `metadata` command demonstrates the metadata capability, which provides command structure and configuration schemas.

@@ -22,7 +22,7 @@ import (
 
 func Test_PromptService_Confirm_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	resp, err := service.Confirm(context.Background(), &azdext.ConfirmRequest{
 		Options: &azdext.ConfirmOptions{
@@ -38,7 +38,7 @@ func Test_PromptService_Confirm_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Confirm_NoPromptWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	_, err := service.Confirm(context.Background(), &azdext.ConfirmRequest{
 		Options: &azdext.ConfirmOptions{
@@ -52,7 +52,7 @@ func Test_PromptService_Confirm_NoPromptWithoutDefault(t *testing.T) {
 
 func Test_PromptService_Select_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	resp, err := service.Select(context.Background(), &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
@@ -72,7 +72,7 @@ func Test_PromptService_Select_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Select_NoPromptWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	_, err := service.Select(context.Background(), &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
@@ -89,7 +89,7 @@ func Test_PromptService_Select_NoPromptWithoutDefault(t *testing.T) {
 
 func Test_PromptService_MultiSelect_NoPrompt(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	resp, err := service.MultiSelect(context.Background(), &azdext.MultiSelectRequest{
 		Options: &azdext.MultiSelectOptions{
@@ -110,7 +110,7 @@ func Test_PromptService_MultiSelect_NoPrompt(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptWithDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	resp, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -126,7 +126,7 @@ func Test_PromptService_Prompt_NoPromptWithDefault(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptRequiredWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	_, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -141,7 +141,7 @@ func Test_PromptService_Prompt_NoPromptRequiredWithoutDefault(t *testing.T) {
 
 func Test_PromptService_Prompt_NoPromptNotRequiredWithoutDefault(t *testing.T) {
 	globalOptions := &internal.GlobalCommandOptions{NoPrompt: true}
-	service := NewPromptService(nil, nil, globalOptions)
+	service := NewPromptService(nil, nil, nil, globalOptions)
 
 	resp, err := service.Prompt(context.Background(), &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
@@ -168,7 +168,7 @@ func Test_PromptService_PromptSubscription(t *testing.T) {
 		On("PromptSubscription", mock.Anything, mock.Anything).
 		Return(expectedSub, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptSubscription(context.Background(), &azdext.PromptSubscriptionRequest{
 		Message:     "Select subscription:",
@@ -197,7 +197,7 @@ func Test_PromptService_PromptLocation(t *testing.T) {
 		On("PromptLocation", mock.Anything, mock.Anything, mock.Anything).
 		Return(expectedLocation, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptLocation(context.Background(), &azdext.PromptLocationRequest{
 		AzureContext: &azdext.AzureContext{
@@ -237,7 +237,7 @@ func Test_PromptService_PromptResourceGroup(t *testing.T) {
 		})).
 		Return(expectedRg, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
@@ -276,7 +276,7 @@ func Test_PromptService_PromptResourceGroup_NilOptions(t *testing.T) {
 		On("PromptResourceGroup", mock.Anything, mock.Anything, (*prompt.ResourceGroupOptions)(nil)).
 		Return(expectedRg, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
@@ -323,7 +323,7 @@ func Test_PromptService_PromptSubscriptionResource(t *testing.T) {
 		).
 		Return(expectedResource, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptSubscriptionResource(context.Background(), &azdext.PromptSubscriptionResourceRequest{
 		AzureContext: &azdext.AzureContext{
@@ -381,7 +381,7 @@ func Test_PromptService_PromptResourceGroupResource(t *testing.T) {
 		).
 		Return(expectedResource, nil)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	resp, err := service.PromptResourceGroupResource(context.Background(), &azdext.PromptResourceGroupResourceRequest{
 		AzureContext: &azdext.AzureContext{
@@ -604,7 +604,7 @@ func Test_PromptService_PromptSubscription_ErrorWithSuggestion(t *testing.T) {
 		On("PromptSubscription", mock.Anything, mock.Anything).
 		Return(nil, authErr)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	_, err := service.PromptSubscription(context.Background(), &azdext.PromptSubscriptionRequest{
 		Message: "Select subscription:",
@@ -630,7 +630,7 @@ func Test_PromptService_PromptResourceGroup_ErrorWithSuggestion(t *testing.T) {
 		On("PromptResourceGroup", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, authErr)
 
-	service := NewPromptService(mockPrompter, nil, globalOptions)
+	service := NewPromptService(mockPrompter, nil, nil, globalOptions)
 
 	_, err := service.PromptResourceGroup(context.Background(), &azdext.PromptResourceGroupRequest{
 		AzureContext: &azdext.AzureContext{
@@ -645,4 +645,202 @@ func Test_PromptService_PromptResourceGroup_ErrorWithSuggestion(t *testing.T) {
 	require.Contains(t, err.Error(), "azd auth login")
 	require.Contains(t, err.Error(), "AADSTS70043")
 	mockPrompter.AssertExpectations(t)
+}
+
+func Test_PromptService_PromptAiLocation_NoPrompt(t *testing.T) {
+	service := &promptService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(context.Context, string, azapi.AiModelCatalogFilters) ([]azapi.AiModelCatalogItem, error) {
+				return nil, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				_ context.Context,
+				subscriptionId string,
+				locations []string,
+				requirements []azapi.AiUsageRequirement,
+				_ *azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, []string{"eastus", "westus"}, locations)
+				require.Len(t, requirements, 1)
+				require.Equal(t, "OpenAI.Standard", requirements[0].UsageName)
+				return &azapi.AiLocationsWithQuotaResult{
+					MatchedLocations: []string{"eastus", "westus"},
+				}, nil
+			},
+		},
+		globalOptions: &internal.GlobalCommandOptions{NoPrompt: true},
+		lock:          newPromptLock(),
+	}
+
+	resp, err := service.PromptAiLocation(context.Background(), &azdext.PromptAiLocationRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: &azdext.AzureScope{
+				SubscriptionId: "sub-123",
+				Location:       "westus",
+			},
+		},
+		AllowedLocations: []string{"eastus", "westus"},
+		Requirements: []*azdext.AiUsageRequirement{
+			{
+				UsageName:        "OpenAI.Standard",
+				RequiredCapacity: 10,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Location)
+	require.Equal(t, "westus", resp.Location.Name)
+}
+
+func Test_PromptService_PromptAiModel_NoPrompt(t *testing.T) {
+	service := &promptService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(
+				_ context.Context,
+				subscriptionId string,
+				filters azapi.AiModelCatalogFilters,
+			) ([]azapi.AiModelCatalogItem, error) {
+				require.Equal(t, "sub-123", subscriptionId)
+				require.Equal(t, []string{"eastus"}, filters.Locations)
+				require.Equal(t, []string{"Chat"}, filters.Kinds)
+				return []azapi.AiModelCatalogItem{
+					{
+						Name: "gpt-4o",
+						Locations: []azapi.AiModelLocation{
+							{
+								Location: "eastus",
+								Versions: []azapi.AiModelVersion{
+									{
+										Version:          "2024-05-13",
+										IsDefaultVersion: true,
+										Kind:             "Chat",
+										Format:           "OpenAI",
+										Status:           "GenerallyAvailable",
+										Capabilities:     []string{"ChatCompletion"},
+										Skus: []azapi.AiModelSku{
+											{
+												Name:            "Standard",
+												UsageName:       "OpenAI.Standard",
+												CapacityDefault: 10,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				context.Context,
+				string,
+				[]string,
+				[]azapi.AiUsageRequirement,
+				*azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+		},
+		globalOptions: &internal.GlobalCommandOptions{NoPrompt: true},
+		lock:          newPromptLock(),
+	}
+
+	resp, err := service.PromptAiModel(context.Background(), &azdext.PromptAiModelRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: &azdext.AzureScope{
+				SubscriptionId: "sub-123",
+				Location:       "eastus",
+			},
+		},
+		Kinds: []string{"Chat"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Model)
+	require.Equal(t, "gpt-4o", resp.Model.Name)
+	require.Equal(t, "2024-05-13", resp.Model.Version)
+	require.NotNil(t, resp.Model.Sku)
+	require.Equal(t, "OpenAI.Standard", resp.Model.Sku.UsageName)
+}
+
+func Test_PromptService_PromptAiModel_NoPromptAmbiguous(t *testing.T) {
+	service := &promptService{
+		aiClient: &mockAiCatalogClient{
+			listLocationsFn: func(context.Context, string, []string) ([]string, error) {
+				return nil, nil
+			},
+			listModelCatalogFn: func(
+				context.Context,
+				string,
+				azapi.AiModelCatalogFilters,
+			) ([]azapi.AiModelCatalogItem, error) {
+				return []azapi.AiModelCatalogItem{
+					{
+						Name: "gpt-4o",
+						Locations: []azapi.AiModelLocation{
+							{
+								Location: "eastus",
+								Versions: []azapi.AiModelVersion{
+									{
+										Version:          "2024-05-13",
+										IsDefaultVersion: true,
+										Kind:             "Chat",
+										Format:           "OpenAI",
+										Status:           "GenerallyAvailable",
+										Skus: []azapi.AiModelSku{
+											{
+												Name:      "Standard",
+												UsageName: "OpenAI.Standard",
+											},
+											{
+												Name:      "GlobalStandard",
+												UsageName: "OpenAI.Standard",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+			listUsagesFn: func(context.Context, string, string, string) ([]azapi.AiUsageSnapshot, error) {
+				return nil, nil
+			},
+			findLocationsWithQuotaFn: func(
+				context.Context,
+				string,
+				[]string,
+				[]azapi.AiUsageRequirement,
+				*azapi.AiLocationsWithQuotaOptions,
+			) (*azapi.AiLocationsWithQuotaResult, error) {
+				return nil, nil
+			},
+		},
+		globalOptions: &internal.GlobalCommandOptions{NoPrompt: true},
+		lock:          newPromptLock(),
+	}
+
+	_, err := service.PromptAiModel(context.Background(), &azdext.PromptAiModelRequest{
+		AzureContext: &azdext.AzureContext{
+			Scope: &azdext.AzureScope{
+				SubscriptionId: "sub-123",
+				Location:       "eastus",
+			},
+		},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot select deterministically")
 }

@@ -22,6 +22,7 @@ type AzdClient struct {
 	environmentClient   EnvironmentServiceClient
 	userConfigClient    UserConfigServiceClient
 	promptClient        PromptServiceClient
+	aiClient            AiServiceClient
 	deploymentClient    DeploymentServiceClient
 	eventsClient        EventServiceClient
 	composeClient       ComposeServiceClient
@@ -112,6 +113,15 @@ func (c *AzdClient) Prompt() PromptServiceClient {
 	}
 
 	return c.promptClient
+}
+
+// Ai returns the AI service client.
+func (c *AzdClient) Ai() AiServiceClient {
+	if c.aiClient == nil {
+		c.aiClient = NewAiServiceClient(c.connection)
+	}
+
+	return c.aiClient
 }
 
 // Deployment returns the deployment service client.

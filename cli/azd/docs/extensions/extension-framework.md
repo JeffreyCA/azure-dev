@@ -13,6 +13,7 @@ Table of Contents
     - [User Config Service](#user-config-service)
     - [Deployment Service](#deployment-service)
     - [Account Service](#account-service)
+    - [AI Service](#ai-service)
     - [Prompt Service](#prompt-service)
     - [Event Service](#event-service)
     - [Container Service](#container-service)
@@ -1286,6 +1287,7 @@ The following are a list of available gRPC services for extension developer to i
 - [User Config Service](#user-config-service)
 - [Deployment Service](#deployment-service)
 - [Account Service](#account-service)
+- [AI Service](#ai-service)
 - [Prompt Service](#prompt-service)
 - [Event Service](#event-service)
 - [Container Service](#container-service)
@@ -1650,6 +1652,84 @@ Retrieves the current deployment context.
 
 ---
 
+### AI Service
+
+This service provides model catalog, location, and quota/usage operations for Azure AI Services.
+
+> See [ai.proto](../grpc/proto/ai.proto) for message and method definitions.
+
+#### ListLocations
+
+Lists locations that support Azure AI Services accounts for a subscription.
+
+- **Request:** _AiListLocationsRequest_
+  - `subscription_id` (string)
+  - `allowed_locations` (repeated string, optional allow-list)
+- **Response:** _AiListLocationsResponse_
+  - `locations` (repeated string)
+
+#### ListModelCatalog
+
+Lists model catalog entries grouped by model, location, and version.
+
+- **Request:** _AiListModelCatalogRequest_
+  - `subscription_id` (string)
+  - `locations` (repeated string, optional)
+  - `kinds` (repeated string, optional)
+  - `formats` (repeated string, optional)
+  - `statuses` (repeated string, optional)
+  - `capabilities` (repeated string, optional)
+- **Response:** _AiListModelCatalogResponse_
+  - `models` (repeated _AiModelCatalogItem_)
+    - Each model includes `name`, `locations[]`, `versions[]`, and `skus[]` with usage/capacity metadata.
+
+#### ListUsages
+
+Lists quota usage values for one location.
+
+- **Request:** _AiListUsagesRequest_
+  - `subscription_id` (string)
+  - `location` (string)
+  - `name_prefix` (string, optional)
+- **Response:** _AiListUsagesResponse_
+  - `usages` (repeated _AiUsage_ with `name`, `current`, `limit`, `remaining`, `unit`)
+
+#### FindLocationsWithQuota
+
+Finds locations where all requested usage requirements are satisfied.
+
+- **Request:** _AiFindLocationsWithQuotaRequest_
+  - `subscription_id` (string)
+  - `locations` (repeated string, optional candidate allow-list)
+  - `requirements` (repeated _AiUsageRequirement_ using `usage_name` and `required_capacity`)
+- **Response:** _AiFindLocationsWithQuotaResponse_
+  - `matched_locations` (repeated string)
+  - `results` (repeated _AiLocationQuotaResult_ with per-location diagnostics)
+
+**Example Usage (Go):**
+
+```go
+ctx := azdext.WithAccessToken(cmd.Context())
+azdClient, err := azdext.NewAzdClient()
+if err != nil {
+    return fmt.Errorf("failed to create azd client: %w", err)
+}
+defer azdClient.Close()
+
+catalog, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
+    SubscriptionId: "00000000-0000-0000-0000-000000000000",
+    Locations:      []string{"eastus"},
+    Kinds:          []string{"Chat"},
+})
+if err != nil {
+    return fmt.Errorf("listing model catalog: %w", err)
+}
+
+fmt.Printf("Models returned: %d\n", len(catalog.Models))
+```
+
+---
+
 ### Prompt Service
 
 This service manages user prompt interactions for subscriptions, locations, resources, and confirmations.
@@ -1672,6 +1752,71 @@ Prompts the user to select a location.
   - `azure_context` (AzureContext)
 - **Response:** _PromptLocationResponse_
   - Contains **Location**
+
+#### PromptAiLocation
+
+Prompts for a location that satisfies AI quota requirements.
+
+- **Request:** _PromptAiLocationRequest_
+  - `azure_context` (AzureContext)
+  - `allowed_locations` (repeated string, optional candidate allow-list)
+  - `requirements` (repeated _AiUsageRequirement_)
+  - `message` (string, optional)
+  - `help_message` (string, optional)
+- **Response:** _PromptAiLocationResponse_
+  - `location` (_Location_)
+
+`--no-prompt` behavior: validates that `azure_context.scope.location` is present and eligible.
+
+#### PromptAiModel
+
+Prompts for an AI model deployment candidate in a location.
+
+- **Request:** _PromptAiModelRequest_
+  - `azure_context` (AzureContext)
+  - `location` (string; falls back to `azure_context.scope.location`)
+  - `kinds` / `statuses` / `formats` / `capabilities` (repeated string filters)
+  - `preferred_skus` (repeated string, optional ranking hint)
+  - `message` (string, optional)
+  - `help_message` (string, optional)
+- **Response:** _PromptAiModelResponse_
+  - `model` (_AiModelSelection_ with model/version/location/sku metadata)
+
+`--no-prompt` behavior: returns only when a deterministic single candidate can be selected.
+
+**Example Usage (Go):**
+
+```go
+locationResp, err := azdClient.Prompt().PromptAiLocation(ctx, &azdext.PromptAiLocationRequest{
+    AzureContext: &azdext.AzureContext{
+        Scope: &azdext.AzureScope{
+            SubscriptionId: "00000000-0000-0000-0000-000000000000",
+        },
+    },
+    Requirements: []*azdext.AiUsageRequirement{
+        {UsageName: "OpenAI.Standard", RequiredCapacity: 10},
+    },
+})
+if err != nil {
+    return fmt.Errorf("prompting AI location: %w", err)
+}
+
+modelResp, err := azdClient.Prompt().PromptAiModel(ctx, &azdext.PromptAiModelRequest{
+    AzureContext: &azdext.AzureContext{
+        Scope: &azdext.AzureScope{
+            SubscriptionId: "00000000-0000-0000-0000-000000000000",
+            Location:       locationResp.Location.Name,
+        },
+    },
+    Location: locationResp.Location.Name,
+    Kinds:    []string{"Chat"},
+})
+if err != nil {
+    return fmt.Errorf("prompting AI model: %w", err)
+}
+
+fmt.Printf("Selected model: %s %s\n", modelResp.Model.Name, modelResp.Model.Version)
+```
 
 #### PromptResourceGroup
 

@@ -7,6 +7,7 @@ package azdext;
 option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext";
 
 import "models.proto";
+import "ai.proto";
 
 service PromptService {
   // PromptSubscription prompts the user to select a subscription.
@@ -35,6 +36,12 @@ service PromptService {
 
   // PromptResourceGroupResource prompts the user to select a resource from a resource group.
   rpc PromptResourceGroupResource(PromptResourceGroupResourceRequest) returns (PromptResourceGroupResourceResponse);
+
+  // PromptAiLocation prompts the user to select a location that can satisfy AI quota requirements.
+  rpc PromptAiLocation(PromptAiLocationRequest) returns (PromptAiLocationResponse);
+
+  // PromptAiModel prompts the user to select an AI model deployment candidate from a location.
+  rpc PromptAiModel(PromptAiModelRequest) returns (PromptAiModelResponse);
 }
 
 message PromptSubscriptionRequest {
@@ -111,6 +118,46 @@ message PromptResourceGroupResourceRequest {
 
 message PromptResourceGroupResourceResponse {
   azdext.ResourceExtended resource = 1;
+}
+
+message PromptAiLocationRequest {
+  AzureContext azure_context = 1;
+  repeated string allowed_locations = 2;
+  repeated AiUsageRequirement requirements = 3;
+  string message = 4;
+  string help_message = 5;
+}
+
+message PromptAiLocationResponse {
+  Location location = 1;
+}
+
+message PromptAiModelRequest {
+  AzureContext azure_context = 1;
+  string location = 2;
+  repeated string kinds = 3;
+  repeated string statuses = 4;
+  repeated string formats = 5;
+  repeated string capabilities = 6;
+  repeated string preferred_skus = 7;
+  string message = 8;
+  string help_message = 9;
+}
+
+message PromptAiModelResponse {
+  AiModelSelection model = 1;
+}
+
+message AiModelSelection {
+  string name = 1;
+  string location = 2;
+  string version = 3;
+  bool is_default_version = 4;
+  string kind = 5;
+  string format = 6;
+  string status = 7;
+  repeated string capabilities = 8;
+  AiModelSku sku = 9;
 }
 
 message ConfirmOptions {

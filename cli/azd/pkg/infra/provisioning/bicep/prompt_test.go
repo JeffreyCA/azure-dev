@@ -6,10 +6,12 @@ package bicep
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
 	"github.com/azure/azure-dev/cli/azd/pkg/azure"
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
@@ -493,4 +495,153 @@ func TestPromptForParameterNumberDefaultStringTypeError(t *testing.T) {
 	}, nil)
 
 	require.Error(t, err)
+}
+
+func TestLocationsWithQuotaFor(t *testing.T) {
+	t.Run("returns matching locations", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		prepareBicepMocks(mockContext)
+		provider := createBicepProvider(t, mockContext)
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/skus")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.ResourceSKUListResult{
+				Value: []*armcognitiveservices.ResourceSKU{
+					{
+						Kind:         to.Ptr("AIServices"),
+						Name:         to.Ptr("S0"),
+						Tier:         to.Ptr("Standard"),
+						ResourceType: to.Ptr("accounts"),
+						Locations:    []*string{to.Ptr("eastus"), to.Ptr("westus")},
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/eastus/usages")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.UsageListResult{
+				Value: []*armcognitiveservices.Usage{
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.Standard"),
+						},
+						CurrentValue: to.Ptr[float64](1),
+						Limit:        to.Ptr[float64](20),
+					},
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.S0.AccountCount"),
+						},
+						CurrentValue: to.Ptr[float64](1),
+						Limit:        to.Ptr[float64](5),
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/westus/usages")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.UsageListResult{
+				Value: []*armcognitiveservices.Usage{
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.Standard"),
+						},
+						CurrentValue: to.Ptr[float64](15),
+						Limit:        to.Ptr[float64](20),
+					},
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.S0.AccountCount"),
+						},
+						CurrentValue: to.Ptr[float64](4),
+						Limit:        to.Ptr[float64](5),
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		locations, err := provider.locationsWithQuotaFor(
+			*mockContext.Context,
+			"SUBSCRIPTION_ID",
+			nil,
+			[]string{"OpenAI.Standard,10"},
+		)
+		require.NoError(t, err)
+		require.Equal(t, []string{"eastus"}, locations)
+	})
+
+	t.Run("returns existing error format when no location matches", func(t *testing.T) {
+		mockContext := mocks.NewMockContext(context.Background())
+		prepareBicepMocks(mockContext)
+		provider := createBicepProvider(t, mockContext)
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/skus")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.ResourceSKUListResult{
+				Value: []*armcognitiveservices.ResourceSKU{
+					{
+						Kind:         to.Ptr("AIServices"),
+						Name:         to.Ptr("S0"),
+						Tier:         to.Ptr("Standard"),
+						ResourceType: to.Ptr("accounts"),
+						Locations:    []*string{to.Ptr("eastus")},
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		mockContext.HttpClient.When(func(request *http.Request) bool {
+			return request.Method == http.MethodGet &&
+				strings.Contains(request.URL.Path, "/providers/Microsoft.CognitiveServices/locations/eastus/usages")
+		}).RespondFn(func(request *http.Request) (*http.Response, error) {
+			response := armcognitiveservices.UsageListResult{
+				Value: []*armcognitiveservices.Usage{
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.Standard"),
+						},
+						CurrentValue: to.Ptr[float64](19),
+						Limit:        to.Ptr[float64](20),
+					},
+					{
+						Name: &armcognitiveservices.MetricName{
+							Value: to.Ptr("OpenAI.S0.AccountCount"),
+						},
+						CurrentValue: to.Ptr[float64](4),
+						Limit:        to.Ptr[float64](5),
+					},
+				},
+			}
+
+			return mocks.CreateHttpResponseWithBody(request, http.StatusOK, response)
+		})
+
+		_, err := provider.locationsWithQuotaFor(
+			*mockContext.Context,
+			"SUBSCRIPTION_ID",
+			nil,
+			[]string{"OpenAI.Standard,10"},
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no location found with enough quota for")
+		require.Contains(t, err.Error(), "OpenAI.Standard")
+	})
 }

@@ -27,3 +27,12 @@ examples:
   - name: mcp
     description: Start MCP server with demo tools.
     usage: azd demo mcp start
+  - name: ai catalog
+    description: List AI model catalog entries.
+    usage: azd demo ai catalog --location eastus
+  - name: ai quota
+    description: Find locations with required AI quota.
+    usage: azd demo ai quota --require OpenAI.Standard,10
+  - name: ai prompt
+    description: Prompt for AI location and model selection.
+    usage: azd demo ai prompt --require OpenAI.Standard,10 --kind Chat

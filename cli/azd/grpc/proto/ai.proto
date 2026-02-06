@@ -1,0 +1,119 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+syntax = "proto3";
+
+package azdext;
+
+option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext";
+
+service AiService {
+  // ListLocations lists Azure locations that support Azure AI Services accounts for the subscription.
+  rpc ListLocations (AiListLocationsRequest) returns (AiListLocationsResponse);
+
+  // ListModelCatalog lists Azure AI models and deployment metadata available in the requested locations.
+  rpc ListModelCatalog (AiListModelCatalogRequest) returns (AiListModelCatalogResponse);
+
+  // ListUsages lists Azure AI quota usage details for a location.
+  rpc ListUsages (AiListUsagesRequest) returns (AiListUsagesResponse);
+
+  // FindLocationsWithQuota resolves locations that satisfy all requested quota requirements.
+  rpc FindLocationsWithQuota (AiFindLocationsWithQuotaRequest) returns (AiFindLocationsWithQuotaResponse);
+}
+
+message AiUsageRequirement {
+  string usage_name = 1;
+  int32 required_capacity = 2;
+}
+
+message AiListLocationsRequest {
+  string subscription_id = 1;
+  repeated string allowed_locations = 2;
+}
+
+message AiListLocationsResponse {
+  repeated string locations = 1;
+}
+
+message AiListUsagesRequest {
+  string subscription_id = 1;
+  string location = 2;
+  string name_prefix = 3;
+}
+
+message AiUsage {
+  string name = 1;
+  double current = 2;
+  double limit = 3;
+  double remaining = 4;
+  string unit = 5;
+}
+
+message AiListUsagesResponse {
+  repeated AiUsage usages = 1;
+}
+
+message AiModelSku {
+  string name = 1;
+  string usage_name = 2;
+  int32 capacity_default = 3;
+  int32 capacity_minimum = 4;
+  int32 capacity_maximum = 5;
+  int32 capacity_step = 6;
+}
+
+message AiModelVersion {
+  string version = 1;
+  bool is_default_version = 2;
+  string kind = 3;
+  string format = 4;
+  string status = 5;
+  repeated string capabilities = 6;
+  repeated AiModelSku skus = 7;
+}
+
+message AiModelLocation {
+  string location = 1;
+  repeated AiModelVersion versions = 2;
+}
+
+message AiModelCatalogItem {
+  string name = 1;
+  repeated AiModelLocation locations = 2;
+}
+
+message AiListModelCatalogRequest {
+  string subscription_id = 1;
+  repeated string locations = 2;
+  repeated string kinds = 3;
+  repeated string formats = 4;
+  repeated string statuses = 5;
+  repeated string capabilities = 6;
+}
+
+message AiListModelCatalogResponse {
+  repeated AiModelCatalogItem models = 1;
+}
+
+message AiLocationQuotaUsage {
+  string usage_name = 1;
+  int32 required_capacity = 2;
+  double available_capacity = 3;
+}
+
+message AiLocationQuotaResult {
+  string location = 1;
+  bool matched = 2;
+  repeated AiLocationQuotaUsage requirements = 3;
+  string error = 4;
+}
+
+message AiFindLocationsWithQuotaRequest {
+  string subscription_id = 1;
+  repeated string locations = 2;
+  repeated AiUsageRequirement requirements = 3;
+}
+
+message AiFindLocationsWithQuotaResponse {
+  repeated string matched_locations = 1;
+  repeated AiLocationQuotaResult results = 2;
+}

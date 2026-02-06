@@ -25,6 +25,7 @@ func Test_Server_Start(t *testing.T) {
 		azdext.UnimplementedProjectServiceServer{},
 		azdext.UnimplementedEnvironmentServiceServer{},
 		azdext.UnimplementedPromptServiceServer{},
+		azdext.UnimplementedAiServiceServer{},
 		azdext.UnimplementedUserConfigServiceServer{},
 		azdext.UnimplementedDeploymentServiceServer{},
 		azdext.UnimplementedEventServiceServer{},

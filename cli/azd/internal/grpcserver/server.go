@@ -28,6 +28,7 @@ type Server struct {
 	projectService       azdext.ProjectServiceServer
 	environmentService   azdext.EnvironmentServiceServer
 	promptService        azdext.PromptServiceServer
+	aiService            azdext.AiServiceServer
 	userConfigService    azdext.UserConfigServiceServer
 	deploymentService    azdext.DeploymentServiceServer
 	eventService         azdext.EventServiceServer
@@ -44,6 +45,7 @@ func NewServer(
 	projectService azdext.ProjectServiceServer,
 	environmentService azdext.EnvironmentServiceServer,
 	promptService azdext.PromptServiceServer,
+	aiService azdext.AiServiceServer,
 	userConfigService azdext.UserConfigServiceServer,
 	deploymentService azdext.DeploymentServiceServer,
 	eventService azdext.EventServiceServer,
@@ -59,6 +61,7 @@ func NewServer(
 		projectService:       projectService,
 		environmentService:   environmentService,
 		promptService:        promptService,
+		aiService:            aiService,
 		userConfigService:    userConfigService,
 		deploymentService:    deploymentService,
 		eventService:         eventService,
@@ -97,6 +100,7 @@ func (s *Server) Start() (*ServerInfo, error) {
 	azdext.RegisterProjectServiceServer(s.grpcServer, s.projectService)
 	azdext.RegisterEnvironmentServiceServer(s.grpcServer, s.environmentService)
 	azdext.RegisterPromptServiceServer(s.grpcServer, s.promptService)
+	azdext.RegisterAiServiceServer(s.grpcServer, s.aiService)
 	azdext.RegisterUserConfigServiceServer(s.grpcServer, s.userConfigService)
 	azdext.RegisterDeploymentServiceServer(s.grpcServer, s.deploymentService)
 	azdext.RegisterEventServiceServer(s.grpcServer, s.eventService)

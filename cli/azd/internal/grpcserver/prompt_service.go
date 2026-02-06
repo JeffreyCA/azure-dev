@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -20,6 +22,7 @@ import (
 type promptService struct {
 	azdext.UnimplementedPromptServiceServer
 	prompter        prompt.PromptService
+	aiClient        aiCatalogClient
 	resourceService *azapi.ResourceService
 	globalOptions   *internal.GlobalCommandOptions
 	lock            *promptLock
@@ -27,11 +30,13 @@ type promptService struct {
 
 func NewPromptService(
 	prompter prompt.PromptService,
+	aiClient *azapi.AzureClient,
 	resourceService *azapi.ResourceService,
 	globalOptions *internal.GlobalCommandOptions,
 ) azdext.PromptServiceServer {
 	return &promptService{
 		prompter:        prompter,
+		aiClient:        aiClient,
 		resourceService: resourceService,
 		globalOptions:   globalOptions,
 		lock:            newPromptLock(),
@@ -274,6 +279,235 @@ func (s *promptService) PromptLocation(
 	}, nil
 }
 
+func (s *promptService) PromptAiLocation(
+	ctx context.Context,
+	req *azdext.PromptAiLocationRequest,
+) (*azdext.PromptAiLocationResponse, error) {
+	if s.aiClient == nil {
+		return nil, fmt.Errorf("ai service is unavailable")
+	}
+
+	azureContext, err := s.createAzureContext(req.AzureContext)
+	if err != nil {
+		return nil, err
+	}
+
+	if azureContext.Scope.SubscriptionId == "" {
+		return nil, fmt.Errorf("azure context must include subscription_id")
+	}
+
+	requirements := make([]azapi.AiUsageRequirement, 0, len(req.Requirements))
+	for _, requirement := range req.Requirements {
+		requiredCapacity := float64(requirement.GetRequiredCapacity())
+		if requiredCapacity <= 0 {
+			requiredCapacity = 1
+		}
+
+		requirements = append(requirements, azapi.AiUsageRequirement{
+			UsageName:        requirement.GetUsageName(),
+			RequiredCapacity: requiredCapacity,
+		})
+	}
+
+	locationsWithQuota, err := s.aiClient.FindAiLocationsWithQuota(
+		ctx,
+		azureContext.Scope.SubscriptionId,
+		req.GetAllowedLocations(),
+		requirements,
+		nil,
+	)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+
+	if len(locationsWithQuota.MatchedLocations) == 0 {
+		return nil, fmt.Errorf("no AI locations found that satisfy the requested quota")
+	}
+
+	if s.globalOptions.NoPrompt {
+		currentLocation := azureContext.Scope.Location
+		if currentLocation == "" {
+			return nil, fmt.Errorf("no location in azure context for --no-prompt mode")
+		}
+
+		selectedLocation, has := findCaseInsensitive(locationsWithQuota.MatchedLocations, currentLocation)
+		if !has {
+			return nil, fmt.Errorf(
+				"azure context location '%s' does not satisfy the requested AI quota",
+				currentLocation,
+			)
+		}
+
+		return &azdext.PromptAiLocationResponse{
+			Location: &azdext.Location{
+				Name:                selectedLocation,
+				DisplayName:         selectedLocation,
+				RegionalDisplayName: selectedLocation,
+			},
+		}, nil
+	}
+
+	if len(locationsWithQuota.MatchedLocations) == 1 {
+		selectedLocation := locationsWithQuota.MatchedLocations[0]
+		return &azdext.PromptAiLocationResponse{
+			Location: &azdext.Location{
+				Name:                selectedLocation,
+				DisplayName:         selectedLocation,
+				RegionalDisplayName: selectedLocation,
+			},
+		}, nil
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	choices := make([]*ux.SelectChoice, 0, len(locationsWithQuota.MatchedLocations))
+	for _, location := range locationsWithQuota.MatchedLocations {
+		choices = append(choices, &ux.SelectChoice{
+			Value: location,
+			Label: location,
+		})
+	}
+
+	message := req.GetMessage()
+	if message == "" {
+		message = "Select an Azure location for AI deployments:"
+	}
+
+	selectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         message,
+		HelpMessage:     req.GetHelpMessage(),
+		Choices:         choices,
+		EnableFiltering: to.Ptr(true),
+		DisplayCount:    min(12, len(choices)),
+	})
+
+	selectedIndex, err := selectPrompt.Ask(ctx)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+	if selectedIndex == nil {
+		return nil, fmt.Errorf("no AI location selected")
+	}
+
+	selectedLocation := locationsWithQuota.MatchedLocations[*selectedIndex]
+	return &azdext.PromptAiLocationResponse{
+		Location: &azdext.Location{
+			Name:                selectedLocation,
+			DisplayName:         selectedLocation,
+			RegionalDisplayName: selectedLocation,
+		},
+	}, nil
+}
+
+func (s *promptService) PromptAiModel(
+	ctx context.Context,
+	req *azdext.PromptAiModelRequest,
+) (*azdext.PromptAiModelResponse, error) {
+	if s.aiClient == nil {
+		return nil, fmt.Errorf("ai service is unavailable")
+	}
+
+	azureContext, err := s.createAzureContext(req.AzureContext)
+	if err != nil {
+		return nil, err
+	}
+
+	if azureContext.Scope.SubscriptionId == "" {
+		return nil, fmt.Errorf("azure context must include subscription_id")
+	}
+
+	location := req.GetLocation()
+	if location == "" {
+		location = azureContext.Scope.Location
+	}
+
+	if location == "" {
+		return nil, fmt.Errorf("location is required for AI model selection")
+	}
+
+	modelCatalog, err := s.aiClient.ListAiModelCatalog(
+		ctx,
+		azureContext.Scope.SubscriptionId,
+		azapi.AiModelCatalogFilters{
+			Locations:    []string{location},
+			Kinds:        req.GetKinds(),
+			Formats:      req.GetFormats(),
+			Statuses:     req.GetStatuses(),
+			Capabilities: req.GetCapabilities(),
+		},
+	)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+
+	candidates := flattenAiModelCandidates(modelCatalog, location)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no AI models found matching the provided filters")
+	}
+
+	preferredSkus := req.GetPreferredSkus()
+	if s.globalOptions.NoPrompt {
+		selected, err := chooseDeterministicAiModel(candidates, preferredSkus)
+		if err != nil {
+			return nil, err
+		}
+
+		return &azdext.PromptAiModelResponse{
+			Model: selected.toProto(),
+		}, nil
+	}
+
+	sortAiModelCandidates(candidates, preferredSkus)
+	if len(candidates) == 1 {
+		return &azdext.PromptAiModelResponse{
+			Model: candidates[0].toProto(),
+		}, nil
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	choices := make([]*ux.SelectChoice, 0, len(candidates))
+	for _, candidate := range candidates {
+		choices = append(choices, &ux.SelectChoice{
+			Value: candidate.id(),
+			Label: candidate.label(),
+		})
+	}
+
+	message := req.GetMessage()
+	if message == "" {
+		message = "Select an AI model deployment configuration:"
+	}
+
+	selectPrompt := ux.NewSelect(&ux.SelectOptions{
+		Message:         message,
+		HelpMessage:     req.GetHelpMessage(),
+		Choices:         choices,
+		EnableFiltering: to.Ptr(true),
+		DisplayCount:    min(12, len(choices)),
+	})
+
+	selectedIndex, err := selectPrompt.Ask(ctx)
+	if err != nil {
+		return nil, wrapErrorWithSuggestion(err)
+	}
+	if selectedIndex == nil {
+		return nil, fmt.Errorf("no AI model selected")
+	}
+
+	return &azdext.PromptAiModelResponse{
+		Model: candidates[*selectedIndex].toProto(),
+	}, nil
+}
+
 func (s *promptService) PromptResourceGroup(
 	ctx context.Context,
 	req *azdext.PromptResourceGroupRequest,
@@ -377,6 +611,13 @@ func (s *promptService) PromptResourceGroupResource(
 }
 
 func (s *promptService) createAzureContext(wire *azdext.AzureContext) (*prompt.AzureContext, error) {
+	if wire == nil {
+		return nil, fmt.Errorf("azure_context is required")
+	}
+	if wire.Scope == nil {
+		return nil, fmt.Errorf("azure_context.scope is required")
+	}
+
 	scope := prompt.AzureScope{
 		TenantId:       wire.Scope.TenantId,
 		SubscriptionId: wire.Scope.SubscriptionId,
@@ -455,6 +696,196 @@ func createResourceGroupOptions(options *azdext.PromptResourceGroupOptions) *pro
 			EnableFiltering:    options.SelectOptions.EnableFiltering,
 		},
 	}
+}
+
+type aiModelPromptOption struct {
+	ModelName        string
+	Location         string
+	Version          string
+	IsDefaultVersion bool
+	Kind             string
+	Format           string
+	Status           string
+	Capabilities     []string
+	Sku              azapi.AiModelSku
+}
+
+func (o aiModelPromptOption) id() string {
+	return strings.Join([]string{
+		o.ModelName,
+		o.Location,
+		o.Version,
+		o.Sku.Name,
+		o.Sku.UsageName,
+	}, "|")
+}
+
+func (o aiModelPromptOption) label() string {
+	parts := []string{
+		fmt.Sprintf("%s/%s", o.ModelName, o.Version),
+		fmt.Sprintf("sku=%s", o.Sku.Name),
+		fmt.Sprintf("usage=%s", o.Sku.UsageName),
+		fmt.Sprintf("location=%s", o.Location),
+	}
+	if o.IsDefaultVersion {
+		parts = append(parts, "default")
+	}
+
+	return strings.Join(parts, " | ")
+}
+
+func (o aiModelPromptOption) toProto() *azdext.AiModelSelection {
+	capabilities := slices.Clone(o.Capabilities)
+	slices.Sort(capabilities)
+
+	return &azdext.AiModelSelection{
+		Name:             o.ModelName,
+		Location:         o.Location,
+		Version:          o.Version,
+		IsDefaultVersion: o.IsDefaultVersion,
+		Kind:             o.Kind,
+		Format:           o.Format,
+		Status:           o.Status,
+		Capabilities:     capabilities,
+		Sku: &azdext.AiModelSku{
+			Name:            o.Sku.Name,
+			UsageName:       o.Sku.UsageName,
+			CapacityDefault: o.Sku.CapacityDefault,
+			CapacityMinimum: o.Sku.CapacityMinimum,
+			CapacityMaximum: o.Sku.CapacityMaximum,
+			CapacityStep:    o.Sku.CapacityStep,
+		},
+	}
+}
+
+func flattenAiModelCandidates(items []azapi.AiModelCatalogItem, location string) []aiModelPromptOption {
+	candidates := []aiModelPromptOption{}
+	for _, item := range items {
+		for _, modelLocation := range item.Locations {
+			if !strings.EqualFold(modelLocation.Location, location) {
+				continue
+			}
+
+			for _, version := range modelLocation.Versions {
+				for _, sku := range version.Skus {
+					candidates = append(candidates, aiModelPromptOption{
+						ModelName:        item.Name,
+						Location:         modelLocation.Location,
+						Version:          version.Version,
+						IsDefaultVersion: version.IsDefaultVersion,
+						Kind:             version.Kind,
+						Format:           version.Format,
+						Status:           version.Status,
+						Capabilities:     version.Capabilities,
+						Sku:              sku,
+					})
+				}
+			}
+		}
+	}
+
+	return candidates
+}
+
+func chooseDeterministicAiModel(
+	candidates []aiModelPromptOption,
+	preferredSkus []string,
+) (*aiModelPromptOption, error) {
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no AI models found matching the provided filters")
+	}
+
+	filtered := slices.Clone(candidates)
+	if len(preferredSkus) > 0 {
+		preferredSet := make(map[string]struct{}, len(preferredSkus))
+		for _, sku := range preferredSkus {
+			preferredSet[strings.ToLower(strings.TrimSpace(sku))] = struct{}{}
+		}
+
+		preferredCandidates := []aiModelPromptOption{}
+		for _, candidate := range filtered {
+			if _, has := preferredSet[strings.ToLower(candidate.Sku.Name)]; has {
+				preferredCandidates = append(preferredCandidates, candidate)
+			}
+		}
+
+		if len(preferredCandidates) > 0 {
+			filtered = preferredCandidates
+		}
+	}
+
+	defaultCandidates := []aiModelPromptOption{}
+	for _, candidate := range filtered {
+		if candidate.IsDefaultVersion {
+			defaultCandidates = append(defaultCandidates, candidate)
+		}
+	}
+	if len(defaultCandidates) > 0 {
+		filtered = defaultCandidates
+	}
+
+	sortAiModelCandidates(filtered, preferredSkus)
+	if len(filtered) == 1 {
+		return &filtered[0], nil
+	}
+
+	return nil, fmt.Errorf("multiple AI model candidates found; cannot select deterministically in --no-prompt mode")
+}
+
+func sortAiModelCandidates(candidates []aiModelPromptOption, preferredSkus []string) {
+	preferredOrder := make(map[string]int, len(preferredSkus))
+	for i, sku := range preferredSkus {
+		preferredOrder[strings.ToLower(strings.TrimSpace(sku))] = i
+	}
+
+	const preferredDefaultRank = 1_000_000
+	slices.SortFunc(candidates, func(a, b aiModelPromptOption) int {
+		aRank, aHas := preferredOrder[strings.ToLower(a.Sku.Name)]
+		bRank, bHas := preferredOrder[strings.ToLower(b.Sku.Name)]
+
+		if !aHas {
+			aRank = preferredDefaultRank
+		}
+		if !bHas {
+			bRank = preferredDefaultRank
+		}
+
+		if aRank != bRank {
+			if aRank < bRank {
+				return -1
+			}
+			return 1
+		}
+
+		if a.IsDefaultVersion != b.IsDefaultVersion {
+			if a.IsDefaultVersion {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(strings.ToLower(a.ModelName), strings.ToLower(b.ModelName)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.Version), strings.ToLower(b.Version)); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(strings.ToLower(a.Sku.Name), strings.ToLower(b.Sku.Name)); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(strings.ToLower(a.Location), strings.ToLower(b.Location))
+	})
+}
+
+func findCaseInsensitive(values []string, target string) (string, bool) {
+	for _, value := range values {
+		if strings.EqualFold(value, target) {
+			return value, true
+		}
+	}
+
+	return "", false
 }
 
 func convertToInt32(input *int) *int32 {
