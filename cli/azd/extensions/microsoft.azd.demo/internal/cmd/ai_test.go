@@ -42,31 +42,6 @@ func TestBuildAiFindLocationsWithQuotaRequest_RequiresAtLeastOneRequirement(t *t
 	require.Contains(t, err.Error(), "at least one usage requirement must be provided")
 }
 
-func TestBuildPromptAiLocationRequest(t *testing.T) {
-	scope := &azdext.AzureScope{
-		SubscriptionId: "sub-123",
-		Location:       "eastus",
-	}
-
-	req, err := buildPromptAiLocationRequest(
-		scope,
-		[]string{"eastus", "westus"},
-		[]*azdext.AiUsageRequirement{
-			{
-				UsageName:        "OpenAI.Standard",
-				RequiredCapacity: 10,
-			},
-		},
-	)
-	require.NoError(t, err)
-	require.NotNil(t, req.AzureContext)
-	require.Equal(t, scope, req.AzureContext.Scope)
-	require.Equal(t, []string{"eastus", "westus"}, req.AllowedLocations)
-	require.Len(t, req.Requirements, 1)
-	require.Equal(t, "OpenAI.Standard", req.Requirements[0].UsageName)
-	require.Equal(t, int32(10), req.Requirements[0].RequiredCapacity)
-}
-
 func TestSummarizeQuotaError(t *testing.T) {
 	require.Equal(t, "quota lookup unavailable (NoRegisteredProviderFound)", summarizeQuotaError(`
 	RESPONSE 400: 400 Bad Request

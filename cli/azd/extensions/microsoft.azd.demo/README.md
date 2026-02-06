@@ -71,7 +71,7 @@ Lists model catalog entries (model/version/sku/location) using `AiService.ListMo
 Example:
 
 ```bash
-azd demo ai catalog --location eastus --kind Chat --capability ChatCompletion
+azd demo ai catalog
 ```
 
 #### `azd demo ai usages`
@@ -81,7 +81,7 @@ Lists AI quota usage values for a location using `AiService.ListUsages`.
 Example:
 
 ```bash
-azd demo ai usages --location eastus --name-prefix OpenAI
+azd demo ai usages
 ```
 
 #### `azd demo ai quota`
@@ -91,17 +91,7 @@ Finds locations that satisfy quota requirements using `AiService.FindLocationsWi
 Example:
 
 ```bash
-azd demo ai quota --require OpenAI.Standard,10 --require OpenAI.S0.AccountCount,2
-```
-
-#### `azd demo ai prompt`
-
-Runs `PromptAiLocation` then `PromptAiModel` and prints the selected location/model/sku metadata.
-
-Example:
-
-```bash
-azd demo ai prompt --require OpenAI.Standard,10 --kind Chat
+azd demo ai quota
 ```
 
 ### `metadata`

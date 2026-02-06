@@ -26,7 +26,6 @@ func newAiCommand() *cobra.Command {
 	aiCmd.AddCommand(newAiCatalogCommand())
 	aiCmd.AddCommand(newAiUsagesCommand())
 	aiCmd.AddCommand(newAiQuotaCommand())
-	aiCmd.AddCommand(newAiPromptCommand())
 
 	return aiCmd
 }
@@ -182,88 +181,6 @@ func newAiQuotaCommand() *cobra.Command {
 				}
 
 				printQuotaSummary(resp.Results)
-
-				return nil
-			})
-		},
-	}
-
-	return cmd
-}
-
-func newAiPromptCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "prompt",
-		Short: "Run step-by-step AI location and model prompts.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWithAzdClient(cmd, func(ctx context.Context, azdClient *azdext.AzdClient) error {
-				scope, err := promptSubscriptionScope(ctx, azdClient)
-				if err != nil {
-					return err
-				}
-
-				filterByQuotaResp, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
-					Options: &azdext.ConfirmOptions{
-						Message:      "Filter location choices by quota requirements?",
-						DefaultValue: boolPtr(true),
-					},
-				})
-				if err != nil {
-					return err
-				}
-
-				requirements := []*azdext.AiUsageRequirement{}
-				if filterByQuotaResp.GetValue() {
-					usageLocation, usageMeters, err := resolveUsageMetersForPrompt(
-						ctx,
-						azdClient,
-						scope.SubscriptionId,
-						nil,
-					)
-					if err != nil {
-						return err
-					}
-					fmt.Printf("Using usage meters from: %s\n", usageLocation)
-
-					requirements, err = promptQuotaRequirements(ctx, azdClient, usageMeters)
-					if err != nil {
-						return err
-					}
-				}
-
-				locationPromptReq, err := buildPromptAiLocationRequest(scope, nil, requirements)
-				if err != nil {
-					return err
-				}
-
-				locationResp, err := azdClient.Prompt().PromptAiLocation(ctx, locationPromptReq)
-				if err != nil {
-					return err
-				}
-
-				catalogResp, err := azdClient.Ai().ListModelCatalog(ctx, &azdext.AiListModelCatalogRequest{
-					SubscriptionId: scope.SubscriptionId,
-					Locations:      []string{locationResp.GetLocation().GetName()},
-				})
-				if err != nil {
-					return err
-				}
-
-				if len(catalogResp.Models) == 0 {
-					return fmt.Errorf("no AI models found matching the provided filters")
-				}
-
-				fmt.Println("Selection:")
-				selection, err := promptForModelCatalogSelection(
-					ctx,
-					azdClient,
-					catalogResp.Models,
-					locationResp.GetLocation().GetName(),
-				)
-				if err != nil {
-					return err
-				}
-				printAiModelSelection(selection)
 
 				return nil
 			})
@@ -780,19 +697,5 @@ func buildAiFindLocationsWithQuotaRequest(
 		SubscriptionId: subscriptionID,
 		Locations:      locations,
 		Requirements:   requirements,
-	}, nil
-}
-
-func buildPromptAiLocationRequest(
-	scope *azdext.AzureScope,
-	allowedLocations []string,
-	requirements []*azdext.AiUsageRequirement,
-) (*azdext.PromptAiLocationRequest, error) {
-	return &azdext.PromptAiLocationRequest{
-		AzureContext: &azdext.AzureContext{
-			Scope: scope,
-		},
-		AllowedLocations: allowedLocations,
-		Requirements:     requirements,
 	}, nil
 }
