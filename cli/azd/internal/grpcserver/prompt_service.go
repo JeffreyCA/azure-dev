@@ -7,12 +7,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/azure/azure-dev/cli/azd/internal"
+	"github.com/azure/azure-dev/cli/azd/pkg/ai"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
+	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
 	"github.com/azure/azure-dev/cli/azd/pkg/ux"
 )
@@ -21,6 +26,7 @@ type promptService struct {
 	azdext.UnimplementedPromptServiceServer
 	prompter        prompt.PromptService
 	resourceService *azapi.ResourceService
+	aiModelService  *ai.AiModelService
 	globalOptions   *internal.GlobalCommandOptions
 	lock            *promptLock
 }
@@ -28,11 +34,13 @@ type promptService struct {
 func NewPromptService(
 	prompter prompt.PromptService,
 	resourceService *azapi.ResourceService,
+	aiModelService *ai.AiModelService,
 	globalOptions *internal.GlobalCommandOptions,
 ) azdext.PromptServiceServer {
 	return &promptService{
 		prompter:        prompter,
 		resourceService: resourceService,
+		aiModelService:  aiModelService,
 		globalOptions:   globalOptions,
 		lock:            newPromptLock(),
 	}
@@ -473,6 +481,405 @@ func convertToInt(input *int32) *int {
 	}
 	value := int(*input) // Convert the dereferenced value to int
 	return &value        // Return the address of the new int value
+}
+
+// --- AI Model Prompt Methods ---
+
+func (s *promptService) PromptAiModel(
+	ctx context.Context, req *azdext.PromptAiModelRequest,
+) (*azdext.PromptAiModelResponse, error) {
+	// Intentionally ignore location from AzureContext — use filter.locations
+	// to scope the model catalog. See AiModelService.ListModels for rationale.
+	subscriptionId, _ := extractScope(req.AzureContext)
+
+	var filterOpts *ai.FilterOptions
+	var locations []string
+	if req.Filter != nil {
+		filterOpts = protoToFilterOptions(req.Filter)
+		locations = filterOpts.Locations
+	}
+
+	models, err := s.aiModelService.ListModels(ctx, subscriptionId, locations)
+	if err != nil {
+		return nil, fmt.Errorf("listing models: %w", err)
+	}
+
+	if filterOpts != nil {
+		models = ai.FilterModels(models, filterOpts)
+	}
+
+	// Quota-aware filtering requires exactly one location for usage data.
+	var usageMap map[string]ai.AiModelUsage
+	if req.Quota != nil {
+		if len(locations) != 1 {
+			return nil, fmt.Errorf(
+				"quota checking requires exactly one location in filter.locations, got %d", len(locations))
+		}
+		usages, err := s.aiModelService.ListUsages(ctx, subscriptionId, locations[0])
+		if err != nil {
+			return nil, fmt.Errorf("listing usages for quota check: %w", err)
+		}
+		usageMap = make(map[string]ai.AiModelUsage, len(usages))
+		for _, u := range usages {
+			usageMap[u.Name] = u
+		}
+		models = ai.FilterModelsByQuota(models, usages, req.Quota.MinRemainingCapacity)
+	}
+
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models found matching the specified criteria")
+	}
+
+	if s.globalOptions.NoPrompt {
+		return nil, fmt.Errorf("cannot prompt for model selection in non-interactive mode")
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	message := "Select an AI model"
+	if req.SelectOptions != nil && req.SelectOptions.Message != "" {
+		message = req.SelectOptions.Message
+	}
+
+	selectOpts := &ux.SelectOptions{
+		Message:         message,
+		Choices:         make([]*ux.SelectChoice, len(models)),
+		EnableFiltering: to.Ptr(true),
+	}
+	for i, m := range models {
+		label := m.Name
+		if req.Quota != nil && usageMap != nil {
+			label += " " + modelQuotaSummary(m, usageMap)
+		}
+		selectOpts.Choices[i] = &ux.SelectChoice{
+			Value: m.Name,
+			Label: label,
+		}
+	}
+
+	selected, err := ux.NewSelect(selectOpts).Ask(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("prompting for model selection: %w", err)
+	}
+
+	return &azdext.PromptAiModelResponse{
+		Model: aiModelToProto(&models[*selected]),
+	}, nil
+}
+
+func (s *promptService) PromptAiModelDeployment(
+	ctx context.Context, req *azdext.PromptAiModelDeploymentRequest,
+) (*azdext.PromptAiModelDeploymentResponse, error) {
+	subscriptionId, _ := extractScope(req.AzureContext)
+
+	options := protoToDeploymentOptions(req.Preferences)
+	if options == nil {
+		options = &ai.DeploymentOptions{}
+	}
+
+	// Fail explicitly if quota is requested without exactly one location.
+	if req.Quota != nil && len(options.Locations) != 1 {
+		return nil, fmt.Errorf(
+			"quota checking requires exactly one location in preferences.locations, got %d", len(options.Locations))
+	}
+
+	// Fetch the model catalog
+	models, err := s.aiModelService.ListModels(ctx, subscriptionId, options.Locations)
+	if err != nil {
+		return nil, fmt.Errorf("listing models: %w", err)
+	}
+
+	var targetModel *ai.AiModel
+	for i := range models {
+		if models[i].Name == req.ModelName {
+			targetModel = &models[i]
+			break
+		}
+	}
+	if targetModel == nil {
+		return nil, fmt.Errorf("model %q not found", req.ModelName)
+	}
+
+	// Fetch quota data (guaranteed single location by check above)
+	var usageMap map[string]ai.AiModelUsage
+	if req.Quota != nil {
+		usages, err := s.aiModelService.ListUsages(ctx, subscriptionId, options.Locations[0])
+		if err != nil {
+			return nil, fmt.Errorf("getting usages: %w", err)
+		}
+		usageMap = make(map[string]ai.AiModelUsage, len(usages))
+		for _, u := range usages {
+			usageMap[u.Name] = u
+		}
+	}
+
+	if s.globalOptions.NoPrompt {
+		return nil, fmt.Errorf("cannot prompt for deployment configuration in non-interactive mode")
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	// --- Step 1: Select version ---
+	// Collect available versions (filtered by preferences.versions if provided).
+	var availableVersions []ai.AiModelVersion
+	for _, v := range targetModel.Versions {
+		if len(options.Versions) > 0 && !slices.Contains(options.Versions, v.Version) {
+			continue
+		}
+		availableVersions = append(availableVersions, v)
+	}
+	if len(availableVersions) == 0 {
+		return nil, fmt.Errorf("no versions available for model %q with the specified preferences", req.ModelName)
+	}
+
+	var selectedVersion ai.AiModelVersion
+	if req.UseDefaultVersion && ai.ModelHasDefaultVersion(*targetModel) {
+		// Skip version prompt — use the default version.
+		for _, v := range availableVersions {
+			if v.IsDefault {
+				selectedVersion = v
+				break
+			}
+		}
+	} else if len(availableVersions) == 1 {
+		selectedVersion = availableVersions[0]
+	} else {
+		versionChoices := make([]*ux.SelectChoice, len(availableVersions))
+		for i, v := range availableVersions {
+			label := v.Version
+			if v.IsDefault {
+				label += " (default)"
+			}
+			versionChoices[i] = &ux.SelectChoice{Value: v.Version, Label: label}
+		}
+		vIdx, err := ux.NewSelect(&ux.SelectOptions{
+			Message:         fmt.Sprintf("Select a version for %s", req.ModelName),
+			Choices:         versionChoices,
+			EnableFiltering: to.Ptr(true),
+		}).Ask(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("prompting for version: %w", err)
+		}
+		selectedVersion = availableVersions[*vIdx]
+	}
+
+	// --- Step 2: Select SKU ---
+	// Collect SKUs for the selected version, filtered by preferences and quota.
+	type skuCandidate struct {
+		sku       ai.AiModelSku
+		remaining *float64
+		label     string
+	}
+	var skuCandidates []skuCandidate
+
+	for _, sku := range selectedVersion.Skus {
+		if len(options.Skus) > 0 && !slices.Contains(options.Skus, sku.Name) {
+			continue
+		}
+
+		// Exclude fine-tune SKUs by default — they only apply to fine-tuned model deployments.
+		if !req.IncludeFinetuneSkus && strings.HasSuffix(sku.UsageName, "-finetune") {
+			continue
+		}
+
+		capacity := ai.ResolveCapacity(sku, options.Capacity)
+
+		var remaining *float64
+		if req.Quota != nil && usageMap != nil {
+			usage, ok := usageMap[sku.UsageName]
+			if ok {
+				rem := usage.Limit - usage.CurrentValue
+				remaining = &rem
+				minReq := req.Quota.MinRemainingCapacity
+				if minReq <= 0 {
+					minReq = 1
+				}
+				if rem < minReq || (capacity > 0 && float64(capacity) > rem) {
+					continue
+				}
+			}
+		}
+
+		skuCandidates = append(skuCandidates, skuCandidate{sku: sku, remaining: remaining})
+	}
+
+	if len(skuCandidates) == 0 {
+		return nil, fmt.Errorf("no valid SKUs found for model %q version %q", req.ModelName, selectedVersion.Version)
+	}
+
+	// Build labels: only include usage_name when SKU names are ambiguous.
+	skuNameCount := make(map[string]int, len(skuCandidates))
+	for _, c := range skuCandidates {
+		skuNameCount[c.sku.Name]++
+	}
+	for i, c := range skuCandidates {
+		label := c.sku.Name
+		if skuNameCount[c.sku.Name] > 1 {
+			label += fmt.Sprintf(" (%s)", c.sku.UsageName)
+		}
+		if c.remaining != nil {
+			label += " " + output.WithGrayFormat("[%.0f quota remaining]", *c.remaining)
+		}
+		skuCandidates[i].label = label
+	}
+
+	selectedSku := skuCandidates[0]
+	if len(skuCandidates) > 1 {
+		skuChoices := make([]*ux.SelectChoice, len(skuCandidates))
+		for i, c := range skuCandidates {
+			skuChoices[i] = &ux.SelectChoice{Value: c.label, Label: c.label}
+		}
+		sIdx, err := ux.NewSelect(&ux.SelectOptions{
+			Message:         fmt.Sprintf("Select a SKU for %s v%s", req.ModelName, selectedVersion.Version),
+			Choices:         skuChoices,
+			EnableFiltering: to.Ptr(true),
+		}).Ask(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("prompting for SKU: %w", err)
+		}
+		selectedSku = skuCandidates[*sIdx]
+	}
+
+	// --- Step 3: Resolve capacity, optionally prompting ---
+	capacity := ai.ResolveCapacity(selectedSku.sku, options.Capacity)
+
+	if !req.UseDefaultCapacity {
+		sku := selectedSku.sku
+		defaultVal := fmt.Sprintf("%d", capacity)
+		if capacity == 0 && sku.DefaultCapacity > 0 {
+			defaultVal = fmt.Sprintf("%d", sku.DefaultCapacity)
+		}
+
+		hint := ""
+		if sku.MinCapacity > 0 || sku.MaxCapacity > 0 {
+			hint = fmt.Sprintf("min: %d, max: %d, step: %d", sku.MinCapacity, sku.MaxCapacity, sku.CapacityStep)
+		}
+
+		prompt := ux.NewPrompt(&ux.PromptOptions{
+			Message:      fmt.Sprintf("Enter deployment capacity for %s (%s)", req.ModelName, sku.Name),
+			DefaultValue: defaultVal,
+			HelpMessage:  hint,
+		})
+		capStr, err := prompt.Ask(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("prompting for capacity: %w", err)
+		}
+
+		parsed, err := strconv.Atoi(capStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid capacity %q: %w", capStr, err)
+		}
+		capacity = int32(parsed)
+	}
+
+	deployLocation := ""
+	if len(options.Locations) == 1 {
+		deployLocation = options.Locations[0]
+	}
+
+	deployment := &ai.AiModelDeployment{
+		ModelName:      req.ModelName,
+		Format:         targetModel.Format,
+		Version:        selectedVersion.Version,
+		Location:       deployLocation,
+		Sku:            selectedSku.sku,
+		Capacity:       capacity,
+		RemainingQuota: selectedSku.remaining,
+	}
+
+	return &azdext.PromptAiModelDeploymentResponse{
+		Deployment: aiModelDeploymentToProto(deployment),
+	}, nil
+}
+
+func (s *promptService) PromptLocationWithQuota(
+	ctx context.Context, req *azdext.PromptLocationWithQuotaRequest,
+) (*azdext.PromptLocationWithQuotaResponse, error) {
+	subscriptionId, _ := extractScope(req.AzureContext)
+
+	requirements := make([]ai.QuotaRequirement, len(req.Requirements))
+	for i, r := range req.Requirements {
+		requirements[i] = ai.QuotaRequirement{
+			UsageName:   r.UsageName,
+			MinCapacity: r.MinCapacity,
+		}
+	}
+
+	locations, err := s.aiModelService.ListLocationsWithQuota(
+		ctx, subscriptionId, req.AllowedLocations, requirements)
+	if err != nil {
+		return nil, fmt.Errorf("listing locations with quota: %w", err)
+	}
+
+	if len(locations) == 0 {
+		return nil, fmt.Errorf("no locations found with sufficient quota")
+	}
+
+	if s.globalOptions.NoPrompt {
+		return nil, fmt.Errorf("cannot prompt for location selection in non-interactive mode")
+	}
+
+	release, err := s.acquirePromptLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	message := "Select a location"
+	if req.SelectOptions != nil && req.SelectOptions.Message != "" {
+		message = req.SelectOptions.Message
+	}
+
+	selectOpts := &ux.SelectOptions{
+		Message:         message,
+		Choices:         make([]*ux.SelectChoice, len(locations)),
+		EnableFiltering: to.Ptr(true),
+	}
+	for i, loc := range locations {
+		selectOpts.Choices[i] = &ux.SelectChoice{
+			Value: loc,
+			Label: loc,
+		}
+	}
+
+	selected, err := ux.NewSelect(selectOpts).Ask(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("prompting for location selection: %w", err)
+	}
+
+	return &azdext.PromptLocationWithQuotaResponse{
+		Location: &azdext.Location{Name: locations[*selected]},
+	}, nil
+}
+
+// modelQuotaSummary builds a gray-formatted quota summary for a model's SKUs.
+// Shows the max remaining quota across all SKUs, e.g. "[1000 quota remaining]".
+func modelQuotaSummary(model ai.AiModel, usageMap map[string]ai.AiModelUsage) string {
+	var maxRemaining float64
+	found := false
+	for _, v := range model.Versions {
+		for _, sku := range v.Skus {
+			if usage, ok := usageMap[sku.UsageName]; ok {
+				rem := usage.Limit - usage.CurrentValue
+				if !found || rem > maxRemaining {
+					maxRemaining = rem
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		return output.WithGrayFormat("[no quota info]")
+	}
+	return output.WithGrayFormat("[%.0f quota remaining]", maxRemaining)
 }
 
 // promptLock is a context-aware mutual exclusion mechanism for serializing interactive prompts.
