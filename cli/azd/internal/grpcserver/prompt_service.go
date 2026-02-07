@@ -488,15 +488,16 @@ func convertToInt(input *int32) *int {
 func (s *promptService) PromptAiModel(
 	ctx context.Context, req *azdext.PromptAiModelRequest,
 ) (*azdext.PromptAiModelResponse, error) {
-	// Intentionally ignore location from AzureContext — use filter.locations
-	// to scope the model catalog. See AiModelService.ListModels for rationale.
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
 
 	var filterOpts *ai.FilterOptions
 	var locations []string
 	if req.Filter != nil {
 		filterOpts = protoToFilterOptions(req.Filter)
 		locations = filterOpts.Locations
+	}
+	if len(locations) == 0 && scopeLocation != "" {
+		locations = []string{scopeLocation}
 	}
 
 	models, err := s.aiModelService.ListModels(ctx, subscriptionId, locations)
@@ -513,7 +514,7 @@ func (s *promptService) PromptAiModel(
 	if req.Quota != nil {
 		if len(locations) != 1 {
 			return nil, fmt.Errorf(
-				"quota checking requires exactly one location in filter.locations, got %d", len(locations))
+				"quota checking requires exactly one effective location, got %d", len(locations))
 		}
 		usages, err := s.aiModelService.ListUsages(ctx, subscriptionId, locations[0])
 		if err != nil {
@@ -574,17 +575,20 @@ func (s *promptService) PromptAiModel(
 func (s *promptService) PromptAiModelDeployment(
 	ctx context.Context, req *azdext.PromptAiModelDeploymentRequest,
 ) (*azdext.PromptAiModelDeploymentResponse, error) {
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
 
-	options := protoToDeploymentOptions(req.Preferences)
+	options := protoToDeploymentOptions(req.Options)
 	if options == nil {
 		options = &ai.DeploymentOptions{}
+	}
+	if len(options.Locations) == 0 && scopeLocation != "" {
+		options.Locations = []string{scopeLocation}
 	}
 
 	// Fail explicitly if quota is requested without exactly one location.
 	if req.Quota != nil && len(options.Locations) != 1 {
 		return nil, fmt.Errorf(
-			"quota checking requires exactly one location in preferences.locations, got %d", len(options.Locations))
+			"quota checking requires exactly one effective location, got %d", len(options.Locations))
 	}
 
 	// Fetch the model catalog
@@ -628,7 +632,7 @@ func (s *promptService) PromptAiModelDeployment(
 	defer release()
 
 	// --- Step 1: Select version ---
-	// Collect available versions (filtered by preferences.versions if provided).
+	// Collect available versions (filtered by options.versions if provided).
 	var availableVersions []ai.AiModelVersion
 	for _, v := range targetModel.Versions {
 		if len(options.Versions) > 0 && !slices.Contains(options.Versions, v.Version) {
@@ -637,21 +641,27 @@ func (s *promptService) PromptAiModelDeployment(
 		availableVersions = append(availableVersions, v)
 	}
 	if len(availableVersions) == 0 {
-		return nil, fmt.Errorf("no versions available for model %q with the specified preferences", req.ModelName)
+		return nil, fmt.Errorf("no versions available for model %q with the specified options", req.ModelName)
 	}
 
 	var selectedVersion ai.AiModelVersion
-	if req.UseDefaultVersion && ai.ModelHasDefaultVersion(*targetModel) {
-		// Skip version prompt — use the default version.
+	selectedVersionChosen := false
+	if req.UseDefaultVersion {
 		for _, v := range availableVersions {
 			if v.IsDefault {
 				selectedVersion = v
+				selectedVersionChosen = true
 				break
 			}
 		}
-	} else if len(availableVersions) == 1 {
+	}
+
+	if !selectedVersionChosen && len(availableVersions) == 1 {
 		selectedVersion = availableVersions[0]
-	} else {
+		selectedVersionChosen = true
+	}
+
+	if !selectedVersionChosen {
 		versionChoices := make([]*ux.SelectChoice, len(availableVersions))
 		for i, v := range availableVersions {
 			label := v.Version
@@ -672,7 +682,7 @@ func (s *promptService) PromptAiModelDeployment(
 	}
 
 	// --- Step 2: Select SKU ---
-	// Collect SKUs for the selected version, filtered by preferences and quota.
+	// Collect SKUs for the selected version, filtered by options and quota.
 	type skuCandidate struct {
 		sku       ai.AiModelSku
 		remaining *float64
@@ -695,16 +705,18 @@ func (s *promptService) PromptAiModelDeployment(
 		var remaining *float64
 		if req.Quota != nil && usageMap != nil {
 			usage, ok := usageMap[sku.UsageName]
-			if ok {
-				rem := usage.Limit - usage.CurrentValue
-				remaining = &rem
-				minReq := req.Quota.MinRemainingCapacity
-				if minReq <= 0 {
-					minReq = 1
-				}
-				if rem < minReq || (capacity > 0 && float64(capacity) > rem) {
-					continue
-				}
+			if !ok {
+				continue
+			}
+
+			rem := usage.Limit - usage.CurrentValue
+			remaining = &rem
+			minReq := req.Quota.MinRemainingCapacity
+			if minReq <= 0 {
+				minReq = 1
+			}
+			if rem < minReq || (capacity > 0 && float64(capacity) > rem) {
+				continue
 			}
 		}
 
@@ -767,17 +779,26 @@ func (s *promptService) PromptAiModelDeployment(
 			Message:      fmt.Sprintf("Enter deployment capacity for %s (%s)", req.ModelName, sku.Name),
 			DefaultValue: defaultVal,
 			HelpMessage:  hint,
+			Required:     true,
+			ValidationFn: func(value string) (bool, string) {
+				_, err := validateDeploymentCapacity(value, sku)
+				if err != nil {
+					return false, err.Error()
+				}
+
+				return true, ""
+			},
 		})
 		capStr, err := prompt.Ask(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("prompting for capacity: %w", err)
 		}
 
-		parsed, err := strconv.Atoi(capStr)
+		parsed, err := validateDeploymentCapacity(capStr, sku)
 		if err != nil {
 			return nil, fmt.Errorf("invalid capacity %q: %w", capStr, err)
 		}
-		capacity = int32(parsed)
+		capacity = parsed
 	}
 
 	deployLocation := ""
@@ -800,9 +821,9 @@ func (s *promptService) PromptAiModelDeployment(
 	}, nil
 }
 
-func (s *promptService) PromptLocationWithQuota(
-	ctx context.Context, req *azdext.PromptLocationWithQuotaRequest,
-) (*azdext.PromptLocationWithQuotaResponse, error) {
+func (s *promptService) PromptAiLocationWithQuota(
+	ctx context.Context, req *azdext.PromptAiLocationWithQuotaRequest,
+) (*azdext.PromptAiLocationWithQuotaResponse, error) {
 	subscriptionId, _ := extractScope(req.AzureContext)
 
 	requirements := make([]ai.QuotaRequirement, len(req.Requirements))
@@ -855,7 +876,7 @@ func (s *promptService) PromptLocationWithQuota(
 		return nil, fmt.Errorf("prompting for location selection: %w", err)
 	}
 
-	return &azdext.PromptLocationWithQuotaResponse{
+	return &azdext.PromptAiLocationWithQuotaResponse{
 		Location: &azdext.Location{Name: locations[*selected]},
 	}, nil
 }
@@ -880,6 +901,29 @@ func modelQuotaSummary(model ai.AiModel, usageMap map[string]ai.AiModelUsage) st
 		return output.WithGrayFormat("[no quota info]")
 	}
 	return output.WithGrayFormat("[%.0f quota remaining]", maxRemaining)
+}
+
+func validateDeploymentCapacity(value string, sku ai.AiModelSku) (int32, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("capacity must be a whole number")
+	}
+
+	capacity := int32(parsed)
+
+	if sku.MinCapacity > 0 && capacity < sku.MinCapacity {
+		return 0, fmt.Errorf("capacity must be at least %d", sku.MinCapacity)
+	}
+
+	if sku.MaxCapacity > 0 && capacity > sku.MaxCapacity {
+		return 0, fmt.Errorf("capacity must be at most %d", sku.MaxCapacity)
+	}
+
+	if sku.CapacityStep > 0 && capacity%sku.CapacityStep != 0 {
+		return 0, fmt.Errorf("capacity must be a multiple of %d", sku.CapacityStep)
+	}
+
+	return capacity, nil
 }
 
 // promptLock is a context-aware mutual exclusion mechanism for serializing interactive prompts.

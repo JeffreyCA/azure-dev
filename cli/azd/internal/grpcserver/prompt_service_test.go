@@ -12,6 +12,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
+	"github.com/azure/azure-dev/cli/azd/pkg/ai"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
@@ -645,4 +646,77 @@ func Test_PromptService_PromptResourceGroup_ErrorWithSuggestion(t *testing.T) {
 	require.Contains(t, err.Error(), "azd auth login")
 	require.Contains(t, err.Error(), "AADSTS70043")
 	mockPrompter.AssertExpectations(t)
+}
+
+func Test_validateDeploymentCapacity(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		sku         ai.AiModelSku
+		want        int32
+		errContains string
+	}{
+		{
+			name:  "valid capacity with constraints",
+			value: "20",
+			sku: ai.AiModelSku{
+				MinCapacity:  10,
+				MaxCapacity:  100,
+				CapacityStep: 10,
+			},
+			want: 20,
+		},
+		{
+			name:        "non-numeric value",
+			value:       "abc",
+			sku:         ai.AiModelSku{},
+			errContains: "whole number",
+		},
+		{
+			name:  "below minimum",
+			value: "5",
+			sku: ai.AiModelSku{
+				MinCapacity: 10,
+			},
+			errContains: "at least 10",
+		},
+		{
+			name:  "above maximum",
+			value: "120",
+			sku: ai.AiModelSku{
+				MaxCapacity: 100,
+			},
+			errContains: "at most 100",
+		},
+		{
+			name:  "step mismatch",
+			value: "25",
+			sku: ai.AiModelSku{
+				CapacityStep: 10,
+			},
+			errContains: "multiple of 10",
+		},
+		{
+			name:  "trimmed input is accepted",
+			value: " 30 ",
+			sku: ai.AiModelSku{
+				MinCapacity: 10,
+			},
+			want: 30,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateDeploymentCapacity(tt.value, tt.sku)
+			if tt.errContains != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

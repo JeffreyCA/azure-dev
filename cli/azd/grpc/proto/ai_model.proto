@@ -10,22 +10,31 @@ import "models.proto";
 
 // AiModelService provides data-only operations for AI model catalog,
 // deployment resolution, and quota/usage from Azure Cognitive Services.
-// AzureContext is used only for subscription_id — location is always explicit.
+// AzureContext is required for subscription_id and may provide a default
+// location when a method-specific location field is omitted.
 service AiModelService {
   // ListModels returns available AI models, optionally filtered by location.
+  // Effective location precedence:
+  //   1) filter.locations
+  //   2) azure_context.scope.location
+  //   3) all locations in the subscription
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 
   // ListModelVersions returns versions for a model at a specific location.
+  // Effective location precedence: request.location, then azure_context.scope.location.
   rpc ListModelVersions(ListModelVersionsRequest) returns (ListModelVersionsResponse);
 
   // ListModelSkus returns SKUs for a model+version at a specific location.
+  // Effective location precedence: request.location, then azure_context.scope.location.
   rpc ListModelSkus(ListModelSkusRequest) returns (ListModelSkusResponse);
 
   // ResolveModelDeployments returns all valid deployment configs for a model.
-  // Quota checking requires exactly one location in options.locations.
+  // Quota checking requires exactly one effective location from:
+  // options.locations, then azure_context.scope.location.
   rpc ResolveModelDeployments(ResolveModelDeploymentsRequest) returns (ResolveModelDeploymentsResponse);
 
   // ListUsages returns quota/usage data for a specific location.
+  // Effective location precedence: request.location, then azure_context.scope.location.
   rpc ListUsages(ListUsagesRequest) returns (ListUsagesResponse);
 
   // ListLocationsWithQuota returns locations with sufficient quota.
@@ -94,12 +103,11 @@ message QuotaCheckOptions {
 // --- Filter/options types ---
 
 message AiModelFilterOptions {
-  repeated string capabilities = 1;
-  repeated string formats = 2;
-  repeated string statuses = 3;
-  repeated string kinds = 4;
-  repeated string locations = 5;
-  repeated string exclude_model_names = 6;
+  repeated string locations = 1;
+  repeated string capabilities = 2;
+  repeated string formats = 3;
+  repeated string statuses = 4;
+  repeated string exclude_model_names = 5;
 }
 
 // AiModelDeploymentOptions: all fields optional — empty means no filtering.

@@ -30,17 +30,13 @@ func NewAiModelService(
 func (s *aiModelService) ListModels(
 	ctx context.Context, req *azdext.ListModelsRequest,
 ) (*azdext.ListModelsResponse, error) {
-	// Intentionally ignore location from AzureContext — ListModels always fetches
-	// across all locations to build a complete catalog. Callers who want
-	// location-scoped results should use filter.locations instead.
 	subscriptionId, _ := extractScope(req.AzureContext)
 
-	var locations []string
 	var filterOpts *ai.FilterOptions
 	if req.Filter != nil {
 		filterOpts = protoToFilterOptions(req.Filter)
-		locations = filterOpts.Locations
 	}
+	locations := effectiveLocations(filterOpts, req.AzureContext)
 
 	models, err := s.modelService.ListModels(ctx, subscriptionId, locations)
 	if err != nil {
@@ -62,10 +58,14 @@ func (s *aiModelService) ListModels(
 func (s *aiModelService) ListModelVersions(
 	ctx context.Context, req *azdext.ListModelVersionsRequest,
 ) (*azdext.ListModelVersionsResponse, error) {
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
+	location := pickLocation(req.Location, scopeLocation)
+	if location == "" {
+		return nil, fmt.Errorf("location is required for listing model versions")
+	}
 
 	versions, defaultVersion, err := s.modelService.ListModelVersions(
-		ctx, subscriptionId, req.ModelName, req.Location)
+		ctx, subscriptionId, req.ModelName, location)
 	if err != nil {
 		return nil, fmt.Errorf("listing model versions: %w", err)
 	}
@@ -84,10 +84,14 @@ func (s *aiModelService) ListModelVersions(
 func (s *aiModelService) ListModelSkus(
 	ctx context.Context, req *azdext.ListModelSkusRequest,
 ) (*azdext.ListModelSkusResponse, error) {
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
+	location := pickLocation(req.Location, scopeLocation)
+	if location == "" {
+		return nil, fmt.Errorf("location is required for listing model SKUs")
+	}
 
 	skus, err := s.modelService.ListModelSkus(
-		ctx, subscriptionId, req.ModelName, req.Location, req.Version)
+		ctx, subscriptionId, req.ModelName, location, req.Version)
 	if err != nil {
 		return nil, fmt.Errorf("listing model SKUs: %w", err)
 	}
@@ -103,9 +107,15 @@ func (s *aiModelService) ListModelSkus(
 func (s *aiModelService) ResolveModelDeployments(
 	ctx context.Context, req *azdext.ResolveModelDeploymentsRequest,
 ) (*azdext.ResolveModelDeploymentsResponse, error) {
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
 
 	options := protoToDeploymentOptions(req.Options)
+	if options == nil {
+		options = &ai.DeploymentOptions{}
+	}
+	if len(options.Locations) == 0 && scopeLocation != "" {
+		options.Locations = []string{scopeLocation}
+	}
 
 	var deployments []ai.AiModelDeployment
 	var err error
@@ -135,9 +145,13 @@ func (s *aiModelService) ResolveModelDeployments(
 func (s *aiModelService) ListUsages(
 	ctx context.Context, req *azdext.ListUsagesRequest,
 ) (*azdext.ListUsagesResponse, error) {
-	subscriptionId, _ := extractScope(req.AzureContext)
+	subscriptionId, scopeLocation := extractScope(req.AzureContext)
+	location := pickLocation(req.Location, scopeLocation)
+	if location == "" {
+		return nil, fmt.Errorf("location is required for listing usages")
+	}
 
-	usages, err := s.modelService.ListUsages(ctx, subscriptionId, req.Location)
+	usages, err := s.modelService.ListUsages(ctx, subscriptionId, location)
 	if err != nil {
 		return nil, fmt.Errorf("listing usages: %w", err)
 	}
@@ -162,7 +176,7 @@ func (s *aiModelService) ListLocationsWithQuota(
 	requirements := make([]ai.QuotaRequirement, len(req.Requirements))
 	for i, r := range req.Requirements {
 		requirements[i] = ai.QuotaRequirement{
-			UsageName: r.UsageName,
+			UsageName:   r.UsageName,
 			MinCapacity: r.MinCapacity,
 		}
 	}
@@ -195,11 +209,10 @@ func protoToFilterOptions(f *azdext.AiModelFilterOptions) *ai.FilterOptions {
 		return nil
 	}
 	return &ai.FilterOptions{
+		Locations:         f.Locations,
 		Capabilities:      f.Capabilities,
 		Formats:           f.Formats,
 		Statuses:          f.Statuses,
-		Kinds:             f.Kinds,
-		Locations:         f.Locations,
 		ExcludeModelNames: f.ExcludeModelNames,
 	}
 }
@@ -277,4 +290,25 @@ func aiModelDeploymentToProto(d *ai.AiModelDeployment) *azdext.AiModelDeployment
 		Capacity:       d.Capacity,
 		RemainingQuota: d.RemainingQuota,
 	}
+}
+
+func effectiveLocations(filter *ai.FilterOptions, azureCtx *azdext.AzureContext) []string {
+	if filter != nil && len(filter.Locations) > 0 {
+		return filter.Locations
+	}
+
+	_, scopeLocation := extractScope(azureCtx)
+	if scopeLocation != "" {
+		return []string{scopeLocation}
+	}
+
+	return nil
+}
+
+func pickLocation(explicitLocation, scopeLocation string) string {
+	if explicitLocation != "" {
+		return explicitLocation
+	}
+
+	return scopeLocation
 }

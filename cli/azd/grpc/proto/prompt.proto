@@ -38,15 +38,21 @@ service PromptService {
   rpc PromptResourceGroupResource(PromptResourceGroupResourceRequest) returns (PromptResourceGroupResourceResponse);
 
   // PromptAiModel prompts the user to select an AI model.
-  // Quota requires exactly one location in filter.locations.
+  // Effective location precedence:
+  //   1) filter.locations
+  //   2) azure_context.scope.location
+  // Quota requires exactly one effective location.
   rpc PromptAiModel(PromptAiModelRequest) returns (PromptAiModelResponse);
 
   // PromptAiModelDeployment prompts for version, SKU, and capacity sequentially.
-  // Quota requires exactly one location in preferences.locations.
+  // Effective location precedence:
+  //   1) options.locations
+  //   2) azure_context.scope.location
+  // Quota requires exactly one effective location.
   rpc PromptAiModelDeployment(PromptAiModelDeploymentRequest) returns (PromptAiModelDeploymentResponse);
 
-  // PromptLocationWithQuota prompts for a location filtered by quota requirements.
-  rpc PromptLocationWithQuota(PromptLocationWithQuotaRequest) returns (PromptLocationWithQuotaResponse);
+  // PromptAiLocationWithQuota prompts for a location filtered by quota requirements.
+  rpc PromptAiLocationWithQuota(PromptAiLocationWithQuotaRequest) returns (PromptAiLocationWithQuotaResponse);
 }
 
 message PromptSubscriptionRequest {
@@ -220,7 +226,7 @@ message PromptAiModelResponse {
 message PromptAiModelDeploymentRequest {
   AzureContext azure_context = 1;
   string model_name = 2;
-  AiModelDeploymentOptions preferences = 3;
+  AiModelDeploymentOptions options = 3;
   bool use_default_version = 4;                   // skip version prompt, use default
   QuotaCheckOptions quota = 5;
   bool use_default_capacity = 6;                  // skip capacity prompt, use resolved default
@@ -231,13 +237,13 @@ message PromptAiModelDeploymentResponse {
   AiModelDeployment deployment = 1;
 }
 
-message PromptLocationWithQuotaRequest {
+message PromptAiLocationWithQuotaRequest {
   AzureContext azure_context = 1;
   repeated QuotaRequirement requirements = 2;
   repeated string allowed_locations = 3;
   SelectOptions select_options = 4;
 }
 
-message PromptLocationWithQuotaResponse {
+message PromptAiLocationWithQuotaResponse {
   Location location = 1;
 }

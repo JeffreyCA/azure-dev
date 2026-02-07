@@ -344,15 +344,17 @@ func (s *AiModelService) resolveDeployments(
 			// Quota check
 			if quotaOpts != nil && usageMap != nil {
 				usage, ok := usageMap[sku.UsageName]
-				if ok {
-					remaining := usage.Limit - usage.CurrentValue
-					minReq := quotaOpts.MinRemainingCapacity
-					if minReq <= 0 {
-						minReq = 1
-					}
-					if remaining < minReq || (capacity > 0 && float64(capacity) > remaining) {
-						continue
-					}
+				if !ok {
+					continue
+				}
+
+				remaining := usage.Limit - usage.CurrentValue
+				minReq := quotaOpts.MinRemainingCapacity
+				if minReq <= 0 {
+					minReq = 1
+				}
+				if remaining < minReq || (capacity > 0 && float64(capacity) > remaining) {
+					continue
 				}
 			}
 

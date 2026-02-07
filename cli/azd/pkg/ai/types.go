@@ -106,16 +106,14 @@ type QuotaCheckOptions struct {
 
 // FilterOptions specifies criteria for filtering AI models.
 type FilterOptions struct {
+	// Locations filters to models available at these locations.
+	Locations []string
 	// Capabilities filters by model capabilities, e.g. ["chat", "embeddings"].
 	Capabilities []string
 	// Formats filters by model format, e.g. ["OpenAI"].
 	Formats []string
 	// Statuses filters by lifecycle status, e.g. ["preview", "stable"].
 	Statuses []string
-	// Kinds filters by model kind.
-	Kinds []string
-	// Locations filters to models available at these locations.
-	Locations []string
 	// ExcludeModelNames excludes models by name (for multi-model selection flows).
 	ExcludeModelNames []string
 }
