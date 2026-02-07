@@ -22,7 +22,6 @@ import (
 	"azureaiagent/internal/pkg/agents/agent_yaml"
 	"azureaiagent/internal/pkg/agents/registry_api"
 	"azureaiagent/internal/pkg/azure"
-	"azureaiagent/internal/pkg/azure/ai"
 	"azureaiagent/internal/project"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -38,12 +37,15 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/ux"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"gopkg.in/yaml.v3"
 )
 
 type initFlags struct {
-	rootFlagsDefinition
+	*rootFlagsDefinition
 	projectResourceId string
 	manifestPointer   string
 	src               string
@@ -61,14 +63,14 @@ type InitAction struct {
 	//azureClient       *azure.AzureClient
 	azureContext *azdext.AzureContext
 	//composedResources []*azdext.ComposedResource
-	console             input.Console
-	credential          azcore.TokenCredential
-	modelCatalog        map[string]*ai.AiModel
-	modelCatalogService *ai.ModelCatalogService
-	projectConfig       *azdext.ProjectConfig
-	environment         *azdext.Environment
-	flags               *initFlags
-	deploymentDetails   []project.Deployment
+	console              input.Console
+	credential           azcore.TokenCredential
+	modelCatalog         map[string]*azdext.AiModel
+	locationWarningShown bool
+	projectConfig        *azdext.ProjectConfig
+	environment          *azdext.Environment
+	flags                *initFlags
+	deploymentDetails    []project.Deployment
 }
 
 // GitHubUrlInfo holds parsed information from a GitHub URL
@@ -82,7 +84,9 @@ type GitHubUrlInfo struct {
 const AiAgentHost = "azure.ai.agent"
 const ContainerAppHost = "containerapp"
 
-func newInitCommand(rootFlags rootFlagsDefinition) *cobra.Command {
+var defaultSkuPriority = []string{"GlobalStandard", "DataZoneStandard", "Standard"}
+
+func newInitCommand(rootFlags *rootFlagsDefinition) *cobra.Command {
 	flags := &initFlags{
 		rootFlagsDefinition: rootFlags,
 	}
@@ -141,12 +145,11 @@ func newInitCommand(rootFlags rootFlagsDefinition) *cobra.Command {
 				// azureClient:         azure.NewAzureClient(credential),
 				azureContext: azureContext,
 				// composedResources:   getComposedResourcesResponse.Resources,
-				console:             console,
-				credential:          credential,
-				modelCatalogService: ai.NewModelCatalogService(credential),
-				projectConfig:       projectConfig,
-				environment:         environment,
-				flags:               flags,
+				console:       console,
+				credential:    credential,
+				projectConfig: projectConfig,
+				environment:   environment,
+				flags:         flags,
 			}
 
 			if err := action.Run(ctx); err != nil {
@@ -1910,17 +1913,58 @@ func (a *InitAction) loadAiCatalog(ctx context.Context) error {
 		return fmt.Errorf("failed to start spinner: %w", err)
 	}
 
-	aiModelCatalog, err := a.modelCatalogService.ListAllModels(ctx, a.azureContext.Scope.SubscriptionId, "")
-
+	modelResp, err := a.azdClient.Ai().ListModels(ctx, &azdext.ListModelsRequest{
+		AzureContext: a.azureContext,
+	})
+	stopErr := spinner.Stop(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load the model catalog: %w", err)
 	}
-
-	if err := spinner.Stop(ctx); err != nil {
-		return err
+	if stopErr != nil {
+		return stopErr
 	}
 
-	a.modelCatalog = aiModelCatalog
+	a.modelCatalog = mapModelsByName(modelResp.Models)
+
+	return nil
+}
+
+func mapModelsByName(models []*azdext.AiModel) map[string]*azdext.AiModel {
+	modelMap := make(map[string]*azdext.AiModel, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		modelMap[model.Name] = model
+	}
+
+	return modelMap
+}
+
+func (a *InitAction) updateEnvLocation(ctx context.Context, selectedLocation string) error {
+	envResponse, err := a.azdClient.Environment().GetCurrent(ctx, &azdext.EmptyRequest{})
+	if err != nil {
+		return fmt.Errorf("failed to get current azd environment: %w", err)
+	}
+
+	if a.azureContext == nil {
+		a.azureContext = &azdext.AzureContext{}
+	}
+	if a.azureContext.Scope == nil {
+		a.azureContext.Scope = &azdext.AzureScope{}
+	}
+	a.azureContext.Scope.Location = selectedLocation
+
+	_, err = a.azdClient.Environment().SetValue(ctx, &azdext.SetEnvRequest{
+		EnvName: envResponse.Environment.Name,
+		Key:     "AZURE_LOCATION",
+		Value:   a.azureContext.Scope.Location,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update AZURE_LOCATION in azd environment: %w", err)
+	}
+
+	fmt.Println(output.WithSuccessFormat("Updated AZURE_LOCATION to '%s' in your azd environment.", selectedLocation))
 	return nil
 }
 
@@ -2102,13 +2146,13 @@ func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_
 		return nil, fmt.Errorf("failed to get model details: %w", err)
 	}
 
-	message := fmt.Sprintf("Enter model deployment name for model '%s' (defaults to model name)", modelDetails.Name)
+	message := fmt.Sprintf("Enter model deployment name for model '%s' (defaults to model name)", modelDetails.ModelName)
 
 	modelDeploymentInput, err := a.azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
 		Options: &azdext.PromptOptions{
 			Message:        message,
 			IgnoreHintKeys: true,
-			DefaultValue:   modelDetails.Name,
+			DefaultValue:   modelDetails.ModelName,
 		},
 	})
 	if err != nil {
@@ -2120,27 +2164,24 @@ func (a *InitAction) getModelDeploymentDetails(ctx context.Context, model agent_
 	return &project.Deployment{
 		Name: modelDeployment,
 		Model: project.DeploymentModel{
-			Name:    modelDetails.Name,
+			Name:    modelDetails.ModelName,
 			Format:  modelDetails.Format,
 			Version: modelDetails.Version,
 		},
 		Sku: project.DeploymentSku{
 			Name:     modelDetails.Sku.Name,
-			Capacity: int(modelDetails.Sku.Capacity),
+			Capacity: int(modelDetails.Capacity),
 		},
 	}, nil
 }
 
-var defaultSkuPriority = []string{"GlobalStandard", "DataZoneStandard", "Standard"}
-
-func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai.AiModelDeployment, error) {
+func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*azdext.AiModelDeployment, error) {
 	// Load the AI model catalog if not already loaded
 	if err := a.loadAiCatalog(ctx); err != nil {
 		return nil, err
 	}
 
 	// Check if the model exists in the catalog
-	var model *ai.AiModel
 	model, exists := a.modelCatalog[modelName]
 	if !exists {
 		// Model not found - prompt user for alternative
@@ -2152,14 +2193,19 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 			return nil, fmt.Errorf("no model selected, exiting")
 		}
 		model = selectedModel
-		modelName = model.Name
 	}
 
 	// Check if the model is available in the current location
 	currentLocation := a.azureContext.Scope.Location
-	if _, hasLocation := model.ModelDetailsByLocation[currentLocation]; !hasLocation {
+	if !slices.Contains(model.Locations, currentLocation) {
 		// Model not available in current location - prompt user for action
-		resolvedModel, resolvedLocation, err := a.promptForModelLocationMismatch(ctx, model, currentLocation)
+		resolvedModel, resolvedLocation, err := a.promptForModelLocationMismatch(
+			ctx,
+			model,
+			currentLocation,
+			fmt.Sprintf("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation),
+			modelRecoveryReasonAvailability,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -2167,73 +2213,229 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*ai
 			return nil, fmt.Errorf("model unavailable in current location and no alternative selected, exiting")
 		}
 		model = resolvedModel
-		modelName = model.Name
 		currentLocation = resolvedLocation
 	}
 
-	availableVersions, defaultVersion, err := a.modelCatalogService.ListModelVersions(ctx, model, currentLocation)
-	if err != nil {
-		return nil, fmt.Errorf("listing versions for model '%s': %w", modelName, err)
+	if a.flags.NoPrompt {
+		fmt.Println("No prompt mode enabled, automatically selecting a model deployment based on availability and quota...")
+		return a.resolveModelDeploymentNoPrompt(ctx, model, currentLocation)
 	}
 
-	modelVersion, err := a.selectFromList(ctx, "model version", availableVersions, defaultVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	availableSkus, err := a.modelCatalogService.ListModelSkus(ctx, model, currentLocation, modelVersion)
-	if err != nil {
-		return nil, fmt.Errorf("listing SKUs for model '%s': %w", modelName, err)
-	}
-
-	// Determine default SKU based on priority list
-	defaultSku := ""
-	for _, sku := range defaultSkuPriority {
-		if slices.Contains(availableSkus, sku) {
-			defaultSku = sku
-			break
-		}
-	}
-
-	skuSelection, err := a.selectFromList(ctx, "model SKU", availableSkus, defaultSku)
-	if err != nil {
-		return nil, err
-	}
-
-	deploymentOptions := ai.AiModelDeploymentOptions{
-		Versions: []string{modelVersion},
-		Skus:     []string{skuSelection},
-	}
-
-	modelDeployment, err := a.modelCatalogService.GetModelDeployment(ctx, model, &deploymentOptions)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get model deployment: %w", err)
-	}
-
-	if modelDeployment.Sku.Capacity == -1 {
-		skuCapacity, err := a.azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
-			Options: &azdext.PromptOptions{
-				Message:        "Selected model SKU has no default capacity. Please enter desired capacity",
-				IgnoreHintKeys: true,
-				Required:       true,
-				DefaultValue:   "10",
+	for {
+		deploymentResp, err := a.azdClient.Prompt().PromptAiDeployment(ctx, &azdext.PromptAiDeploymentRequest{
+			AzureContext: a.azureContext,
+			ModelName:    model.Name,
+			Options: &azdext.AiModelDeploymentOptions{
+				Locations: []string{currentLocation},
+			},
+			Quota: &azdext.QuotaCheckOptions{
+				MinRemainingCapacity: 1,
 			},
 		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to prompt for text value: %w", err)
+		if err == nil {
+			return deploymentResp.Deployment, nil
 		}
 
-		capacity, err := strconv.Atoi(skuCapacity.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid capacity value: %w", err)
+		if !isRecoverableDeploymentSelectionError(err) {
+			return nil, fmt.Errorf("failed to prompt for model deployment: %w", err)
 		}
-		modelDeployment.Sku.Capacity = int32(capacity)
+
+		resolvedModel, resolvedLocation, resolveErr := a.promptForModelLocationMismatch(
+			ctx,
+			model,
+			currentLocation,
+			fmt.Sprintf(
+				"Not enough remaining quota to deploy model '%s' in '%s'.",
+				model.Name,
+				currentLocation,
+			),
+			modelRecoveryReasonQuota,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		if resolvedModel == nil {
+			return nil, fmt.Errorf("model unavailable due to quota constraints and no alternative selected, exiting")
+		}
+
+		model = resolvedModel
+		currentLocation = resolvedLocation
 	}
-
-	return modelDeployment, nil
 }
 
-func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalModelName string) (*ai.AiModel, error) {
+func (a *InitAction) resolveModelDeploymentNoPrompt(
+	ctx context.Context,
+	model *azdext.AiModel,
+	location string,
+) (*azdext.AiModelDeployment, error) {
+	resolveResp, err := a.azdClient.Ai().ResolveModelDeployments(ctx, &azdext.ResolveModelDeploymentsRequest{
+		AzureContext: a.azureContext,
+		ModelName:    model.Name,
+		Options: &azdext.AiModelDeploymentOptions{
+			Locations: []string{location},
+		},
+		Quota: &azdext.QuotaCheckOptions{
+			MinRemainingCapacity: 1,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve model deployment: %w", err)
+	}
+
+	if len(resolveResp.Deployments) == 0 {
+		return nil, fmt.Errorf("no deployment candidates found for model '%s' in location '%s'", model.Name, location)
+	}
+
+	orderedCandidates := slices.Clone(resolveResp.Deployments)
+	defaultVersions := make(map[string]struct{}, len(model.Versions))
+	for _, version := range model.Versions {
+		if version.IsDefault {
+			defaultVersions[version.Version] = struct{}{}
+		}
+	}
+
+	slices.SortFunc(orderedCandidates, func(a, b *azdext.AiModelDeployment) int {
+		_, aDefault := defaultVersions[a.Version]
+		_, bDefault := defaultVersions[b.Version]
+		if aDefault != bDefault {
+			if aDefault {
+				return -1
+			}
+			return 1
+		}
+
+		aSkuPriority := skuPriority(a.Sku.Name)
+		bSkuPriority := skuPriority(b.Sku.Name)
+		if aSkuPriority != bSkuPriority {
+			if aSkuPriority < bSkuPriority {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(a.Version, b.Version); cmp != 0 {
+			return cmp
+		}
+
+		if cmp := strings.Compare(a.Sku.Name, b.Sku.Name); cmp != 0 {
+			return cmp
+		}
+
+		return strings.Compare(a.Sku.UsageName, b.Sku.UsageName)
+	})
+
+	for _, candidate := range orderedCandidates {
+		capacity, ok := resolveNoPromptCapacity(candidate)
+		if !ok {
+			continue
+		}
+
+		return cloneDeploymentWithCapacity(candidate, capacity), nil
+	}
+
+	return nil, fmt.Errorf("no deployment candidates found for model '%s' with a valid non-interactive capacity", model.Name)
+}
+
+func resolveNoPromptCapacity(candidate *azdext.AiModelDeployment) (int32, bool) {
+	capacity := candidate.Capacity
+	if capacity <= 0 {
+		capacity = max(candidate.Sku.MinCapacity, int32(1))
+	}
+
+	if candidate.Sku.CapacityStep > 0 && capacity%candidate.Sku.CapacityStep != 0 {
+		step := candidate.Sku.CapacityStep
+		capacity = ((capacity + step - 1) / step) * step
+	}
+
+	if candidate.Sku.MinCapacity > 0 && capacity < candidate.Sku.MinCapacity {
+		capacity = candidate.Sku.MinCapacity
+	}
+	if candidate.Sku.MaxCapacity > 0 && capacity > candidate.Sku.MaxCapacity {
+		return 0, false
+	}
+
+	if candidate.RemainingQuota != nil && float64(capacity) > *candidate.RemainingQuota {
+		return 0, false
+	}
+
+	return capacity, true
+}
+
+func cloneDeploymentWithCapacity(candidate *azdext.AiModelDeployment, capacity int32) *azdext.AiModelDeployment {
+	if candidate == nil {
+		return nil
+	}
+
+	cloned := proto.Clone(candidate).(*azdext.AiModelDeployment)
+	cloned.Capacity = capacity
+	return cloned
+}
+
+func skuPriority(skuName string) int {
+	for i, preferred := range defaultSkuPriority {
+		if preferred == skuName {
+			return i
+		}
+	}
+
+	return len(defaultSkuPriority)
+}
+
+func isRecoverableDeploymentSelectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return hasAiErrorReason(err,
+		azdext.AiErrorReasonNoValidSkus,
+		azdext.AiErrorReasonNoDeploymentMatch,
+		azdext.AiErrorReasonModelNotFound,
+		azdext.AiErrorReasonNoModelsMatch,
+	)
+}
+
+func hasAiErrorReason(err error, reasons ...string) bool {
+	if err == nil {
+		return false
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	for _, detail := range st.Details() {
+		info, ok := detail.(*errdetails.ErrorInfo)
+		if !ok || info.Domain != azdext.AiErrorDomain {
+			continue
+		}
+
+		if slices.Contains(reasons, info.Reason) {
+			return true
+		}
+	}
+
+	return false
+}
+
+type modelRecoveryReason string
+
+const (
+	modelRecoveryReasonAvailability modelRecoveryReason = "availability"
+	modelRecoveryReasonQuota        modelRecoveryReason = "quota"
+	modelLocationSwitchWarning                          = "WARNING: If you switch locations:\n" +
+		"• Your AZD environment will use a new default region.\n" +
+		"• Any existing Azure AI Foundry project created in your current region may fail.\n" +
+		"• Quota availability varies by region and model.\n\n" +
+		"Recommended options:\n" +
+		"1) Select a different model in this region (safe), or\n" +
+		"2) Create a new Foundry project after changing regions."
+)
+
+func (a *InitAction) promptForAlternativeModel(
+	ctx context.Context,
+	originalModelName string,
+) (*azdext.AiModel, error) {
 	fmt.Println(output.WithErrorFormat("The model '%s' could not be found in the model catalog for your subscription in any region.\n", originalModelName))
 
 	// Ask if they want to select a different model or exit
@@ -2245,9 +2447,10 @@ func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalMode
 	defaultIndex := int32(1)
 	selectResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
-			Message:       "Would you like to select a different model or exit?",
-			Choices:       choices,
-			SelectedIndex: &defaultIndex,
+			Message:         "Would you like to select a different model or exit?",
+			Choices:         choices,
+			SelectedIndex:   &defaultIndex,
+			EnableFiltering: to.Ptr(false),
 		},
 	})
 	if err != nil {
@@ -2266,84 +2469,77 @@ func (a *InitAction) promptForAlternativeModel(ctx context.Context, originalMode
 
 	regionResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
-			Message: "Which models would you like to explore?",
-			Choices: regionChoices,
+			Message:         "Which models would you like to explore?",
+			Choices:         regionChoices,
+			EnableFiltering: to.Ptr(false),
 		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to prompt for region choice: %w", err)
 	}
 
-	// Get the list of model names based on the choice
-	var modelNames []string
-	if regionChoices[*regionResp.Value].Value == "region" {
-		// Filter models that have the current region
-		for name, model := range a.modelCatalog {
-			if _, hasLocation := model.ModelDetailsByLocation[a.azureContext.Scope.Location]; hasLocation {
-				modelNames = append(modelNames, name)
-			}
-		}
-	} else {
-		// All models
-		for name := range a.modelCatalog {
-			modelNames = append(modelNames, name)
-		}
-	}
-
-	if len(modelNames) == 0 {
-		return nil, fmt.Errorf("no models available for selection")
-	}
-
-	// Sort the model names
-	slices.Sort(modelNames)
-
-	// Create choices for the model selection
-	modelChoices := make([]*azdext.SelectChoice, len(modelNames))
-	for i, name := range modelNames {
-		modelChoices[i] = &azdext.SelectChoice{
-			Label: name,
-			Value: name,
-		}
-	}
-
-	modelResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
-		Options: &azdext.SelectOptions{
+	promptReq := &azdext.PromptAiModelRequest{
+		AzureContext: a.azureContext,
+		SelectOptions: &azdext.SelectOptions{
 			Message: "Select a model",
-			Choices: modelChoices,
 		},
-	})
+	}
+
+	if regionChoices[*regionResp.Value].Value == "region" {
+		promptReq.Filter = &azdext.AiModelFilterOptions{
+			Locations: []string{a.azureContext.Scope.Location},
+		}
+	}
+
+	modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prompt for model selection: %w", err)
 	}
 
-	selectedModelName := modelNames[*modelResp.Value]
-	return a.modelCatalog[selectedModelName], nil
+	return modelResp.Model, nil
 }
 
-func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *ai.AiModel, currentLocation string) (*ai.AiModel, string, error) {
-	fmt.Println(output.WithErrorFormat("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation))
-	fmt.Println("Would you like to use a different model, or select a different location?")
-	fmt.Println(output.WithWarningFormat(
-		"WARNING: If you switch locations:\n" +
-			"• Your AZD environment will use a new default region.\n" +
-			"• Any existing Azure AI Foundry project created in your current region may fail.\n\n" +
-			"Recommended options:\n" +
-			"1) Select a different model in this region (safe), or\n" +
-			"2) Create a new Foundry project after changing regions."))
+func (a *InitAction) promptForModelLocationMismatch(
+	ctx context.Context,
+	model *azdext.AiModel,
+	currentLocation string,
+	reasonMessage string,
+	reasonKind modelRecoveryReason,
+) (*azdext.AiModel, string, error) {
+	if reasonMessage == "" {
+		reasonMessage = fmt.Sprintf("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation)
+	}
+
+	fmt.Println(output.WithErrorFormat(reasonMessage))
+
+	modelChoiceLabel := fmt.Sprintf("Choose a different model in %s", currentLocation)
+	if reasonKind == modelRecoveryReasonQuota {
+		modelChoiceLabel = fmt.Sprintf("Choose a different model in %s (with available quota)", currentLocation)
+	}
+	modelAllRegionsChoiceLabel := "Choose a different model (all regions)"
+	locationChoiceLabel := fmt.Sprintf("Choose a different location for %s", model.Name)
+	if !a.locationWarningShown {
+		fmt.Println()
+		fmt.Println(output.WithWarningFormat(modelLocationSwitchWarning))
+		a.locationWarningShown = true
+		fmt.Println()
+	}
 
 	// Ask what they want to do
 	choices := []*azdext.SelectChoice{
-		{Label: "Select a different model available in this location", Value: "model"},
-		{Label: "Select a different location for this model", Value: "location"},
-		{Label: "Exit", Value: "exit"},
+		{Label: modelChoiceLabel, Value: "model"},
+		{Label: modelAllRegionsChoiceLabel, Value: "model_all_regions"},
+		{Label: locationChoiceLabel, Value: "location"},
+		{Label: "Exit setup", Value: "exit"},
 	}
 
-	defaultIndex := int32(2)
+	defaultIndex := int32(3)
 	selectResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
 		Options: &azdext.SelectOptions{
-			Message:       "What would you like to do?",
-			Choices:       choices,
-			SelectedIndex: &defaultIndex,
+			Message:         "What would you like to do?",
+			Choices:         choices,
+			SelectedIndex:   &defaultIndex,
+			EnableFiltering: to.Ptr(false),
 		},
 	})
 	if err != nil {
@@ -2357,96 +2553,147 @@ func (a *InitAction) promptForModelLocationMismatch(ctx context.Context, model *
 	}
 
 	if selectedChoice == "location" {
-		// Get available locations for this model
-		var locationNames []string
-		for locationName := range model.ModelDetailsByLocation {
-			locationNames = append(locationNames, locationName)
-		}
-
-		if len(locationNames) == 0 {
-			return nil, "", fmt.Errorf("no locations available for model '%s'", model.Name)
-		}
-
-		slices.Sort(locationNames)
-
-		// Create choices for location selection
-		locationChoices := make([]*azdext.SelectChoice, len(locationNames))
-		for i, name := range locationNames {
-			locationChoices[i] = &azdext.SelectChoice{
-				Label: name,
-				Value: name,
+		locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
+			&azdext.PromptAiModelLocationWithQuotaRequest{
+				AzureContext:     a.azureContext,
+				ModelName:        model.Name,
+				AllowedLocations: model.Locations,
+				Quota: &azdext.QuotaCheckOptions{
+					MinRemainingCapacity: 1,
+				},
+				SelectOptions: &azdext.SelectOptions{
+					Message: fmt.Sprintf("Select a location for model '%s'", model.Name),
+				},
+			},
+		)
+		if err != nil {
+			if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
+				// Re-enter recovery flow so the user can choose their next action directly.
+				return a.promptForModelLocationMismatch(
+					ctx,
+					model,
+					currentLocation,
+					fmt.Sprintf("No locations have sufficient quota for model '%s'.", model.Name),
+					reasonKind,
+				)
+			} else {
+				return nil, "", fmt.Errorf("failed to prompt for location selection: %w", err)
 			}
 		}
 
-		locationResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
-			Options: &azdext.SelectOptions{
-				Message: fmt.Sprintf("Select a location for model '%s'", model.Name),
-				Choices: locationChoices,
+		if selectedChoice == "location" {
+			selectedLocation := locationResp.Location.Name
+
+			if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
+				return nil, "", err
+			}
+
+			return model, selectedLocation, nil
+		}
+	}
+
+	if selectedChoice == "model_all_regions" {
+		promptReq := &azdext.PromptAiModelRequest{
+			AzureContext: a.azureContext,
+			Filter: &azdext.AiModelFilterOptions{
+				ExcludeModelNames: []string{model.Name},
 			},
-		})
+			SelectOptions: &azdext.SelectOptions{
+				Message: "Select a model from all regions",
+			},
+		}
+
+		modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
 		if err != nil {
+			if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
+				msg := "No alternative models were found across all regions."
+
+				return a.promptForModelLocationMismatch(
+					ctx,
+					model,
+					currentLocation,
+					msg,
+					reasonKind,
+				)
+			}
+
+			return nil, "", fmt.Errorf("failed to prompt for model selection across all regions: %w", err)
+		}
+
+		// After selecting a model from all regions, immediately pick a location with quota for it.
+		locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
+			&azdext.PromptAiModelLocationWithQuotaRequest{
+				AzureContext:     a.azureContext,
+				ModelName:        modelResp.Model.Name,
+				AllowedLocations: modelResp.Model.Locations,
+				Quota: &azdext.QuotaCheckOptions{
+					MinRemainingCapacity: 1,
+				},
+				SelectOptions: &azdext.SelectOptions{
+					Message: fmt.Sprintf("Select a location for model '%s'", modelResp.Model.Name),
+				},
+			},
+		)
+		if err != nil {
+			if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
+				return a.promptForModelLocationMismatch(
+					ctx,
+					modelResp.Model,
+					currentLocation,
+					fmt.Sprintf("No locations have sufficient quota for model '%s'.", modelResp.Model.Name),
+					reasonKind,
+				)
+			}
+
 			return nil, "", fmt.Errorf("failed to prompt for location selection: %w", err)
 		}
 
-		selectedLocation := locationNames[*locationResp.Value]
+		selectedLocation := locationResp.Location.Name
 
-		// Update the azd environment with the new location
-		envResponse, err := a.azdClient.Environment().GetCurrent(ctx, &azdext.EmptyRequest{})
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to get current azd environment: %w", err)
+		if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
+			return nil, "", err
 		}
 
-		a.azureContext.Scope.Location = selectedLocation
-		_, err = a.azdClient.Environment().SetValue(ctx, &azdext.SetEnvRequest{
-			EnvName: envResponse.Environment.Name,
-			Key:     "AZURE_LOCATION",
-			Value:   a.azureContext.Scope.Location,
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to update AZURE_LOCATION in azd environment: %w", err)
-		}
-
-		fmt.Printf("Updated AZURE_LOCATION to '%s' in your azd environment.\n", selectedLocation)
-
-		return model, selectedLocation, nil
+		return modelResp.Model, selectedLocation, nil
 	}
 
 	// selectedChoice == "model"
-	// Get models available in the current location
-	var modelNames []string
-	for name, m := range a.modelCatalog {
-		if _, hasLocation := m.ModelDetailsByLocation[currentLocation]; hasLocation {
-			modelNames = append(modelNames, name)
-		}
-	}
-
-	if len(modelNames) == 0 {
-		return nil, "", fmt.Errorf("no models available in location '%s'", currentLocation)
-	}
-
-	slices.Sort(modelNames)
-
-	// Create choices for model selection
-	modelChoices := make([]*azdext.SelectChoice, len(modelNames))
-	for i, name := range modelNames {
-		modelChoices[i] = &azdext.SelectChoice{
-			Label: name,
-			Value: name,
-		}
-	}
-
-	modelResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
-		Options: &azdext.SelectOptions{
-			Message: fmt.Sprintf("Select a model available in '%s'", currentLocation),
-			Choices: modelChoices,
+	promptReq := &azdext.PromptAiModelRequest{
+		AzureContext: a.azureContext,
+		Filter: &azdext.AiModelFilterOptions{
+			Locations: []string{currentLocation},
 		},
-	})
+		SelectOptions: &azdext.SelectOptions{
+			Message: fmt.Sprintf("Select a model available in '%s'", currentLocation),
+		},
+	}
+	if reasonKind == modelRecoveryReasonQuota {
+		promptReq.Quota = &azdext.QuotaCheckOptions{
+			MinRemainingCapacity: 1,
+		}
+	}
+
+	modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
 	if err != nil {
+		if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
+			// The user asked to pick a different model in this region, but this region has no matching models at all.
+			// Re-enter recovery flow so they can choose a different location (or exit) instead of aborting abruptly.
+			return a.promptForModelLocationMismatch(
+				ctx,
+				model,
+				currentLocation,
+				fmt.Sprintf(
+					"No models are available in your current location '%s'.",
+					currentLocation,
+				),
+				reasonKind,
+			)
+		}
+
 		return nil, "", fmt.Errorf("failed to prompt for model selection: %w", err)
 	}
 
-	selectedModelName := modelNames[*modelResp.Value]
-	return a.modelCatalog[selectedModelName], currentLocation, nil
+	return modelResp.Model, currentLocation, nil
 }
 
 func (a *InitAction) ProcessModels(ctx context.Context, manifest *agent_yaml.AgentManifest) (*agent_yaml.AgentManifest, []project.Deployment, error) {
