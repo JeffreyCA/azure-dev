@@ -516,16 +516,6 @@ func (s *promptService) PromptAiModel(
 	var models []ai.AiModel
 	var usageMap map[string]ai.AiModelUsage
 	loadModels := func(ctx context.Context, onProgress func(string)) error {
-		effectiveLocations := locations
-		if len(effectiveLocations) == 0 {
-			discoveredLocations, err := s.aiModelService.ListLocations(ctx, subscriptionId)
-			if err != nil {
-				return err
-			}
-
-			effectiveLocations = discoveredLocations
-		}
-
 		if onProgress != nil {
 			onProgress("Loading AI model catalog...")
 		}
@@ -542,33 +532,40 @@ func (s *promptService) PromptAiModel(
 			models = ai.FilterModels(models, effectiveFilter)
 		}
 
-		// Quota-aware filtering requires exactly one location for usage data.
 		if req.Quota != nil {
-			if len(effectiveLocations) != 1 {
-				return aiStatusError(
-					codes.InvalidArgument,
-					azdext.AiErrorReasonQuotaLocation,
-					fmt.Sprintf(
-						"quota checking requires exactly one effective location, got %d",
-						len(effectiveLocations),
-					),
-					nil,
+			minRemaining := req.Quota.MinRemainingCapacity
+			if len(locations) == 1 {
+				if onProgress != nil {
+					onProgress(fmt.Sprintf("Checking quota in %s...", locations[0]))
+				}
+
+				usages, err := s.aiModelService.ListUsages(ctx, subscriptionId, locations[0])
+				if err != nil {
+					return fmt.Errorf("listing usages for quota check: %w", err)
+				}
+
+				usageMap = make(map[string]ai.AiModelUsage, len(usages))
+				for _, u := range usages {
+					usageMap[u.Name] = u
+				}
+
+				models = ai.FilterModelsByQuota(models, usages, minRemaining)
+			} else {
+				if onProgress != nil {
+					onProgress("Checking quota across available locations...")
+				}
+
+				models, err = s.aiModelService.FilterModelsByQuotaAcrossLocations(
+					ctx,
+					subscriptionId,
+					models,
+					locations,
+					minRemaining,
 				)
+				if err != nil {
+					return fmt.Errorf("listing usages for quota check: %w", err)
+				}
 			}
-
-			if onProgress != nil {
-				onProgress(fmt.Sprintf("Checking quota in %s...", effectiveLocations[0]))
-			}
-
-			usages, err := s.aiModelService.ListUsages(ctx, subscriptionId, effectiveLocations[0])
-			if err != nil {
-				return fmt.Errorf("listing usages for quota check: %w", err)
-			}
-			usageMap = make(map[string]ai.AiModelUsage, len(usages))
-			for _, u := range usages {
-				usageMap[u.Name] = u
-			}
-			models = ai.FilterModelsByQuota(models, usages, req.Quota.MinRemainingCapacity)
 		}
 
 		if len(models) == 0 {
@@ -722,101 +719,84 @@ func (s *promptService) PromptAiDeployment(
 	defer release()
 
 	// --- Step 1: Select version ---
-	// Collect available versions (filtered by options.versions if provided).
-	var availableVersions []ai.AiModelVersion
+	// Collect available versions (filtered by options.versions if provided), along with
+	// precomputed valid SKU candidates so version and SKU steps stay consistent.
+	type versionCandidate struct {
+		version       ai.AiModelVersion
+		skuCandidates []skuCandidate
+		label         string
+	}
+	var availableVersions []versionCandidate
 	for _, v := range targetModel.Versions {
 		if len(options.Versions) > 0 && !slices.Contains(options.Versions, v.Version) {
 			continue
 		}
-		availableVersions = append(availableVersions, v)
+
+		skuCandidates := buildSkuCandidatesForVersion(
+			v,
+			options,
+			req.Quota,
+			usageMap,
+			req.IncludeFinetuneSkus,
+		)
+		if len(skuCandidates) == 0 {
+			continue
+		}
+
+		label := v.Version
+		if v.IsDefault {
+			label += " (default)"
+		}
+		if maxRemaining, ok := maxSkuCandidateRemaining(skuCandidates); ok {
+			label += " " + output.WithGrayFormat("[up to %.0f quota available]", maxRemaining)
+		}
+
+		availableVersions = append(availableVersions, versionCandidate{
+			version:       v,
+			skuCandidates: skuCandidates,
+			label:         label,
+		})
 	}
 	if len(availableVersions) == 0 {
 		return nil, aiStatusError(
 			codes.FailedPrecondition,
-			azdext.AiErrorReasonNoDeploymentMatch,
-			fmt.Sprintf("no versions available for model %q with the specified options", req.ModelName),
+			azdext.AiErrorReasonNoValidSkus,
+			fmt.Sprintf("no valid versions/SKUs found for model %q with the specified options", req.ModelName),
 			map[string]string{"model_name": req.ModelName},
 		)
 	}
 
-	var selectedVersion ai.AiModelVersion
+	selectedVersionCandidate := availableVersions[0]
 	selectedVersionChosen := false
 	if req.UseDefaultVersion {
 		for _, v := range availableVersions {
-			if v.IsDefault {
-				selectedVersion = v
+			if v.version.IsDefault {
+				selectedVersionCandidate = v
 				selectedVersionChosen = true
 				break
 			}
 		}
 	}
 
-	if !selectedVersionChosen && len(availableVersions) == 1 {
-		selectedVersion = availableVersions[0]
-		selectedVersionChosen = true
-	}
-
 	if !selectedVersionChosen {
 		versionChoices := make([]*ux.SelectChoice, len(availableVersions))
 		for i, v := range availableVersions {
-			label := v.Version
-			if v.IsDefault {
-				label += " (default)"
-			}
-			versionChoices[i] = &ux.SelectChoice{Value: v.Version, Label: label}
+			versionChoices[i] = &ux.SelectChoice{Value: v.label, Label: v.label}
 		}
 		vIdx, err := ux.NewSelect(&ux.SelectOptions{
-			Message:         fmt.Sprintf("Select a version for %s", req.ModelName),
-			Choices:         versionChoices,
-			EnableFiltering: to.Ptr(true),
+			Message: fmt.Sprintf("Select a version for %s", req.ModelName),
+			Choices: versionChoices,
 		}).Ask(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("prompting for version: %w", err)
 		}
-		selectedVersion = availableVersions[*vIdx]
+		selectedVersionCandidate = availableVersions[*vIdx]
 	}
+	selectedVersion := selectedVersionCandidate.version
 
 	// --- Step 2: Select SKU ---
-	// Collect SKUs for the selected version, filtered by options and quota.
-	type skuCandidate struct {
-		sku       ai.AiModelSku
-		remaining *float64
-		label     string
-	}
-	var skuCandidates []skuCandidate
-
-	for _, sku := range selectedVersion.Skus {
-		if len(options.Skus) > 0 && !slices.Contains(options.Skus, sku.Name) {
-			continue
-		}
-
-		// Exclude fine-tune SKUs by default — they only apply to fine-tuned model deployments.
-		if !req.IncludeFinetuneSkus && strings.HasSuffix(sku.UsageName, "-finetune") {
-			continue
-		}
-
-		capacity := ai.ResolveCapacity(sku, options.Capacity)
-
-		var remaining *float64
-		if req.Quota != nil && usageMap != nil {
-			usage, ok := usageMap[sku.UsageName]
-			if !ok {
-				continue
-			}
-
-			rem := usage.Limit - usage.CurrentValue
-			remaining = &rem
-			minReq := req.Quota.MinRemainingCapacity
-			if minReq <= 0 {
-				minReq = 1
-			}
-			if rem < minReq || (capacity > 0 && float64(capacity) > rem) {
-				continue
-			}
-		}
-
-		skuCandidates = append(skuCandidates, skuCandidate{sku: sku, remaining: remaining})
-	}
+	// Use precomputed candidates for the selected version to keep behavior consistent.
+	skuCandidates := slices.Clone(selectedVersionCandidate.skuCandidates)
 
 	if len(skuCandidates) == 0 {
 		return nil, aiStatusError(
@@ -841,27 +821,23 @@ func (s *promptService) PromptAiDeployment(
 			label += fmt.Sprintf(" (%s)", c.sku.UsageName)
 		}
 		if c.remaining != nil {
-			label += " " + output.WithGrayFormat("[%.0f quota remaining]", *c.remaining)
+			label += " " + output.WithGrayFormat("[%.0f quota available]", *c.remaining)
 		}
 		skuCandidates[i].label = label
 	}
 
-	selectedSku := skuCandidates[0]
-	if len(skuCandidates) > 1 {
-		skuChoices := make([]*ux.SelectChoice, len(skuCandidates))
-		for i, c := range skuCandidates {
-			skuChoices[i] = &ux.SelectChoice{Value: c.label, Label: c.label}
-		}
-		sIdx, err := ux.NewSelect(&ux.SelectOptions{
-			Message:         fmt.Sprintf("Select a SKU for %s v%s", req.ModelName, selectedVersion.Version),
-			Choices:         skuChoices,
-			EnableFiltering: to.Ptr(true),
-		}).Ask(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("prompting for SKU: %w", err)
-		}
-		selectedSku = skuCandidates[*sIdx]
+	skuChoices := make([]*ux.SelectChoice, len(skuCandidates))
+	for i, c := range skuCandidates {
+		skuChoices[i] = &ux.SelectChoice{Value: c.label, Label: c.label}
 	}
+	sIdx, err := ux.NewSelect(&ux.SelectOptions{
+		Message: fmt.Sprintf("Select a SKU for %s v%s", req.ModelName, selectedVersion.Version),
+		Choices: skuChoices,
+	}).Ask(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("prompting for SKU: %w", err)
+	}
+	selectedSku := skuCandidates[*sIdx]
 
 	// --- Step 3: Resolve capacity, optionally prompting ---
 	capacity := ai.ResolveCapacity(selectedSku.sku, options.Capacity)
@@ -1110,7 +1086,7 @@ func (s *promptService) PromptAiModelLocationWithQuota(
 		EnableFiltering: to.Ptr(true),
 	}
 	for i, loc := range locations {
-		quotaLabel := output.WithGrayFormat("[up to %.0f quota remaining]", loc.MaxRemainingQuota)
+		quotaLabel := output.WithGrayFormat("[up to %.0f quota available]", loc.MaxRemainingQuota)
 		label := fmt.Sprintf("%s %s", loc.Location, quotaLabel)
 		selectOpts.Choices[i] = &ux.SelectChoice{
 			Value: loc.Location,
@@ -1143,7 +1119,7 @@ func requirePromptSubscriptionID(azureContext *azdext.AzureContext) (string, err
 }
 
 // modelQuotaSummary builds a gray-formatted quota summary for a model's SKUs.
-// Shows the max remaining quota across all SKUs, e.g. "[1000 quota remaining]".
+// Shows the max remaining quota across all SKUs, e.g. "[1000 quota available]".
 func modelQuotaSummary(model ai.AiModel, usageMap map[string]ai.AiModelUsage) string {
 	var maxRemaining float64
 	found := false
@@ -1161,7 +1137,90 @@ func modelQuotaSummary(model ai.AiModel, usageMap map[string]ai.AiModelUsage) st
 	if !found {
 		return output.WithGrayFormat("[no quota info]")
 	}
-	return output.WithGrayFormat("[%.0f quota remaining]", maxRemaining)
+	return output.WithGrayFormat("[%.0f quota available]", maxRemaining)
+}
+
+type skuCandidate struct {
+	sku       ai.AiModelSku
+	remaining *float64
+	label     string
+}
+
+func buildSkuCandidatesForVersion(
+	version ai.AiModelVersion,
+	options *ai.DeploymentOptions,
+	quota *azdext.QuotaCheckOptions,
+	usageMap map[string]ai.AiModelUsage,
+	includeFinetuneSkus bool,
+) []skuCandidate {
+	if options == nil {
+		options = &ai.DeploymentOptions{}
+	}
+
+	minReq := float64(1)
+	if quota != nil && quota.MinRemainingCapacity > 0 {
+		minReq = quota.MinRemainingCapacity
+	}
+
+	skuCandidates := make([]skuCandidate, 0, len(version.Skus))
+	for _, sku := range version.Skus {
+		if len(options.Skus) > 0 && !slices.Contains(options.Skus, sku.Name) {
+			continue
+		}
+
+		if !includeFinetuneSkus && isFinetuneUsageName(sku.UsageName) {
+			continue
+		}
+
+		capacity := ai.ResolveCapacity(sku, options.Capacity)
+
+		var remaining *float64
+		if quota != nil {
+			if usageMap == nil {
+				continue
+			}
+
+			usage, ok := usageMap[sku.UsageName]
+			if !ok {
+				continue
+			}
+
+			rem := usage.Limit - usage.CurrentValue
+			remaining = &rem
+			if rem < minReq || (capacity > 0 && float64(capacity) > rem) {
+				continue
+			}
+		}
+
+		skuCandidates = append(skuCandidates, skuCandidate{
+			sku:       sku,
+			remaining: remaining,
+		})
+	}
+
+	return skuCandidates
+}
+
+func maxSkuCandidateRemaining(skuCandidates []skuCandidate) (float64, bool) {
+	var maxRemaining float64
+	found := false
+
+	for _, candidate := range skuCandidates {
+		if candidate.remaining == nil {
+			continue
+		}
+
+		if !found || *candidate.remaining > maxRemaining {
+			maxRemaining = *candidate.remaining
+			found = true
+		}
+	}
+
+	return maxRemaining, found
+}
+
+func isFinetuneUsageName(usageName string) bool {
+	return strings.HasSuffix(strings.ToLower(usageName), "-finetune")
 }
 
 func validateDeploymentCapacity(value string, sku ai.AiModelSku) (int32, error) {
@@ -1193,7 +1252,7 @@ func validateCapacityAgainstRemainingQuota(capacity int32, remaining *float64) e
 	}
 
 	if float64(capacity) > *remaining {
-		return fmt.Errorf("capacity must be at most %.0f due to remaining quota", *remaining)
+		return fmt.Errorf("capacity must be at most %.0f due to available quota", *remaining)
 	}
 
 	return nil

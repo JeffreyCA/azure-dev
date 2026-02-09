@@ -336,7 +336,7 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*az
 			model,
 			currentLocation,
 			fmt.Sprintf(
-				"Not enough remaining quota to deploy model '%s' in '%s'.",
+				"Not enough available quota to deploy model '%s' in '%s'.",
 				model.Name,
 				currentLocation,
 			),
@@ -595,186 +595,170 @@ func (a *InitAction) promptForModelLocationMismatch(
 	reasonMessage string,
 	reasonKind modelRecoveryReason,
 ) (*azdext.AiModel, string, error) {
-	if reasonMessage == "" {
-		reasonMessage = fmt.Sprintf("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation)
-	}
+	currentModel := model
+	message := reasonMessage
 
-	fmt.Println(output.WithErrorFormat(reasonMessage))
+	for {
+		if message == "" {
+			message = fmt.Sprintf(
+				"The model '%s' is not available in your current location '%s'.",
+				currentModel.Name,
+				currentLocation,
+			)
+		}
 
-	modelChoiceLabel := fmt.Sprintf("Choose a different model in %s", currentLocation)
-	if reasonKind == modelRecoveryReasonQuota {
-		modelChoiceLabel = fmt.Sprintf("Choose a different model in %s (with available quota)", currentLocation)
-	}
-	modelAllRegionsChoiceLabel := "Choose a different model (all regions)"
-	locationChoiceLabel := fmt.Sprintf("Choose a different location for %s", model.Name)
-	if !a.locationWarningShown {
-		fmt.Println()
-		fmt.Println(output.WithWarningFormat(modelLocationSwitchWarning))
-		a.locationWarningShown = true
-		fmt.Println()
-	}
+		fmt.Println(output.WithErrorFormat(message))
 
-	choices := []*azdext.SelectChoice{
-		{Label: modelChoiceLabel, Value: "model"},
-		{Label: modelAllRegionsChoiceLabel, Value: "model_all_regions"},
-		{Label: locationChoiceLabel, Value: "location"},
-		{Label: "Exit setup", Value: "exit"},
-	}
+		modelChoiceLabel := fmt.Sprintf("Choose a different model in %s", currentLocation)
+		if reasonKind == modelRecoveryReasonQuota {
+			modelChoiceLabel = fmt.Sprintf("Choose a different model in %s (with available quota)", currentLocation)
+		}
 
-	defaultIndex := int32(3)
-	selectResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
-		Options: &azdext.SelectOptions{
-			Message:         "What would you like to do?",
-			Choices:         choices,
-			SelectedIndex:   &defaultIndex,
-			EnableFiltering: to.Ptr(false),
-		},
-	})
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to prompt for action choice: %w", err)
-	}
+		choices := []*azdext.SelectChoice{
+			{Label: modelChoiceLabel, Value: "model"},
+			{Label: "Choose a different model (all regions)", Value: "model_all_regions"},
+			{Label: fmt.Sprintf("Choose a different location for %s", currentModel.Name), Value: "location"},
+			{Label: "Exit setup", Value: "exit"},
+		}
 
-	selectedChoice := choices[*selectResp.Value].Value
+		if !a.locationWarningShown {
+			fmt.Println()
+			fmt.Println(output.WithWarningFormat(modelLocationSwitchWarning))
+			a.locationWarningShown = true
+			fmt.Println()
+		}
 
-	if selectedChoice == "exit" {
-		return nil, "", nil
-	}
+		defaultIndex := int32(3)
+		selectResp, err := a.azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+			Options: &azdext.SelectOptions{
+				Message:         "What would you like to do?",
+				Choices:         choices,
+				SelectedIndex:   &defaultIndex,
+				EnableFiltering: to.Ptr(false),
+			},
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to prompt for action choice: %w", err)
+		}
 
-	if selectedChoice == "location" {
-		locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
-			&azdext.PromptAiModelLocationWithQuotaRequest{
-				AzureContext:     a.azureContext,
-				ModelName:        model.Name,
-				AllowedLocations: model.Locations,
+		selectedChoice := choices[*selectResp.Value].Value
+
+		if selectedChoice == "exit" {
+			return nil, "", nil
+		}
+
+		if selectedChoice == "location" {
+			locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
+				&azdext.PromptAiModelLocationWithQuotaRequest{
+					AzureContext:     a.azureContext,
+					ModelName:        currentModel.Name,
+					AllowedLocations: currentModel.Locations,
+					Quota: &azdext.QuotaCheckOptions{
+						MinRemainingCapacity: 1,
+					},
+					SelectOptions: &azdext.SelectOptions{
+						Message: fmt.Sprintf("Select a location for model '%s'", currentModel.Name),
+					},
+				},
+			)
+			if err != nil {
+				if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
+					message = fmt.Sprintf("No locations have sufficient quota for model '%s'.", currentModel.Name)
+					continue
+				}
+
+				return nil, "", fmt.Errorf("failed to prompt for location selection: %w", err)
+			}
+
+			selectedLocation := locationResp.Location.Name
+			if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
+				return nil, "", err
+			}
+
+			return currentModel, selectedLocation, nil
+		}
+
+		if selectedChoice == "model_all_regions" {
+			modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, &azdext.PromptAiModelRequest{
+				AzureContext: a.azureContext,
+				Filter: &azdext.AiModelFilterOptions{
+					ExcludeModelNames: []string{currentModel.Name},
+				},
 				Quota: &azdext.QuotaCheckOptions{
 					MinRemainingCapacity: 1,
 				},
 				SelectOptions: &azdext.SelectOptions{
-					Message: fmt.Sprintf("Select a location for model '%s'", model.Name),
+					Message: "Select a model from all regions",
 				},
-			},
-		)
-		if err != nil {
-			if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
-				return a.promptForModelLocationMismatch(
-					ctx,
-					model,
-					currentLocation,
-					fmt.Sprintf("No locations have sufficient quota for model '%s'.", model.Name),
-					reasonKind,
-				)
-			} else {
+			})
+			if err != nil {
+				if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
+					message = "No alternative models were found across all regions."
+					continue
+				}
+
+				return nil, "", fmt.Errorf("failed to prompt for model selection across all regions: %w", err)
+			}
+
+			selectedModel := modelResp.Model
+			locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
+				&azdext.PromptAiModelLocationWithQuotaRequest{
+					AzureContext:     a.azureContext,
+					ModelName:        selectedModel.Name,
+					AllowedLocations: selectedModel.Locations,
+					Quota: &azdext.QuotaCheckOptions{
+						MinRemainingCapacity: 1,
+					},
+					SelectOptions: &azdext.SelectOptions{
+						Message: fmt.Sprintf("Select a location for model '%s'", selectedModel.Name),
+					},
+				},
+			)
+			if err != nil {
+				if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
+					currentModel = selectedModel
+					message = fmt.Sprintf("No locations have sufficient quota for model '%s'.", selectedModel.Name)
+					continue
+				}
+
 				return nil, "", fmt.Errorf("failed to prompt for location selection: %w", err)
 			}
+
+			selectedLocation := locationResp.Location.Name
+			if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
+				return nil, "", err
+			}
+
+			return selectedModel, selectedLocation, nil
 		}
 
-		selectedLocation := locationResp.Location.Name
-
-		if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
-			return nil, "", err
-		}
-
-		return model, selectedLocation, nil
-	}
-
-	if selectedChoice == "model_all_regions" {
 		promptReq := &azdext.PromptAiModelRequest{
 			AzureContext: a.azureContext,
 			Filter: &azdext.AiModelFilterOptions{
-				ExcludeModelNames: []string{model.Name},
+				Locations: []string{currentLocation},
 			},
 			SelectOptions: &azdext.SelectOptions{
-				Message: "Select a model from all regions",
+				Message: fmt.Sprintf("Select a model available in '%s'", currentLocation),
 			},
+		}
+		if reasonKind == modelRecoveryReasonQuota {
+			promptReq.Quota = &azdext.QuotaCheckOptions{
+				MinRemainingCapacity: 1,
+			}
 		}
 
 		modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
 		if err != nil {
 			if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
-				msg := "No alternative models were found across all regions."
-
-				return a.promptForModelLocationMismatch(
-					ctx,
-					model,
-					currentLocation,
-					msg,
-					reasonKind,
-				)
+				message = fmt.Sprintf("No models are available in your current location '%s'.", currentLocation)
+				continue
 			}
 
-			return nil, "", fmt.Errorf("failed to prompt for model selection across all regions: %w", err)
+			return nil, "", fmt.Errorf("failed to prompt for model selection: %w", err)
 		}
 
-		locationResp, err := a.azdClient.Prompt().PromptAiModelLocationWithQuota(ctx,
-			&azdext.PromptAiModelLocationWithQuotaRequest{
-				AzureContext:     a.azureContext,
-				ModelName:        modelResp.Model.Name,
-				AllowedLocations: modelResp.Model.Locations,
-				Quota: &azdext.QuotaCheckOptions{
-					MinRemainingCapacity: 1,
-				},
-				SelectOptions: &azdext.SelectOptions{
-					Message: fmt.Sprintf("Select a location for model '%s'", modelResp.Model.Name),
-				},
-			},
-		)
-		if err != nil {
-			if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
-				return a.promptForModelLocationMismatch(
-					ctx,
-					modelResp.Model,
-					currentLocation,
-					fmt.Sprintf("No locations have sufficient quota for model '%s'.", modelResp.Model.Name),
-					reasonKind,
-				)
-			}
-
-			return nil, "", fmt.Errorf("failed to prompt for location selection: %w", err)
-		}
-
-		selectedLocation := locationResp.Location.Name
-
-		if err := a.updateEnvLocation(ctx, selectedLocation); err != nil {
-			return nil, "", err
-		}
-
-		return modelResp.Model, selectedLocation, nil
+		return modelResp.Model, currentLocation, nil
 	}
-
-	promptReq := &azdext.PromptAiModelRequest{
-		AzureContext: a.azureContext,
-		Filter: &azdext.AiModelFilterOptions{
-			Locations: []string{currentLocation},
-		},
-		SelectOptions: &azdext.SelectOptions{
-			Message: fmt.Sprintf("Select a model available in '%s'", currentLocation),
-		},
-	}
-	if reasonKind == modelRecoveryReasonQuota {
-		promptReq.Quota = &azdext.QuotaCheckOptions{
-			MinRemainingCapacity: 1,
-		}
-	}
-
-	modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
-	if err != nil {
-		if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
-			return a.promptForModelLocationMismatch(
-				ctx,
-				model,
-				currentLocation,
-				fmt.Sprintf(
-					"No models are available in your current location '%s'.",
-					currentLocation,
-				),
-				reasonKind,
-			)
-		}
-
-		return nil, "", fmt.Errorf("failed to prompt for model selection: %w", err)
-	}
-
-	return modelResp.Model, currentLocation, nil
 }
 
 func (a *InitAction) ProcessModels(ctx context.Context, manifest *agent_yaml.AgentManifest) (*agent_yaml.AgentManifest, []project.Deployment, error) {

@@ -367,6 +367,28 @@ func FilterModelsByQuota(
 	return filtered
 }
 
+// FilterModelsByQuotaAcrossLocations filters models to those having sufficient quota in at least one location.
+// When locations is empty, model-declared locations are used.
+func (s *AiModelService) FilterModelsByQuotaAcrossLocations(
+	ctx context.Context,
+	subscriptionId string,
+	models []AiModel,
+	locations []string,
+	minRemaining float64,
+) ([]AiModel, error) {
+	effectiveLocations := locations
+	if len(effectiveLocations) == 0 {
+		effectiveLocations = modelLocations(models)
+	}
+
+	usagesByLocation, err := s.listUsagesByLocation(ctx, subscriptionId, effectiveLocations)
+	if err != nil {
+		return nil, err
+	}
+
+	return filterModelsByAnyLocationQuota(models, usagesByLocation, minRemaining), nil
+}
+
 // resolveDeployments is the internal deployment resolution logic.
 // Returns all valid deployment candidates instead of just the first match.
 // No implicit defaults: when options fields are empty, no filtering is applied for that dimension.
@@ -754,6 +776,106 @@ func maxModelRemainingQuota(model AiModel, usageMap map[string]AiModelUsage) (fl
 	}
 
 	return maxRemaining, found
+}
+
+func modelLocations(models []AiModel) []string {
+	locationSet := map[string]struct{}{}
+	for _, model := range models {
+		for _, location := range model.Locations {
+			locationSet[location] = struct{}{}
+		}
+	}
+
+	locations := make([]string, 0, len(locationSet))
+	for location := range locationSet {
+		locations = append(locations, location)
+	}
+
+	slices.Sort(locations)
+
+	return locations
+}
+
+func filterModelsByAnyLocationQuota(
+	models []AiModel,
+	usagesByLocation map[string][]AiModelUsage,
+	minRemaining float64,
+) []AiModel {
+	eligible := map[string]struct{}{}
+
+	for _, usages := range usagesByLocation {
+		for _, model := range FilterModelsByQuota(models, usages, minRemaining) {
+			eligible[model.Name] = struct{}{}
+		}
+	}
+
+	filtered := make([]AiModel, 0, len(eligible))
+	for _, model := range models {
+		if _, ok := eligible[model.Name]; ok {
+			filtered = append(filtered, model)
+		}
+	}
+
+	return filtered
+}
+
+func (s *AiModelService) listUsagesByLocation(
+	ctx context.Context,
+	subscriptionId string,
+	locations []string,
+) (map[string][]AiModelUsage, error) {
+	const maxConcurrentUsageCalls = 8
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	sem := make(chan struct{}, maxConcurrentUsageCalls)
+	usagesByLocation := make(map[string][]AiModelUsage, len(locations))
+	var firstErr error
+
+	for _, location := range locations {
+		location := location
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = ctx.Err()
+				}
+				mu.Unlock()
+
+				return
+			}
+			defer func() { <-sem }()
+
+			usages, err := s.ListUsages(ctx, subscriptionId, location)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+
+				return
+			}
+
+			mu.Lock()
+			usagesByLocation[location] = usages
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	if len(usagesByLocation) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+
+	return usagesByLocation, nil
 }
 
 func safeString(s *string) string {

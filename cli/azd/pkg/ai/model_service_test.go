@@ -337,6 +337,76 @@ func TestMaxModelRemainingQuota(t *testing.T) {
 	})
 }
 
+func TestModelLocations(t *testing.T) {
+	models := []AiModel{
+		{Name: "a", Locations: []string{"westus", "eastus"}},
+		{Name: "b", Locations: []string{"eastus", "centralus"}},
+	}
+
+	locations := modelLocations(models)
+
+	require.Equal(t, []string{"centralus", "eastus", "westus"}, locations)
+}
+
+func TestFilterModelsByAnyLocationQuota(t *testing.T) {
+	models := []AiModel{
+		{
+			Name:      "model-a",
+			Locations: []string{"eastus", "westus"},
+			Versions: []AiModelVersion{
+				{
+					Version: "1",
+					Skus: []AiModelSku{
+						{Name: "Standard", UsageName: "a_usage"},
+					},
+				},
+			},
+		},
+		{
+			Name:      "model-b",
+			Locations: []string{"westus"},
+			Versions: []AiModelVersion{
+				{
+					Version: "1",
+					Skus: []AiModelSku{
+						{Name: "Standard", UsageName: "b_usage"},
+					},
+				},
+			},
+		},
+		{
+			Name:      "model-c",
+			Locations: []string{"eastus"},
+			Versions: []AiModelVersion{
+				{
+					Version: "1",
+					Skus: []AiModelSku{
+						{Name: "Standard", UsageName: "c_usage"},
+					},
+				},
+			},
+		},
+	}
+
+	usagesByLocation := map[string][]AiModelUsage{
+		"eastus": {
+			{Name: "a_usage", CurrentValue: 9, Limit: 10}, // remaining: 1
+			{Name: "c_usage", CurrentValue: 5, Limit: 5},  // remaining: 0
+		},
+		"westus": {
+			{Name: "b_usage", CurrentValue: 8, Limit: 10}, // remaining: 2
+		},
+	}
+
+	filtered := filterModelsByAnyLocationQuota(models, usagesByLocation, 1)
+	filteredNames := make([]string, 0, len(filtered))
+	for _, model := range filtered {
+		filteredNames = append(filteredNames, model.Name)
+	}
+
+	require.Equal(t, []string{"model-a", "model-b"}, filteredNames)
+}
+
 func intPtr(v int32) *int32 {
 	return &v
 }

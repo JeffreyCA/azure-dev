@@ -759,3 +759,82 @@ func Test_validateCapacityAgainstRemainingQuota(t *testing.T) {
 		})
 	}
 }
+
+func Test_buildSkuCandidatesForVersion(t *testing.T) {
+	version := ai.AiModelVersion{
+		Version: "2024-06-01",
+		Skus: []ai.AiModelSku{
+			{
+				Name:            "Standard",
+				UsageName:       "OpenAI.Standard.gpt-4o",
+				DefaultCapacity: 5,
+				MinCapacity:     1,
+				MaxCapacity:     100,
+				CapacityStep:    1,
+			},
+			{
+				Name:            "Standard",
+				UsageName:       "OpenAI.Standard.gpt-4o-finetune",
+				DefaultCapacity: 5,
+				MinCapacity:     1,
+				MaxCapacity:     100,
+				CapacityStep:    1,
+			},
+		},
+	}
+
+	t.Run("excludes finetune skus when include flag is false", func(t *testing.T) {
+		candidates := buildSkuCandidatesForVersion(version, nil, nil, nil, false)
+		require.Len(t, candidates, 1)
+		require.Equal(t, "OpenAI.Standard.gpt-4o", candidates[0].sku.UsageName)
+	})
+
+	t.Run("includes finetune skus when include flag is true", func(t *testing.T) {
+		candidates := buildSkuCandidatesForVersion(version, nil, nil, nil, true)
+		require.Len(t, candidates, 2)
+	})
+
+	t.Run("applies quota and capacity filters", func(t *testing.T) {
+		options := &ai.DeploymentOptions{
+			Capacity: to.Ptr(int32(5)),
+		}
+		quota := &azdext.QuotaCheckOptions{
+			MinRemainingCapacity: 1,
+		}
+		usageMap := map[string]ai.AiModelUsage{
+			"OpenAI.Standard.gpt-4o": {
+				Name:         "OpenAI.Standard.gpt-4o",
+				CurrentValue: 6,
+				Limit:        10, // remaining 4 < capacity 5 => excluded
+			},
+			"OpenAI.Standard.gpt-4o-finetune": {
+				Name:         "OpenAI.Standard.gpt-4o-finetune",
+				CurrentValue: 0,
+				Limit:        10, // remaining 10 => included
+			},
+		}
+
+		candidates := buildSkuCandidatesForVersion(version, options, quota, usageMap, true)
+		require.Len(t, candidates, 1)
+		require.Equal(t, "OpenAI.Standard.gpt-4o-finetune", candidates[0].sku.UsageName)
+		require.NotNil(t, candidates[0].remaining)
+		require.Equal(t, float64(10), *candidates[0].remaining)
+	})
+}
+
+func Test_maxSkuCandidateRemaining(t *testing.T) {
+	remainingA := float64(4)
+	remainingB := float64(10)
+	skuCandidates := []skuCandidate{
+		{remaining: &remainingA},
+		{remaining: nil},
+		{remaining: &remainingB},
+	}
+
+	maxRemaining, found := maxSkuCandidateRemaining(skuCandidates)
+	require.True(t, found)
+	require.Equal(t, float64(10), maxRemaining)
+
+	_, found = maxSkuCandidateRemaining([]skuCandidate{{remaining: nil}})
+	require.False(t, found)
+}
