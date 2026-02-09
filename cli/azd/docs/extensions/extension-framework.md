@@ -1823,7 +1823,11 @@ Prompts the user to select an AI model from the AI catalog.
 
 Effective location is defined by `filter.locations`.
 When `filter.locations` is empty, models are considered across subscription locations.
-When `quota` is set, exactly one effective location is required via `filter.locations`.
+When `quota` is set:
+- if `filter.locations` is empty, quota is evaluated across available locations
+- if `filter.locations` contains exactly one location, quota is evaluated at that location
+- if `filter.locations` contains multiple locations, quota is evaluated across that provided location set
+Models are kept when quota is sufficient in at least one effective location.
 Effective location only controls model eligibility for selection; returned `model.locations` remains canonical.
 
 #### PromptAiDeployment
@@ -1834,7 +1838,7 @@ Prompts the user to select deployment configuration (version, SKU, and capacity)
   - `azure_context` (AzureContext) with `scope.subscription_id` required
   - `model_name` (string): target model
   - `options` (AiModelDeploymentOptions): optional filters for locations/versions/skus/capacity
-  - `use_default_version` (bool): skip version prompt when possible
+  - `use_default_version` (bool): use default version when available; otherwise prompt for version
   - `quota` (QuotaCheckOptions): optional quota-aware filtering
   - `use_default_capacity` (bool): skip capacity prompt when true
   - `include_finetune_skus` (bool): include fine-tune SKUs
@@ -1844,6 +1848,7 @@ Prompts the user to select deployment configuration (version, SKU, and capacity)
 Effective location is defined by `options.locations`.
 When `options.locations` is empty, model catalog is considered across subscription locations.
 When `quota` is set, exactly one effective location is required via `options.locations`.
+SKU selection is always prompted when one or more valid SKU candidates are available.
 
 #### PromptAiLocationWithQuota
 
@@ -1859,16 +1864,16 @@ Prompts the user to select a location that satisfies quota requirements.
 
 #### PromptAiModelLocationWithQuota
 
-Prompts the user to select a location for a specific model and shows remaining quota in the list labels.
+Prompts the user to select a location for a specific model and shows quota available in list labels.
 
 - **Request:** _PromptAiModelLocationWithQuotaRequest_
   - `azure_context` (AzureContext) with `scope.subscription_id` required
   - `model_name` (string): required model name
   - `allowed_locations` (repeated string): optional location filter
-  - `quota` (QuotaCheckOptions): optional minimum remaining requirement (defaults to 1)
+  - `quota` (QuotaCheckOptions): optional minimum available requirement (defaults to 1)
   - `select_options` (SelectOptions): optional prompt customization (currently `message` override)
 - **Response:** _PromptAiModelLocationWithQuotaResponse_
-  - Contains `location` (_Location_) and `max_remaining_quota` (double)
+  - Contains `location` (_Location_) and `max_remaining_quota` (double, maximum quota available across model SKUs)
 
 ---
 
@@ -1944,7 +1949,7 @@ Returns locations that satisfy all provided quota requirements.
 
 #### ListModelLocationsWithQuota
 
-Returns locations where a model has sufficient quota, with per-location remaining quota.
+Returns locations where a model has sufficient quota, with per-location available quota.
 
 - **Request:** _ListModelLocationsWithQuotaRequest_
   - `azure_context` (AzureContext) with `scope.subscription_id` required
@@ -1953,7 +1958,7 @@ Returns locations where a model has sufficient quota, with per-location remainin
   - `quota` (QuotaCheckOptions), optional (`min_remaining_capacity` defaults to `1`)
 - **Response:** _ListModelLocationsWithQuotaResponse_
   - `locations` (repeated _ModelLocationQuota_)
-    - each entry includes `location` (_Location_) and `max_remaining_quota` (double)
+    - each entry includes `location` (_Location_) and `max_remaining_quota` (double, maximum quota available)
 
 #### AI Error Reasons
 
