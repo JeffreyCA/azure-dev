@@ -298,7 +298,12 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*az
 			ctx,
 			model,
 			currentLocation,
-			fmt.Sprintf("The model '%s' is not available in your current location '%s'.", model.Name, currentLocation),
+			fmt.Sprintf(
+				"The model '%s' is not available in your current location '%s' for subscription '%s'.",
+				model.Name,
+				currentLocation,
+				a.azureContext.Scope.SubscriptionId,
+			),
 			modelRecoveryReasonAvailability,
 		)
 		if err != nil {
@@ -340,9 +345,10 @@ func (a *InitAction) getModelDetails(ctx context.Context, modelName string) (*az
 			model,
 			currentLocation,
 			fmt.Sprintf(
-				"Not enough available quota to deploy model '%s' in '%s'.",
+				"Not enough available quota to deploy model '%s' in '%s' for subscription '%s'.",
 				model.Name,
 				currentLocation,
+				a.azureContext.Scope.SubscriptionId,
 			),
 			modelRecoveryReasonQuota,
 		)
@@ -531,7 +537,11 @@ func (a *InitAction) promptForAlternativeModel(
 	ctx context.Context,
 	originalModelName string,
 ) (*azdext.AiModel, error) {
-	fmt.Println(output.WithErrorFormat("The model '%s' could not be found in the model catalog for your subscription in any region.\n", originalModelName))
+	fmt.Println(output.WithErrorFormat(
+		"The model '%s' could not be found in the model catalog for subscription '%s' in any region.\n",
+		originalModelName,
+		a.azureContext.Scope.SubscriptionId,
+	))
 
 	choices := []*azdext.SelectChoice{
 		{Label: "Select a different model", Value: "select"},
@@ -605,9 +615,10 @@ func (a *InitAction) promptForModelLocationMismatch(
 	for {
 		if message == "" {
 			message = fmt.Sprintf(
-				"The model '%s' is not available in your current location '%s'.",
+				"The model '%s' is not available in your current location '%s' for subscription '%s'.",
 				currentModel.Name,
 				currentLocation,
+				a.azureContext.Scope.SubscriptionId,
 			)
 		}
 
@@ -664,7 +675,11 @@ func (a *InitAction) promptForModelLocationMismatch(
 			)
 			if err != nil {
 				if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
-					message = fmt.Sprintf("No locations have sufficient quota for model '%s'.", currentModel.Name)
+					message = fmt.Sprintf(
+						"No locations have sufficient quota to deploy model '%s' for subscription '%s'.",
+						currentModel.Name,
+						a.azureContext.Scope.SubscriptionId,
+					)
 					continue
 				}
 
@@ -694,7 +709,10 @@ func (a *InitAction) promptForModelLocationMismatch(
 			})
 			if err != nil {
 				if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
-					message = "No alternative models were found across all regions."
+					message = fmt.Sprintf(
+						"No alternative models were found across all regions for subscription '%s'.",
+						a.azureContext.Scope.SubscriptionId,
+					)
 					continue
 				}
 
@@ -718,7 +736,11 @@ func (a *InitAction) promptForModelLocationMismatch(
 			if err != nil {
 				if hasAiErrorReason(err, azdext.AiErrorReasonNoLocationsWithQuota) {
 					currentModel = selectedModel
-					message = fmt.Sprintf("No locations have sufficient quota for model '%s'.", selectedModel.Name)
+					message = fmt.Sprintf(
+						"No locations have sufficient quota to deploy model '%s' for subscription '%s'.",
+						selectedModel.Name,
+						a.azureContext.Scope.SubscriptionId,
+					)
 					continue
 				}
 
@@ -749,7 +771,11 @@ func (a *InitAction) promptForModelLocationMismatch(
 		modelResp, err := a.azdClient.Prompt().PromptAiModel(ctx, promptReq)
 		if err != nil {
 			if hasAiErrorReason(err, azdext.AiErrorReasonNoModelsMatch) {
-				message = fmt.Sprintf("No models are available in your current location '%s'.", currentLocation)
+				message = fmt.Sprintf(
+					"No models are available in your current location '%s' for subscription '%s'.",
+					currentLocation,
+					a.azureContext.Scope.SubscriptionId,
+				)
 				continue
 			}
 
