@@ -226,11 +226,11 @@ func TestCodingAgent_pickOrCreateMSI(t *testing.T) {
 			Return(azure_armmsi.Identity{
 				Properties: &azure_armmsi.UserAssignedIdentityProperties{
 					PrincipalID: new("principal-id"),
-					ClientID:    to.Ptr(fakeClientID),
-					TenantID:    to.Ptr(fakeTenantID),
+					ClientID:    new(string(fakeClientID)),
+					TenantID:    new(string(fakeTenantID)),
 				},
 				Name: new(string(defaultManagedIdentityName)),
-				ID:   new(fmt.Sprintf("/subscriptions/%s/resourcegroups/%s/providers/Microsoft.ManagedIdentity/userAssignedIdentities/%s", fakeSubscriptionID, fakeResourceGroup, defaultManagedIdentityName)),
+				ID:   new(string(fmt.Sprintf("/subscriptions/%s/resourcegroups/%s/providers/Microsoft.ManagedIdentity/userAssignedIdentities/%s", fakeSubscriptionID, fakeResourceGroup, defaultManagedIdentityName))),
 			}, nil)
 
 		entraService.EXPECT().EnsureRoleAssignments(gomock.Any(),
