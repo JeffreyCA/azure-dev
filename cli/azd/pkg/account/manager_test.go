@@ -12,7 +12,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
@@ -634,7 +633,7 @@ func setupAccountMocks(mockHttp *mockhttp.MockHttpClient) {
 						DisplayName:         new("West US"),
 						RegionalDisplayName: new("(US) West US"),
 						Metadata: &armsubscriptions.LocationMetadata{
-							RegionType: to.Ptr(armsubscriptions.RegionTypePhysical),
+							RegionType: new(armsubscriptions.RegionTypePhysical),
 						},
 					},
 					{
@@ -643,7 +642,7 @@ func setupAccountMocks(mockHttp *mockhttp.MockHttpClient) {
 						DisplayName:         new("West US 2"),
 						RegionalDisplayName: new("(US) West US 2"),
 						Metadata: &armsubscriptions.LocationMetadata{
-							RegionType: to.Ptr(armsubscriptions.RegionTypePhysical),
+							RegionType: new(armsubscriptions.RegionTypePhysical),
 						},
 					},
 					{
@@ -652,7 +651,7 @@ func setupAccountMocks(mockHttp *mockhttp.MockHttpClient) {
 						DisplayName:         new("East US"),
 						RegionalDisplayName: new("(US) East US"),
 						Metadata: &armsubscriptions.LocationMetadata{
-							RegionType: to.Ptr(armsubscriptions.RegionTypePhysical),
+							RegionType: new(armsubscriptions.RegionTypePhysical),
 						},
 					},
 					{
@@ -661,7 +660,7 @@ func setupAccountMocks(mockHttp *mockhttp.MockHttpClient) {
 						DisplayName:         new("East US 2"),
 						RegionalDisplayName: new("(US) East US 2"),
 						Metadata: &armsubscriptions.LocationMetadata{
-							RegionType: to.Ptr(armsubscriptions.RegionTypePhysical),
+							RegionType: new(armsubscriptions.RegionTypePhysical),
 						},
 					},
 				},
