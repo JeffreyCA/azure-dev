@@ -185,7 +185,7 @@ This project uses Go 1.26. Use modern standard library features:
 ### Modern Go Patterns (Go 1.26+)
 - Use `new(val)` not `x := val; &x` - returns pointer to any value.  
     Go 1.26 extends `new()` to accept expressions, not just types.  
-    Type is inferred: new(0) → *int, new("s") → *string, new(T{}) → *T.  
+    Type is inferred: `new(0) → *int`, `new("s") → *string`, `new(T{}) → *T`.  
     DO NOT use `x := val; &x` pattern — always use `new(val)` directly.  
     DO NOT use redundant casts like `new(int(0))` — just write `new(0)`.  
     Before:
