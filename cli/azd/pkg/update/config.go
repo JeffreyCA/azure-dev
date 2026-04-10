@@ -152,11 +152,19 @@ func SaveCheckIntervalHours(cfg config.Config, hours int) error {
 // enabled the alpha feature are treated as having update config (skipping the
 // first-use notice and showing the "azd update" hint).
 func HasUpdateConfig(cfg config.Config) bool {
-	_, hasChannel := cfg.Get(configKeyChannel)
-	_, hasAutoUpdate := cfg.Get(configKeyAutoUpdate)
-	_, hasInterval := cfg.Get(configKeyCheckIntervalHours)
-	_, hasLegacyAlpha := cfg.Get("alpha.update")
-	return hasChannel || hasAutoUpdate || hasInterval || hasLegacyAlpha
+	// temporarily make this be os env AZD_UPDATE_CONFIG
+	if envVal := os.Getenv("AZD_UPDATE_CONFIG"); envVal != "" {
+		enabled, err := strconv.ParseBool(envVal)
+		if err == nil && enabled {
+			return true
+		}
+	}
+	return false
+	// _, hasChannel := cfg.Get(configKeyChannel)
+	// _, hasAutoUpdate := cfg.Get(configKeyAutoUpdate)
+	// _, hasInterval := cfg.Get(configKeyCheckIntervalHours)
+	// _, hasLegacyAlpha := cfg.Get("alpha.update")
+	// return hasChannel || hasAutoUpdate || hasInterval || hasLegacyAlpha
 }
 
 // CacheFile represents the cached version check result.

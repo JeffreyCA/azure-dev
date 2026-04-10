@@ -32,7 +32,23 @@ const devVersionString = "0.0.0-dev.0 (commit 0000000000000000000000000000000000
 // directly, use [VersionInfo] which returns a structured version of this value.
 //
 // nolint: lll
-var Version = devVersionString
+// var Version = "1.24.0-beta.1-daily.510000 (commit c7ce85d96cae0fd4f9d9614ba777b0d94a20804a)"
+
+var Version = "1.23.13 (commit 9550db80da3b97bab3530a76d55aa58528939646)"
+
+// ┌───────────────────────────┬────────────────────────────────────────────────────────────────────────────┬──────────────────┐
+// │ Style                     │ Look                                                                       │ Color            │
+// ├───────────────────────────┼────────────────────────────────────────────────────────────────────────────┼──────────────────┤
+// │ compact (new default)     │ Update available: 1.11.0 → 1.13.1. Run "azd update" to upgrade.            │ Magenta (hint)   │
+// ├───────────────────────────┼────────────────────────────────────────────────────────────────────────────┼──────────────────┤
+// │ classic                   │ Original verbose WARNING: your version… multi-line                         │ Yellow (warning) │
+// ├───────────────────────────┼────────────────────────────────────────────────────────────────────────────┼──────────────────┤
+// │ minimal                   │ azd 1.13.1 available (azd update)                                          │ Gray             │
+// ├───────────────────────────┼────────────────────────────────────────────────────────────────────────────┼──────────────────┤
+// │ friendly                  │ A newer version of azd (1.13.1) is available! To update, run: azd update   │ Blue (highlight) │
+// ├───────────────────────────┼────────────────────────────────────────────────────────────────────────────┼──────────────────┤
+// │ quiet                     │ azd update available: 1.11.0 → 1.13.1 — run "azd update"                   │ Gray             │
+// └───────────────────────────┴────────────────────────────────────────────────────────────────────────────┴──────────────────┘
 
 func init() {
 	// VersionInfo panics if the version string is malformed, run the code at package startup to
