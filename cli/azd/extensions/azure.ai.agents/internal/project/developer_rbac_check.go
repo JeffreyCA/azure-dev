@@ -122,6 +122,12 @@ func CheckDeveloperRBAC(ctx context.Context, azdClient *azdext.AzdClient) error 
 
 	userProfile, err := graphClient.Me().Get(ctx)
 	if err != nil {
+		if wrapped := exterrors.WrapTokenProtectionError(
+			err,
+			"failed to retrieve developer profile for hosted-agent RBAC pre-flight",
+		); wrapped != nil {
+			return wrapped
+		}
 		fmt.Println("  ⚠ Could not retrieve user profile — skipping RBAC pre-flight check")
 		return nil
 	}

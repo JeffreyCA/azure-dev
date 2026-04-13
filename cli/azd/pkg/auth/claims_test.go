@@ -549,6 +549,76 @@ func TestNewReLoginRequiredError(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("error_code_530084_sets_token_protection_guidance", func(t *testing.T) {
+		t.Parallel()
+		resp := &AadErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "AADSTS530084: blocked by token protection policy. See https://aka.ms/TBCADocs.",
+			ErrorCodes:       []int{530084},
+		}
+		err, ok := newReLoginRequiredError(
+			resp,
+			[]string{"https://graph.microsoft.com/.default"},
+			cloud.AzurePublic(),
+			"",
+		)
+		assert.True(t, ok)
+		require.Error(t, err)
+
+		errWithSuggestion, ok := errors.AsType[*internal.ErrorWithSuggestion](err)
+		require.True(t, ok)
+		assert.Contains(t, errWithSuggestion.Message, "Microsoft Graph")
+		assert.Contains(t, errWithSuggestion.Suggestion, "won't resolve this")
+		assert.NotContains(t, errWithSuggestion.Suggestion, "to acquire a new token")
+		require.Len(t, errWithSuggestion.Links, 2)
+		assert.Equal(t, conditionalAccessDocsLink, errWithSuggestion.Links[0].URL)
+		assert.Equal(t, tokenProtectionFAQLink, errWithSuggestion.Links[1].URL)
+	})
+
+	t.Run("error_code_530084_non_graph_scope_omits_graph_mention", func(t *testing.T) {
+		t.Parallel()
+		resp := &AadErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "AADSTS530084: blocked by token protection policy. See https://aka.ms/TBCADocs.",
+			ErrorCodes:       []int{530084},
+		}
+		err, ok := newReLoginRequiredError(
+			resp,
+			[]string{"https://management.azure.com/.default"},
+			cloud.AzurePublic(),
+			"",
+		)
+		assert.True(t, ok)
+		require.Error(t, err)
+
+		errWithSuggestion, ok := errors.AsType[*internal.ErrorWithSuggestion](err)
+		require.True(t, ok)
+		assert.NotContains(t, errWithSuggestion.Message, "Microsoft Graph")
+		assert.Contains(t, errWithSuggestion.Message, "token request")
+	})
+
+	t.Run("docs_link_only_triggers_token_protection_without_error_code", func(t *testing.T) {
+		t.Parallel()
+		resp := &AadErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "Access blocked. See https://aka.ms/TBCADocs for details.",
+			ErrorCodes:       []int{99999},
+		}
+		err, ok := newReLoginRequiredError(
+			resp,
+			[]string{"https://graph.microsoft.com/.default"},
+			cloud.AzurePublic(),
+			"",
+		)
+		assert.True(t, ok)
+		require.Error(t, err)
+
+		errWithSuggestion, ok := errors.AsType[*internal.ErrorWithSuggestion](err)
+		require.True(t, ok)
+		assert.Contains(t, errWithSuggestion.Message, "Microsoft Graph")
+		assert.Contains(t, errWithSuggestion.Suggestion, "won't resolve this")
+	})
+
 	t.Run("tenant_id_included_in_suggestion", func(t *testing.T) {
 		t.Parallel()
 		resp := &AadErrorResponse{

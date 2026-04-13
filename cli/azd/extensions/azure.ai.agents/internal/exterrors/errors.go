@@ -183,10 +183,18 @@ func FromPrompt(err error, contextMsg string) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const (
+	tokenProtectionDocsLink = "https://aka.ms/TBCADocs"
+	tokenProtectionFAQLink  = "https://aka.ms/TokenProtectionFAQ"
+)
+
 // authFromGrpcMessage creates a structured Auth error from a gRPC Unauthenticated message.
-// It classifies the error as not_logged_in, login_expired, or a generic auth_failed
-// based on message content.
+// It classifies the error as token_protection_blocked, not_logged_in, login_expired,
+// or a generic auth_failed based on message content.
 func authFromGrpcMessage(msg string) error {
+	if isTokenProtectionBlocked(msg) {
+		return tokenProtectionBlocked(msg)
+	}
 	if strings.Contains(msg, "not logged in") {
 		return Auth(CodeNotLoggedIn, msg, "run `azd auth login` to authenticate")
 	}
@@ -194,6 +202,60 @@ func authFromGrpcMessage(msg string) error {
 		return Auth(CodeLoginExpired, msg, "run `azd auth login` to acquire a new token")
 	}
 	return Auth(CodeAuthFailed, msg, "run `azd auth login` to authenticate")
+}
+
+// WrapTokenProtectionError returns a structured auth error when the provided
+// error message indicates a token-protection / Conditional Access block
+// (AADSTS530084). It returns nil when the error is unrelated.
+func WrapTokenProtectionError(err error, contextMsg string) error {
+	if err == nil {
+		return nil
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	if !isTokenProtectionBlocked(msg) {
+		return nil
+	}
+
+	if contextMsg != "" {
+		msg = fmt.Sprintf("%s: %s", contextMsg, msg)
+	}
+
+	return tokenProtectionBlocked(msg)
+}
+
+// GraphError wraps a Graph API error with token-protection detection.
+// If the error indicates a token-protection block, returns a structured auth
+// error. Otherwise returns a plain error with contextMsg.
+func GraphError(err error, contextMsg string) error {
+	if err == nil {
+		return nil
+	}
+
+	if wrapped := WrapTokenProtectionError(err, contextMsg); wrapped != nil {
+		return wrapped
+	}
+
+	return fmt.Errorf("%s: %w", contextMsg, err)
+}
+
+func isTokenProtectionBlocked(msg string) bool {
+	return strings.Contains(msg, "AADSTS530084") ||
+		strings.Contains(msg, tokenProtectionDocsLink) ||
+		strings.Contains(msg, "token protection policy")
+}
+
+func tokenProtectionBlocked(msg string) error {
+	return Auth(
+		CodeTokenProtectionBlocked,
+		msg,
+		"This operation is blocked by a Conditional Access token protection policy.\n"+
+			"Browser-based `azd auth login` won't resolve this. "+
+			"Contact your IT administrator for guidance.\n"+
+			"Microsoft internal users may need to request a policy exception.\n"+
+			tokenProtectionDocsLink+"\n"+
+			tokenProtectionFAQLink,
+	)
 }
 
 // IsCancellation checks if an error represents user cancellation

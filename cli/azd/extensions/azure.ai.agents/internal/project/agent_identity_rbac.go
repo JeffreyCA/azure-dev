@@ -5,12 +5,15 @@ package project
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"azureaiagent/internal/exterrors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v3"
@@ -230,6 +233,9 @@ func ensureAgentIdentityRBACWithCred(
 	// Report results in order and return first error.
 	for _, r := range results {
 		if r.err != nil {
+			if _, ok := errors.AsType[*azdext.LocalError](r.err); ok {
+				return r.err
+			}
 			return fmt.Errorf("agent identity RBAC failed for %q: %w", r.name, r.err)
 		}
 	}
@@ -256,7 +262,7 @@ func ensureSingleAgentRBAC(
 	for attempt := range identityLookupMaxAttempts {
 		agentIdentities, err = discoverAgentIdentity(ctx, graphClient, displayName)
 		if err != nil {
-			return fmt.Errorf("failed to discover agent identity: %w", err)
+			return exterrors.GraphError(err, fmt.Sprintf("failed to discover agent identity for %q", agentName))
 		}
 		if len(agentIdentities) > 0 {
 			break
