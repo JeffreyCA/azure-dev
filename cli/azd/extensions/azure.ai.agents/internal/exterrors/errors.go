@@ -21,6 +21,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
+	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -250,11 +251,8 @@ func tokenProtectionBlocked(msg string) error {
 		CodeTokenProtectionBlocked,
 		msg,
 		"This operation is blocked by a Conditional Access token protection policy.\n"+
-			"Browser-based `azd auth login` won't resolve this. "+
-			"Contact your IT administrator for guidance.\n"+
-			"Microsoft internal users may need to request a policy exception.\n"+
-			tokenProtectionDocsLink+"\n"+
-			tokenProtectionFAQLink,
+			"Contact your IT administrator for guidance. Microsoft internal users may need to request a policy exception.\n"+
+			"See "+output.WithLinkFormat(tokenProtectionDocsLink)+" and "+output.WithLinkFormat(tokenProtectionFAQLink)+" for more info.",
 	)
 }
 

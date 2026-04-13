@@ -85,8 +85,8 @@ func newReLoginRequiredError(
 }
 
 const (
-	conditionalAccessDocsLink    = "https://aka.ms/TBCADocs"
-	tokenProtectionFAQLink       = "https://aka.ms/TokenProtectionFAQ"
+	conditionalAccessDocsLink = "https://aka.ms/TBCADocs"
+	tokenProtectionFAQLink    = "https://aka.ms/TokenProtectionFAQ"
 )
 
 func newTokenProtectionBlockedError(response *AadErrorResponse, scopes []string) (error, bool) {
@@ -109,8 +109,7 @@ func newTokenProtectionBlockedError(response *AadErrorResponse, scopes []string)
 			errText: response.ErrorDescription,
 		},
 		Message: message,
-		Suggestion: "Browser-based `azd auth login` won't resolve this. " +
-			"Contact your IT administrator, or see the links below for details on token protection policies. " +
+		Suggestion: "Contact your IT administrator, or see the links below for details on token protection policies. " +
 			"Microsoft internal users may need to request a policy exception.",
 		Links: []errorhandler.ErrorLink{
 			{
