@@ -1256,7 +1256,7 @@ func TestApplyPositionalArg_ConflictWithManifestFlag(t *testing.T) {
 		t.Fatalf("failed to create test manifest: %v", err)
 	}
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
 	// Simulate the user having set --manifest explicitly
@@ -1286,7 +1286,7 @@ func TestApplyPositionalArg_ConflictWithSrcFlag(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.src, "src", "s", "", "")
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
@@ -1320,7 +1320,7 @@ func TestApplyPositionalArg_SetsManifestPointer(t *testing.T) {
 		t.Fatalf("failed to create test manifest: %v", err)
 	}
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
 	cmd.Flags().StringVarP(&flags.src, "src", "s", "", "")
@@ -1338,7 +1338,7 @@ func TestApplyPositionalArg_SetsSrcDir(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
 	cmd.Flags().StringVarP(&flags.src, "src", "s", "", "")
@@ -1356,7 +1356,7 @@ func TestApplyPositionalArg_NonExistentDirSetsSrc(t *testing.T) {
 
 	newDir := filepath.Join(t.TempDir(), "new-project")
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
 	cmd.Flags().StringVarP(&flags.src, "src", "s", "", "")
@@ -1374,7 +1374,7 @@ func TestApplyPositionalArg_NonExistentYamlSetsManifest(t *testing.T) {
 
 	yamlPath := filepath.Join(t.TempDir(), "agent.yaml")
 
-	flags := &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}}
+	flags := &initFlags{}
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(&flags.manifestPointer, "manifest", "m", "", "")
 	cmd.Flags().StringVarP(&flags.src, "src", "s", "", "")
@@ -1662,7 +1662,7 @@ func TestResolveCollisions_NoCollision(t *testing.T) {
 	t.Chdir(tmpDir)
 
 	action := &InitAction{
-		flags: &initFlags{rootFlagsDefinition: &rootFlagsDefinition{}},
+		flags: &initFlags{},
 	}
 
 	dir, svc, err := action.resolveCollisions(
@@ -1739,9 +1739,7 @@ func TestResolveCollisions_NoPrompt(t *testing.T) {
 			action := &InitAction{
 				projectConfig: projectCfg,
 				flags: &initFlags{
-					rootFlagsDefinition: &rootFlagsDefinition{
-						NoPrompt: true,
-					},
+					noPrompt: true,
 				},
 			}
 

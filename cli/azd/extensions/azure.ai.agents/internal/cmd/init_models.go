@@ -117,7 +117,7 @@ func (a *InitAction) selectFromList(
 		defaultStr = defaultOpt
 	}
 
-	if a.flags.NoPrompt {
+	if a.flags.noPrompt {
 		fmt.Printf("No prompt mode enabled, selecting default %s: %s\n", property, defaultStr)
 		return defaultStr, nil
 	}
@@ -357,7 +357,7 @@ func (a *modelSelector) getModelDetails(ctx context.Context, modelName string) (
 		currentLocation = resolvedLocation
 	}
 
-	if a.flags.NoPrompt {
+	if a.flags.noPrompt {
 		fmt.Println("No prompt mode enabled, automatically selecting a model deployment based on availability and quota...")
 		return resolveModelDeployment(ctx, a.azdClient, a.azureContext, model, currentLocation)
 	}
