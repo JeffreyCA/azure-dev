@@ -361,7 +361,7 @@ func (ch *ContainerHelper) Build(
 		return nil, err
 	}
 
-	// resolve parameters for build args and secrets
+	// resolve parameters for build env
 	resolvedBuildEnv, err := resolveDockerParameters(dockerOptions.BuildEnv, env)
 	if err != nil {
 		return nil, err
@@ -497,7 +497,7 @@ func (ch *ContainerHelper) Build(
 }
 
 func resolveDockerBuildArgs(buildArgs []osutil.ExpandableString, env *environment.Environment) ([]string, error) {
-	dockerBuildArgs := []string{}
+	dockerBuildArgs := make([]string, 0, len(buildArgs))
 	for _, arg := range buildArgs {
 		buildArgValue, err := arg.Envsubst(env.Getenv)
 		if err != nil {
@@ -936,7 +936,7 @@ func dockerBuildArgsToAcrArguments(
 			if !ok {
 				return nil, fmt.Errorf(
 					"resolving docker build arg %q for remote build: environment variable is not set; "+
-						"use %s=<value> or set %s",
+						"use %s=<value> or set environment variable %s",
 					name,
 					name,
 					name,
