@@ -53,16 +53,24 @@ func suggestionForApiError(apiErr *github.ApiError) *internal.ErrorWithSuggestio
 		return &internal.ErrorWithSuggestion{
 			Message: "The GitHub organization that owns this repository requires SAML SSO " +
 				"authorization for your token before it can be used.",
-			Suggestion: "Open https://github.com/settings/tokens, find the personal access " +
-				"token you're using, click 'Configure SSO', and authorize the organization. " +
-				"If you're signed in with `gh auth login`, run " +
-				"`gh auth refresh -h github.com` and complete the SSO flow in the browser.",
+			Suggestion: "If you signed in with `gh auth login`, run `gh auth refresh` and " +
+				"complete the SSO authorization in the browser when prompted (use " +
+				"`gh auth refresh -h <host>` for non-default hosts). If you're using a " +
+				"personal access token, open your GitHub token settings, locate the " +
+				"token, click 'Configure SSO', and authorize the organization that owns " +
+				"this repository.",
 			Links: []errorhandler.ErrorLink{
 				{
 					URL: "https://docs.github.com/enterprise-cloud@latest/authentication/" +
-						"authenticating-with-saml-single-sign-on/" +
-						"authorizing-a-personal-access-token-for-use-with-saml-single-sign-on",
-					Title: "Authorizing a personal access token for use with SAML SSO",
+						"authenticating-with-single-sign-on/" +
+						"about-authentication-with-single-sign-on",
+					Title: "About authentication with single sign-on",
+				},
+				{
+					URL: "https://docs.github.com/enterprise-cloud@latest/authentication/" +
+						"authenticating-with-single-sign-on/" +
+						"authorizing-a-personal-access-token-for-use-with-single-sign-on",
+					Title: "Authorizing a personal access token for use with single sign-on",
 				},
 			},
 		}
@@ -75,8 +83,8 @@ func suggestionForApiError(apiErr *github.ApiError) *internal.ErrorWithSuggestio
 				"(typically up to one hour).",
 			Links: []errorhandler.ErrorLink{
 				{
-					URL:   "https://docs.github.com/rest/overview/rate-limits-for-the-rest-api",
-					Title: "GitHub REST API rate limits",
+					URL:   "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
+					Title: "Rate limits for the REST API",
 				},
 			},
 		}

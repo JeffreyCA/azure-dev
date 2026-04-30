@@ -67,6 +67,15 @@ func TestParseApiError_StatusFromJSONBody(t *testing.T) {
 			502,
 		},
 		{
+			// GitHub error bodies often include only message+documentation_url
+			// (no status). We must still capture the message and recover the
+			// HTTP code from stderr's "(HTTP NNN)" marker.
+			"message-only JSON falls back to stderr for status",
+			`{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}`,
+			"gh: Bad credentials (HTTP 401)",
+			401,
+		},
+		{
 			"no marker anywhere",
 			"",
 			"gh: failed talking to api/repos/team-401k",
@@ -127,6 +136,23 @@ func TestParseApiError_DoesNotMisclassifySsoInRepoName(t *testing.T) {
 	require.Equal(t, KindNotFound, apiErr.Kind)
 	require.False(t, apiErr.IsAuthError())
 	require.True(t, apiErr.IsNotFound())
+}
+
+func TestParseApiError_MessageOnlyBodyCapturesMessage(t *testing.T) {
+	t.Parallel()
+	// Verify the diagnostic Message is captured even when the JSON body
+	// omits "status" — a common shape for GitHub REST errors. The HTTP code
+	// still comes from the stderr "(HTTP NNN)" marker.
+	apiErr := parseApiError(
+		"https://api.github.com/repos/o/r",
+		`{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}`,
+		"gh: Bad credentials (HTTP 401)",
+		errors.New("exit 1"),
+	)
+	require.NotNil(t, apiErr)
+	require.Equal(t, "Bad credentials", apiErr.Message)
+	require.Equal(t, 401, apiErr.StatusCode)
+	require.Equal(t, KindUnauthorized, apiErr.Kind)
 }
 
 func TestParseApiError_NoOutputAvailable(t *testing.T) {

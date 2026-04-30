@@ -728,8 +728,8 @@ func Test_ParseGitHubUrl_AccessErrorShortCircuits(t *testing.T) {
 	)
 	require.Error(t, err)
 
-	// Must surface as the typed *github.ApiError so the YAML pipeline
-	// can map it to a SAML-specific suggestion.
+	// Must surface as the typed *github.ApiError so withGitHubSuggestion
+	// can map it to a SAML-specific suggestion inline.
 	apiErr, ok := errors.AsType[*github.ApiError](err)
 	require.True(t, ok, "expected *github.ApiError, got %T: %v", err, err)
 	require.Equal(t, github.KindSAMLBlocked, apiErr.Kind)

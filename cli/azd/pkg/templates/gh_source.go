@@ -233,8 +233,9 @@ func checkRepoAccessible(
 		return apiErr
 	}
 	// 404 on the repo itself: the user can't see this repo, and the original
-	// branch error would mislead. Wrap as a RepoNotAccessibleError so the
-	// error_suggestions.yaml pipeline can attach EMU/private-repo guidance.
+	// branch error would mislead. Wrap as a RepoNotAccessibleError so
+	// withGitHubSuggestion can attach EMU/private-repo guidance from
+	// pkg/templates/gh_errors.go (inline, not via the YAML pipeline).
 	if apiErr.IsNotFound() {
 		return &RepoNotAccessibleError{
 			Hostname: hostname,
@@ -276,7 +277,8 @@ func (e *RepoNotAccessibleError) Unwrap() error { return e.Cause }
 //   - (false, err) — the API call failed for an authentication, authorization,
 //     rate-limit, or server-side reason. The error is the underlying
 //     *github.ApiError so the caller can short-circuit the branch-walk and
-//     the error_suggestions.yaml pipeline can surface an actionable message.
+//     withGitHubSuggestion (pkg/templates/gh_errors.go) can attach an
+//     actionable message inline.
 func branchExists(
 	ctx context.Context,
 	ghCli *github.Cli,

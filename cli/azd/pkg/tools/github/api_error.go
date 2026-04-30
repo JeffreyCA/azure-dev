@@ -194,8 +194,10 @@ func parseApiError(url, stdout, stderr string, err error) *ApiError {
 
 // parseGitHubErrorBody returns the GitHub JSON error envelope if stdout
 // contains one, otherwise nil. We tolerate leading/trailing whitespace and
-// require both Message and Status to be non-empty so we don't misinterpret
-// arbitrary JSON success bodies as errors.
+// require Message to be non-empty so we don't misinterpret arbitrary JSON
+// success bodies as errors. Status is optional — many GitHub REST error
+// bodies include only message/documentation_url, and the HTTP status is
+// then recovered from stderr's "(HTTP NNN)" marker by the caller.
 func parseGitHubErrorBody(stdout string) *githubErrorBody {
 	stdout = strings.TrimSpace(stdout)
 	if !strings.HasPrefix(stdout, "{") {
@@ -205,7 +207,7 @@ func parseGitHubErrorBody(stdout string) *githubErrorBody {
 	if err := json.Unmarshal([]byte(stdout), &body); err != nil {
 		return nil
 	}
-	if body.Message == "" || body.Status == "" {
+	if body.Message == "" {
 		return nil
 	}
 	return &body
