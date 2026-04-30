@@ -49,6 +49,26 @@ func TestParseApiError_StatusFromJSONBody(t *testing.T) {
 			403,
 		},
 		{
+			// Plain 403 without SAML/rate-limit phrases must classify as
+			// KindForbidden (asserted in TestClassifyKind_HttpStatusToKind).
+			"403 plain forbidden",
+			`{"message":"Resource not accessible by integration","documentation_url":"...","status":"403"}`,
+			"gh: Resource not accessible by integration (HTTP 403)",
+			403,
+		},
+		{
+			"500 server error from JSON",
+			`{"message":"Server Error","documentation_url":"...","status":"500"}`,
+			"gh: Server Error (HTTP 500)",
+			500,
+		},
+		{
+			"422 unprocessable (KindOther bucket)",
+			`{"message":"Validation Failed","documentation_url":"...","status":"422"}`,
+			"gh: Validation Failed (HTTP 422)",
+			422,
+		},
+		{
 			"404 from JSON",
 			`{"message":"Not Found","documentation_url":"...","status":"404"}`,
 			"gh: Not Found (HTTP 404)",
@@ -64,6 +84,24 @@ func TestParseApiError_StatusFromJSONBody(t *testing.T) {
 			"stderr fallback when stdout JSON missing fields",
 			`{"foo":"bar"}`,
 			"gh: weird (HTTP 502)",
+			502,
+		},
+		{
+			// Truncated/invalid JSON (e.g., proxy returning HTML, gh
+			// crashing mid-write). We must not panic on json.Unmarshal
+			// and must still recover the status code from stderr.
+			"malformed JSON falls back to stderr",
+			`{"message":"oops`,
+			"gh: oops (HTTP 503)",
+			503,
+		},
+		{
+			// Proxy-style HTML response: not JSON at all. The early
+			// "not a JSON object" guard short-circuits without invoking
+			// the unmarshaler, and stderr still recovers the status.
+			"HTML body falls back to stderr",
+			"<html><body>Bad gateway</body></html>",
+			"gh: Bad gateway (HTTP 502)",
 			502,
 		},
 		{
@@ -153,6 +191,131 @@ func TestParseApiError_MessageOnlyBodyCapturesMessage(t *testing.T) {
 	require.Equal(t, "Bad credentials", apiErr.Message)
 	require.Equal(t, 401, apiErr.StatusCode)
 	require.Equal(t, KindUnauthorized, apiErr.Kind)
+}
+
+// TestClassifyKind_HttpStatusToKind exercises the full status-code → Kind
+// mapping in classifyKind, including the buckets (401/403/404/5xx/other)
+// and the SAML / rate-limit phrase overrides on a 403. Each row uses
+// realistic stderr/JSON shapes from gh CLI.
+func TestClassifyKind_HttpStatusToKind(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		status int
+		text   string
+		want   ApiErrorKind
+	}{
+		{"401 → Unauthorized", 401, "Bad credentials", KindUnauthorized},
+		{"403 plain → Forbidden", 403, "Resource not accessible by integration", KindForbidden},
+		{"403 SAML → SAMLBlocked", 403,
+			"Resource protected by organization SAML enforcement", KindSAMLBlocked},
+		{"403 secondary rate limit → RateLimited", 403,
+			"You have exceeded a secondary rate limit", KindRateLimited},
+		{"403 primary rate limit → RateLimited", 403,
+			"API rate limit exceeded for user ID 12345", KindRateLimited},
+		{"404 → NotFound", 404, "Not Found", KindNotFound},
+		{"422 → Other", 422, "Validation Failed", KindOther},
+		{"409 → Other", 409, "Conflict", KindOther},
+		{"500 → ServerError", 500, "Server Error", KindServerError},
+		{"502 → ServerError", 502, "Bad Gateway", KindServerError},
+		{"503 → ServerError", 503, "Service Unavailable", KindServerError},
+		{"0 (no status) → Unknown", 0, "", KindUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, classifyKind(tc.status, tc.text))
+		})
+	}
+}
+
+// TestClassifyKind_SAMLPhraseVariants verifies all phrase patterns the
+// SAML detector recognizes. Adding a new phrase to classifyKind should be
+// accompanied by a new row here.
+func TestClassifyKind_SAMLPhraseVariants(t *testing.T) {
+	t.Parallel()
+	phrases := []string{
+		"Resource protected by organization SAML enforcement",
+		"You must use SAML SSO before accessing this resource",
+		"Your token has not been granted SSO authorization for this organization",
+		"SSO required for this organization",
+		// Casing must not matter — classifier lowercases the input first.
+		"resource protected by organization saml enforcement",
+		"SAML SSO REQUIRED",
+	}
+	for _, p := range phrases {
+		t.Run(p, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, KindSAMLBlocked, classifyKind(403, p))
+		})
+	}
+}
+
+// TestParseApiError_StderrHttpStatusFallback exercises the "(HTTP NNN)"
+// regex fallback that recovers the status code from gh's stderr when the
+// JSON body on stdout is missing/unusable. Documents what the regex does
+// and does NOT match (3-digit form only, first match wins).
+func TestParseApiError_StderrHttpStatusFallback(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		stderr     string
+		wantStatus int
+		wantKind   ApiErrorKind
+	}{
+		{
+			name:       "standard gh suffix",
+			stderr:     "gh: Not Found (HTTP 404)",
+			wantStatus: 404,
+			wantKind:   KindNotFound,
+		},
+		{
+			name:       "extra trailing text after marker",
+			stderr:     "gh: Bad credentials (HTTP 401)\nTry running gh auth login",
+			wantStatus: 401,
+			wantKind:   KindUnauthorized,
+		},
+		{
+			name:       "first marker wins when multiple are present",
+			stderr:     "gh: outer (HTTP 502) inner (HTTP 500)",
+			wantStatus: 502,
+			wantKind:   KindServerError,
+		},
+		{
+			name:       "no marker present",
+			stderr:     "gh: connection refused",
+			wantStatus: 0,
+			wantKind:   KindUnknown,
+		},
+		{
+			name:       "extra whitespace inside parens does not match",
+			stderr:     "gh: weird ( HTTP 500 )",
+			wantStatus: 0,
+			wantKind:   KindUnknown,
+		},
+		{
+			name:       "two-digit code does not match (regex requires 3 digits)",
+			stderr:     "gh: weird (HTTP 99)",
+			wantStatus: 0,
+			wantKind:   KindUnknown,
+		},
+		{
+			name:       "lowercase 'http' does not match (case sensitive)",
+			stderr:     "gh: weird (http 500)",
+			wantStatus: 0,
+			wantKind:   KindUnknown,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Empty stdout forces reliance on the stderr fallback only.
+			apiErr := parseApiError("https://api.github.com/x", "", tc.stderr, errors.New("gh failed"))
+			require.NotNil(t, apiErr)
+			require.Equal(t, tc.wantStatus, apiErr.StatusCode)
+			require.Equal(t, tc.wantKind, apiErr.Kind)
+		})
+	}
 }
 
 func TestParseApiError_NoOutputAvailable(t *testing.T) {

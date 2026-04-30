@@ -41,8 +41,10 @@ const (
 	KindNotFound
 	// KindServerError indicates a 5xx response from GitHub.
 	KindServerError
-	// KindOther indicates a non-2xx response that doesn't fit any of the
-	// categories above (e.g., 4xx codes other than 401/403/404).
+	// KindOther indicates a classified non-2xx response that doesn't match
+	// any of the more specific kinds above (e.g., 4xx codes other than
+	// 401/403/404, or rare status codes outside the standard buckets). Has
+	// a known StatusCode but no targeted suggestion is provided.
 	KindOther
 )
 

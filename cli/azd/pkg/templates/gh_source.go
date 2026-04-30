@@ -344,7 +344,7 @@ func newGhTemplateSource(
 	// Parse the GitHub URL to extract repository information
 	urlInfo, err := ParseGitHubUrl(ctx, urlArg, ghCli)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create template source for %q: %w", urlArg, err)
 	}
 
 	authResult, err := ghCli.GetAuthStatus(ctx, urlInfo.Hostname)
