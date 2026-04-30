@@ -181,6 +181,11 @@ func TestApiError_ErrorMessage(t *testing.T) {
 			&ApiError{URL: "https://api.github.com/x", Kind: KindUnknown, Underlying: errors.New("boom")},
 			"gh api https://api.github.com/x: boom",
 		},
+		{
+			"unknown kind with nil underlying",
+			&ApiError{URL: "https://api.github.com/x", Kind: KindUnknown},
+			"gh api https://api.github.com/x: unknown error",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

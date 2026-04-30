@@ -97,6 +97,19 @@ func suggestionForApiError(apiErr *github.ApiError) *internal.ErrorWithSuggestio
 				"it includes the 'repo' scope. Run `gh auth status` to confirm which account " +
 				"gh is using.",
 		}
+	case github.KindServerError:
+		return &internal.ErrorWithSuggestion{
+			Message: "GitHub returned a server error (HTTP 5xx). This usually indicates a " +
+				"transient issue on GitHub's side rather than a problem with your request.",
+			Suggestion: "Wait a few minutes and try again. If the problem persists, check " +
+				"https://www.githubstatus.com/ for ongoing incidents.",
+			Links: []errorhandler.ErrorLink{
+				{
+					URL:   "https://www.githubstatus.com/",
+					Title: "GitHub Status",
+				},
+			},
+		}
 	}
 	return nil
 }

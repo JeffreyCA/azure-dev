@@ -103,6 +103,9 @@ func (e *ApiError) Error() string {
 	case KindRateLimited:
 		return fmt.Sprintf("gh api %s: GitHub API rate limit exceeded (HTTP %d)", e.URL, e.StatusCode)
 	case KindUnknown:
+		if e.Underlying == nil {
+			return fmt.Sprintf("gh api %s: unknown error", e.URL)
+		}
 		return fmt.Sprintf("gh api %s: %s", e.URL, e.Underlying)
 	default:
 		if e.Message != "" {

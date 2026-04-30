@@ -742,3 +742,71 @@ func Test_ParseGitHubUrl_AccessErrorShortCircuits(t *testing.T) {
 	// And the misleading "could not find a valid branch" message must NOT appear.
 	require.NotContains(t, err.Error(), "could not find a valid branch")
 }
+
+// Test_ParseGitHubUrl_RepoNotAccessibleFallback verifies the private/EMU
+// codepath: when every branch lookup returns 404 (no positive access error),
+// resolveBranchAndPath probes /repos/{slug}; if that also returns 404 the
+// error surfaces as *RepoNotAccessibleError instead of the misleading
+// "could not find a valid branch" message. This is the other half of the
+// PR's value alongside Test_ParseGitHubUrl_AccessErrorShortCircuits.
+func Test_ParseGitHubUrl_RepoNotAccessibleFallback(t *testing.T) {
+	mockContext := mocks.NewMockContext(context.Background())
+
+	mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+		return strings.Contains(command, string(filepath.Separator)+"gh") &&
+			args.Args[0] == "--version"
+	}).Respond(exec.RunResult{Stdout: github.Version.String()})
+
+	mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+		return strings.Contains(command, string(filepath.Separator)+"gh") &&
+			args.Args[0] == "auth" && args.Args[1] == "status"
+	}).Respond(exec.RunResult{Stdout: "Logged in to"})
+
+	// Every gh api call (branch lookups + repo probe) returns a 404 with the
+	// real GitHub JSON error envelope so parseApiError classifies as KindNotFound.
+	notFoundStdout := `{"message":"Not Found","documentation_url":"...","status":"404"}`
+	notFoundStderr := "gh: Not Found (HTTP 404)"
+	branchCallCount := 0
+	repoProbeCount := 0
+	mockContext.CommandRunner.When(func(args exec.RunArgs, command string) bool {
+		return strings.Contains(command, string(filepath.Separator)+"gh") &&
+			args.Args[0] == "api"
+	}).RespondFn(func(args exec.RunArgs) (exec.RunResult, error) {
+		apiURL := args.Args[1]
+		switch {
+		case strings.Contains(apiURL, "/branches/"):
+			branchCallCount++
+		case strings.HasSuffix(apiURL, "/repos/owner/repo"):
+			repoProbeCount++
+		}
+		return exec.RunResult{Stdout: notFoundStdout, Stderr: notFoundStderr, ExitCode: 1},
+			fmt.Errorf("exit code: 1, stdout: %s, stderr: %s", notFoundStdout, notFoundStderr)
+	})
+
+	ghCli := github.NewGitHubCli(mockContext.Console, mockContext.CommandRunner)
+
+	// 4-segment branch+path so branch walker exhausts all candidates before
+	// falling back to the repo probe.
+	_, err := ParseGitHubUrl(
+		*mockContext.Context,
+		"https://github.com/owner/repo/blob/feature/sub/path/file.yaml",
+		ghCli,
+	)
+	require.Error(t, err)
+
+	// All 4 branch candidates were tried (no short-circuit, since 404 is
+	// "not a branch", not an access failure)...
+	require.Equal(t, 4, branchCallCount, "expected branch walk to try every candidate on 404")
+	// ...followed by exactly one /repos/{slug} probe.
+	require.Equal(t, 1, repoProbeCount, "expected exactly one /repos/{slug} probe after branch walk")
+
+	// The error must surface as *RepoNotAccessibleError so the suggestion
+	// pipeline (gh_errors.go) attaches EMU/private-repo guidance.
+	repoErr, ok := errors.AsType[*RepoNotAccessibleError](err)
+	require.True(t, ok, "expected *RepoNotAccessibleError, got %T: %v", err, err)
+	require.Equal(t, "github.com", repoErr.Hostname)
+	require.Equal(t, "owner/repo", repoErr.RepoSlug)
+
+	// And the misleading "could not find a valid branch" message must NOT appear.
+	require.NotContains(t, err.Error(), "could not find a valid branch")
+}
