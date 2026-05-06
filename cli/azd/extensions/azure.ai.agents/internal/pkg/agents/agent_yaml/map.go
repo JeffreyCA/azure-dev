@@ -358,11 +358,19 @@ func CreateHostedAgentAPIRequest(hostedAgent ContainerAgent, buildConfig *AgentB
 		Image:                 imageURL,
 	}
 
-	return createAgentAPIRequest(hostedAgent.AgentDefinition, imageHostedDef)
+	return createAgentAPIRequest(hostedAgent.AgentDefinition, imageHostedDef,
+		hostedAgent.AgentEndpoint, hostedAgent.AgentCard)
 }
 
-// createAgentAPIRequest is a helper function to create the final request with common fields
-func createAgentAPIRequest(agentDefinition AgentDefinition, agentDef any) (*agent_api.CreateAgentRequest, error) {
+// createAgentAPIRequest is a helper function to create the final request with common fields.
+// The optional agentEndpoint and agentCard parameters are mapped to the corresponding
+// request-level fields when non-nil.
+func createAgentAPIRequest(
+	agentDefinition AgentDefinition,
+	agentDef any,
+	agentEndpoint *AgentEndpoint,
+	agentCard *AgentCard,
+) (*agent_api.CreateAgentRequest, error) {
 	// Prepare metadata
 	metadata := make(map[string]string)
 	if agentDefinition.Metadata != nil {
@@ -408,6 +416,68 @@ func createAgentAPIRequest(agentDefinition AgentDefinition, agentDef any) (*agen
 
 	if len(metadata) > 0 {
 		request.Metadata = metadata
+	}
+
+	// Map optional agent endpoint and card fields.
+	if agentEndpoint != nil {
+		protocols := make(
+			[]agent_api.AgentProtocol, 0, len(agentEndpoint.Protocols),
+		)
+		for _, p := range agentEndpoint.Protocols {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "" {
+				return nil, fmt.Errorf(
+					"agentEndpoint contains an empty protocol value",
+				)
+			}
+			protocols = append(protocols, agent_api.AgentProtocol(trimmed))
+		}
+		request.AgentEndpoint = &agent_api.AgentEndpoint{
+			Protocols: protocols,
+		}
+	}
+
+	if agentCard != nil {
+		if strings.TrimSpace(agentCard.Description) == "" {
+			return nil, fmt.Errorf(
+				"agentCard.description is required",
+			)
+		}
+		if len(agentCard.Skills) == 0 {
+			return nil, fmt.Errorf(
+				"agentCard.skills must contain at least one skill",
+			)
+		}
+		skills := make([]agent_api.AgentCardSkill, len(agentCard.Skills))
+		for i, s := range agentCard.Skills {
+			if strings.TrimSpace(s.ID) == "" {
+				return nil, fmt.Errorf(
+					"agentCard.skills[%d].id is required", i,
+				)
+			}
+			if strings.TrimSpace(s.Name) == "" {
+				return nil, fmt.Errorf(
+					"agentCard.skills[%d].name is required", i,
+				)
+			}
+			if strings.TrimSpace(s.Description) == "" {
+				return nil, fmt.Errorf(
+					"agentCard.skills[%d].description is required", i,
+				)
+			}
+			skills[i] = agent_api.AgentCardSkill{
+				ID:          s.ID,
+				Name:        s.Name,
+				Description: s.Description,
+				Tags:        s.Tags,
+				Examples:    s.Examples,
+			}
+		}
+		request.AgentCard = &agent_api.AgentCard{
+			Description: agentCard.Description,
+			Version:     agentCard.Version,
+			Skills:      skills,
+		}
 	}
 
 	return request, nil

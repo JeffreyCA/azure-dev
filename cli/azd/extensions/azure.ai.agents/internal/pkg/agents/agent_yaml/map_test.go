@@ -692,7 +692,7 @@ func TestCreateAgentAPIRequest_AllFields(t *testing.T) {
 		Metadata:    &meta,
 	}
 
-	req, err := createAgentAPIRequest(agentDef, "placeholder-definition")
+	req, err := createAgentAPIRequest(agentDef, "placeholder-definition", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -717,7 +717,7 @@ func TestCreateAgentAPIRequest_DefaultName(t *testing.T) {
 	t.Parallel()
 	agentDef := AgentDefinition{Kind: AgentKindHosted}
 
-	req, err := createAgentAPIRequest(agentDef, nil)
+	req, err := createAgentAPIRequest(agentDef, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -730,7 +730,7 @@ func TestCreateAgentAPIRequest_NilMetadata(t *testing.T) {
 	t.Parallel()
 	agentDef := AgentDefinition{Kind: AgentKindHosted, Name: "test"}
 
-	req, err := createAgentAPIRequest(agentDef, nil)
+	req, err := createAgentAPIRequest(agentDef, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -748,7 +748,7 @@ func TestCreateAgentAPIRequest_EmptyDescription(t *testing.T) {
 		Description: &empty,
 	}
 
-	req, err := createAgentAPIRequest(agentDef, nil)
+	req, err := createAgentAPIRequest(agentDef, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -769,7 +769,7 @@ func TestCreateAgentAPIRequest_MetadataWithNonStringValues(t *testing.T) {
 		Metadata: &meta,
 	}
 
-	req, err := createAgentAPIRequest(agentDef, nil)
+	req, err := createAgentAPIRequest(agentDef, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestCreateAgentAPIRequest_AuthorsSingleAuthor(t *testing.T) {
 		Metadata: &meta,
 	}
 
-	req, err := createAgentAPIRequest(agentDef, nil)
+	req, err := createAgentAPIRequest(agentDef, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1031,5 +1031,237 @@ func TestCreateAgentAPIRequestFromDefinition_HostedWithBuildOptions(t *testing.T
 	}
 	if imgDef.EnvironmentVariables["FOO"] != "bar" {
 		t.Errorf("env var FOO missing or wrong")
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_WithAgentEndpointAndCard(t *testing.T) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "a2a-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+			{Protocol: "a2a", Version: "1.0.0"},
+		},
+		AgentEndpoint: &AgentEndpoint{
+			Protocols: []string{"responses", "a2a"},
+		},
+		AgentCard: &AgentCard{
+			Description: "test a2a agent",
+			Version:     new("2.0"),
+			Skills: []AgentCardSkill{
+				{
+					ID:          "skill1",
+					Name:        "greet",
+					Description: "provides a greeting to the user",
+					Tags:        []string{"greeting"},
+					Examples:    []string{"Say hello"},
+				},
+			},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{ImageURL: "myregistry.azurecr.io/agent:latest"}
+	request, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify agent_endpoint is populated
+	if request.AgentEndpoint == nil {
+		t.Fatal("AgentEndpoint is nil")
+	}
+	if len(request.AgentEndpoint.Protocols) != 2 {
+		t.Fatalf("AgentEndpoint.Protocols length = %d, want 2",
+			len(request.AgentEndpoint.Protocols))
+	}
+	if request.AgentEndpoint.Protocols[0] != agent_api.AgentProtocolResponses {
+		t.Errorf("AgentEndpoint.Protocols[0] = %q, want %q",
+			request.AgentEndpoint.Protocols[0], agent_api.AgentProtocolResponses)
+	}
+	if request.AgentEndpoint.Protocols[1] != agent_api.AgentProtocolA2A {
+		t.Errorf("AgentEndpoint.Protocols[1] = %q, want %q",
+			request.AgentEndpoint.Protocols[1], agent_api.AgentProtocolA2A)
+	}
+
+	// Verify agent_card is populated
+	if request.AgentCard == nil {
+		t.Fatal("AgentCard is nil")
+	}
+	if request.AgentCard.Description != "test a2a agent" {
+		t.Errorf("AgentCard.Description = %q, want %q",
+			request.AgentCard.Description, "test a2a agent")
+	}
+	if request.AgentCard.Version == nil || *request.AgentCard.Version != "2.0" {
+		t.Error("AgentCard.Version mismatch")
+	}
+	if len(request.AgentCard.Skills) != 1 {
+		t.Fatalf("AgentCard.Skills length = %d, want 1",
+			len(request.AgentCard.Skills))
+	}
+	skill := request.AgentCard.Skills[0]
+	if skill.ID != "skill1" || skill.Name != "greet" {
+		t.Errorf("skill mismatch: got ID=%q Name=%q", skill.ID, skill.Name)
+	}
+	if len(skill.Tags) != 1 || skill.Tags[0] != "greeting" {
+		t.Errorf("skill.Tags = %v, want [greeting]", skill.Tags)
+	}
+	if len(skill.Examples) != 1 || skill.Examples[0] != "Say hello" {
+		t.Errorf("skill.Examples = %v, want [Say hello]", skill.Examples)
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_NoEndpointOrCard(t *testing.T) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "basic-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{ImageURL: "myregistry.azurecr.io/agent:latest"}
+	request, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if request.AgentEndpoint != nil {
+		t.Error("AgentEndpoint should be nil when not set")
+	}
+	if request.AgentCard != nil {
+		t.Error("AgentCard should be nil when not set")
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_EmptyProtocolRejected(t *testing.T) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "bad-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+		},
+		AgentEndpoint: &AgentEndpoint{
+			Protocols: []string{"responses", "  "},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{
+		ImageURL: "myregistry.azurecr.io/agent:latest",
+	}
+	_, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err == nil {
+		t.Fatal("expected error for empty protocol")
+	}
+	if !strings.Contains(err.Error(), "empty protocol") {
+		t.Errorf("error = %q, want 'empty protocol' substring", err)
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_EmptyCardDescriptionRejected(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "bad-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+		},
+		AgentCard: &AgentCard{
+			Description: "",
+			Skills: []AgentCardSkill{
+				{ID: "s1", Name: "x", Description: "y"},
+			},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{
+		ImageURL: "myregistry.azurecr.io/agent:latest",
+	}
+	_, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err == nil {
+		t.Fatal("expected error for empty card description")
+	}
+	if !strings.Contains(err.Error(), "description is required") {
+		t.Errorf("error = %q, want 'description is required'", err)
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_EmptySkillIDRejected(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "bad-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+		},
+		AgentCard: &AgentCard{
+			Description: "valid description",
+			Skills: []AgentCardSkill{
+				{ID: "", Name: "x", Description: "y"},
+			},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{
+		ImageURL: "myregistry.azurecr.io/agent:latest",
+	}
+	_, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err == nil {
+		t.Fatal("expected error for empty skill ID")
+	}
+	if !strings.Contains(err.Error(), "id is required") {
+		t.Errorf("error = %q, want 'id is required'", err)
+	}
+}
+
+func TestCreateHostedAgentAPIRequest_NoSkillsRejected(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	hostedAgent := ContainerAgent{
+		AgentDefinition: AgentDefinition{
+			Kind: AgentKindHosted,
+			Name: "bad-agent",
+		},
+		Protocols: []ProtocolVersionRecord{
+			{Protocol: "responses", Version: "1.0.0"},
+		},
+		AgentCard: &AgentCard{
+			Description: "valid description",
+			Skills:      []AgentCardSkill{},
+		},
+	}
+
+	buildConfig := &AgentBuildConfig{
+		ImageURL: "myregistry.azurecr.io/agent:latest",
+	}
+	_, err := CreateHostedAgentAPIRequest(hostedAgent, buildConfig)
+	if err == nil {
+		t.Fatal("expected error for empty skills")
+	}
+	if !strings.Contains(err.Error(), "at least one skill") {
+		t.Errorf("error = %q, want 'at least one skill'", err)
 	}
 }

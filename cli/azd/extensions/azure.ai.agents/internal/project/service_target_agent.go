@@ -862,6 +862,36 @@ func (p *AgentServiceTargetProvider) createAgent(
 	}
 
 	fmt.Fprintf(os.Stderr, "Agent version '%s' created successfully!\n", agentVersionResponse.Name)
+
+	// Patch agent-level fields (agent_endpoint, agent_card) if present.
+	// These are agent-level properties, not version-level, so they require
+	// a separate PatchAgent call after version creation.
+	if request.AgentEndpoint != nil || request.AgentCard != nil {
+		patchRequest := &agent_api.PatchAgentRequest{
+			AgentEndpoint: request.AgentEndpoint,
+			AgentCard:     request.AgentCard,
+		}
+
+		_, err := agentClient.PatchAgent(
+			ctx, request.Name, patchRequest, agentAPIVersion,
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr,
+				"WARNING: Agent version '%s' (version %s) was created, "+
+					"but updating agent endpoint/card failed.\n",
+				agentVersionResponse.Name,
+				agentVersionResponse.Version,
+			)
+			return nil, exterrors.ServiceFromAzure(
+				err, exterrors.OpCreateAgent,
+			)
+		}
+
+		fmt.Fprintf(os.Stderr,
+			"Agent endpoint and card updated successfully!\n",
+		)
+	}
+
 	return agentVersionResponse, nil
 }
 
