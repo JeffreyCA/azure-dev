@@ -10,6 +10,7 @@ package errchain
 
 import (
 	"reflect"
+	"strings"
 )
 
 // MaxChainLen caps the number of types collected from a single error
@@ -17,10 +18,9 @@ import (
 // stop pathological errors that unwrap to themselves.
 const MaxChainLen = 16
 
-// genericWrappers names Go types that preserve an error chain or
-// attach UX metadata but tell engineers nothing about origin. The
-// classifier skips them when picking the deepest named type so a
-// fmt.Errorf wrap doesn't mask the underlying error.
+// genericWrappers names Go types that preserve an error chain or attach UX metadata but tell engineers nothing
+// about origin. Adding a type here makes fallback classification skip it, which can move spans from a
+// type-specific ResultCode to internal.unclassified when no deeper non-generic type exists.
 var genericWrappers = map[string]bool{
 	// Standard library wrappers
 	"*errors.errorString": true,
@@ -136,4 +136,10 @@ func DeepestNamedType(err error) string {
 // the same logic when picking a fallback ResultCode.
 func IsGenericWrapper(typeName string) bool {
 	return genericWrappers[typeName]
+}
+
+// SanitizeTypeName converts a Go type name (e.g. "*azcore.ResponseError") into a telemetry-safe segment
+// ("azcore_ResponseError").
+func SanitizeTypeName(name string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(name, ".", "_"), "*", "")
 }

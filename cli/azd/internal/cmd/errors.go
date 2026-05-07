@@ -70,6 +70,10 @@ func MapError(err error, span tracing.Span) {
 // matched branch wants to expose. Attribute keys returned from this
 // function are NOT yet "error."-prefixed — MapError applies the prefix.
 //
+// Ordering matters: wrapper types that intentionally control outer
+// classification, such as ErrorWithSuggestion, must run before their
+// wrapped typed errors. The generic fallback must remain last.
+//
 // The branch count mirrors azd's typed error surface; splitting it
 // makes the telemetry contract harder to audit.
 //
@@ -150,7 +154,7 @@ func classify(err error) (string, []attribute.KeyValue) {
 	if deepest == "" || errchain.IsGenericWrapper(deepest) {
 		return "internal.unclassified", []attribute.KeyValue{fields.ErrType.String(deepest)}
 	}
-	return fmt.Sprintf("internal.%s", sanitizeTypeName(deepest)),
+	return fmt.Sprintf("internal.%s", errchain.SanitizeTypeName(deepest)),
 		[]attribute.KeyValue{fields.ErrType.String(deepest)}
 }
 
@@ -275,12 +279,6 @@ func classifyExtLocalError(extLocalErr *azdext.LocalError) (string, []attribute.
 		fields.ErrCategory.String(domain),
 		fields.ErrCode.String(code),
 	}
-}
-
-// sanitizeTypeName converts a Go type name (e.g. "*azcore.ResponseError")
-// into a telemetry-safe segment ("azcore_ResponseError").
-func sanitizeTypeName(name string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(name, ".", "_"), "*", "")
 }
 
 func authFailedTelemetryDetails(authFailedErr *auth.AuthFailedError) []attribute.KeyValue {

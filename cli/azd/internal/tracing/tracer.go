@@ -5,15 +5,14 @@ package tracing
 
 import (
 	"context"
-	"strings"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/azure/azure-dev/cli/azd/internal/tracing/baggage"
 	"github.com/azure/azure-dev/cli/azd/internal/tracing/errchain"
 	"github.com/azure/azure-dev/cli/azd/internal/tracing/fields"
-	"go.opentelemetry.io/otel/codes"
-
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // It is often valuable to extend functionality of 3rd-party library types.
@@ -159,15 +158,11 @@ func (s *wrapperSpan) TracerProvider() trace.TracerProvider {
 	return s.span.TracerProvider()
 }
 
-func sanitizeTypeName(name string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(name, ".", "_"), "*", "")
-}
-
 func subSpanErrorDescription(err error) string {
 	deepest := errchain.DeepestNamedType(err)
 	if deepest == "" || errchain.IsGenericWrapper(deepest) {
 		return "internal.unclassified"
 	}
 
-	return "internal." + sanitizeTypeName(deepest)
+	return "internal." + errchain.SanitizeTypeName(deepest)
 }

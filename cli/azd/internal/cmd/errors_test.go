@@ -939,6 +939,18 @@ func TestMapError_ErrorWithSuggestionSetsErrorType(t *testing.T) {
 			wantErrCode: "error.suggestion",
 			wantErrType: "internal.unclassified",
 		},
+		{
+			name: "NestedSuggestion_uses_inner_suggestion_type",
+			err: &internal.ErrorWithSuggestion{
+				Err: &internal.ErrorWithSuggestion{
+					Err:        internal.ErrKeyNotFound,
+					Suggestion: "Run 'azd env get-values'.",
+				},
+				Suggestion: "Check the selected environment.",
+			},
+			wantErrCode: "error.suggestion",
+			wantErrType: "error.suggestion",
+		},
 	}
 
 	for _, tt := range tests {
