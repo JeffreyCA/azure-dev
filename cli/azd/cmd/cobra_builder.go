@@ -56,8 +56,11 @@ func (cb *CobraBuilder) BuildCommand(descriptor *actions.ActionDescriptor) (*cob
 		}
 	}
 
-	// Configure action resolver for leaf commands
-	if !cmd.HasSubCommands() {
+	// Configure an action resolver for leaf commands and for hybrid commands
+	// that expose both an action and child subcommands. Pure parent groups
+	// (subcommands but no resolver) skip RunE binding so cobra renders help
+	// when the command is invoked without a subcommand.
+	if descriptor.Options.ActionResolver != nil || !cmd.HasSubCommands() {
 		if err := cb.configureActionResolver(cmd, descriptor); err != nil {
 			return nil, err
 		}

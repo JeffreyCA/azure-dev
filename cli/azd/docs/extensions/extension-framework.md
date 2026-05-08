@@ -870,6 +870,25 @@ The following lists the current capabilities available to `azd` extensions:
 Extensions can register commands under a namespace or command group within `azd`.
 For example, installing the AI extension adds a new `ai` command group.
 
+###### Sharing namespace prefixes
+
+Multiple extensions may coexist under a shared namespace prefix. For example, extension A can declare namespace `ai` (a leaf) while extension B declares namespace `ai.finetune` (nested under it). When both are installed, `azd ai` invokes extension A and `azd ai finetune` invokes extension B. The shared `ai` group is rendered once in the command tree.
+
+Coexistence is supported by the namespace-tree merge in azd's command binding: prefix-overlapping extensions share a single hybrid cobra node. At runtime, cobra resolves nested-extension subcommands first and falls back to the leaf extension's binary for everything else, so routing is deterministic regardless of installation order.
+
+> [!IMPORTANT]
+> Avoid declaring top-level subcommands or root-level positional values whose names overlap with a sibling extension's namespace segment. Cobra resolves the sibling extension's nested subcommand first, shadowing the leaf extension's command. Use `azd <namespace> --help` to see what is reachable where.
+
+azd does not block prefix-overlapping installs. The only install-time namespace check is the exact-match block: two extensions cannot claim the same namespace. The merged help renderer (`azd <namespace> --help`) and the figspec autocomplete output both surface every contributor under the shared namespace.
+
+> [!NOTE]
+> When two extensions share a namespace prefix, `azd <prefix>` and `azd <prefix> --help` are rendered by azd itself rather than by the leaf extension binary, so the merged Available Commands list shows every sibling alongside the leaf's own subcommands. Once a namespace is shared, the node carries the "Commands for the &lt;prefix&gt; extension namespace." header rather than any one extension's description; each extension's own description remains reachable from the binary's internal subcommand help (e.g. `azd ai agent --help`). Banners or custom help styling attached to the leaf extension's root command will not appear at the shared namespace level; attach them to a specific subcommand instead. This applies only when the leaf extension publishes metadata; older extensions without metadata still render their own help and azd surfaces a short notice listing siblings.
+
+> [!TIP]
+> When designing a namespace tree, prefer single-purpose top-level commands (e.g., `init`, `run`, `invoke`) on the leaf extension and reserve nested namespaces (e.g., `ai.finetune`, `ai.models`) for distinct extensions.
+
+Extension namespaces must not match the name of a built-in `azd` command (for example `auth`, `init`, `deploy`, `extension`, `env`, `up`, `down`, `pipeline`, `template`, `mcp`, `version`, `config`, `monitor`, `hooks`, `vs-server`, `add`, `restore`, `package`, `provision`, `show`). The check is case-insensitive — `Auth` or `INIT` collides with `auth` and `init` respectively. azd rejects the install when a top-level namespace segment collides with a built-in command.
+
 ##### Lifecycle Events (`lifecycle-events`)
 
 > Extensions must declare the `lifecycle-events` capability in their `extension.yaml` file.

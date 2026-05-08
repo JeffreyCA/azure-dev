@@ -20,7 +20,7 @@ func TestNamespacesConflict(t *testing.T) {
 		conflict bool
 		msg      string
 	}{
-		// Exact match
+		// Exact match — the only install-time block today.
 		{
 			name:     "same namespace",
 			ns1:      "ai",
@@ -28,29 +28,6 @@ func TestNamespacesConflict(t *testing.T) {
 			conflict: true,
 			msg:      "the same namespace",
 		},
-		// Overlapping namespaces (one is prefix of other)
-		{
-			name:     "ns1 is prefix of ns2",
-			ns1:      "ai",
-			ns2:      "ai.agent",
-			conflict: true,
-			msg:      "overlapping namespaces",
-		},
-		{
-			name:     "ns2 is prefix of ns1",
-			ns1:      "ai.agent",
-			ns2:      "ai",
-			conflict: true,
-			msg:      "overlapping namespaces",
-		},
-		{
-			name:     "deeply nested overlap",
-			ns1:      "ai.models",
-			ns2:      "ai.models.finetune",
-			conflict: true,
-			msg:      "overlapping namespaces",
-		},
-		// Case-insensitive comparisons
 		{
 			name:     "case insensitive - same namespace",
 			ns1:      "AI",
@@ -59,57 +36,22 @@ func TestNamespacesConflict(t *testing.T) {
 			msg:      "the same namespace",
 		},
 		{
-			name:     "case insensitive - ns1 prefix uppercase",
-			ns1:      "AI",
-			ns2:      "ai.agent",
-			conflict: true,
-			msg:      "overlapping namespaces",
-		},
-		{
-			name:     "case insensitive - ns2 prefix uppercase",
-			ns1:      "ai.agent",
+			name:     "case insensitive - mixed case exact match",
+			ns1:      "Ai",
 			ns2:      "AI",
 			conflict: true,
-			msg:      "overlapping namespaces",
+			msg:      "the same namespace",
 		},
-		{
-			name:     "case insensitive - mixed case",
-			ns1:      "Ai.Agent",
-			ns2:      "AI.AGENT.Sub",
-			conflict: true,
-			msg:      "overlapping namespaces",
-		},
-		// No conflict cases
-		{
-			name:     "no conflict - different namespaces",
-			ns1:      "ai",
-			ns2:      "demo",
-			conflict: false,
-		},
-		{
-			name:     "no conflict - sibling namespaces",
-			ns1:      "ai.agent",
-			ns2:      "ai.finetune",
-			conflict: false,
-		},
-		{
-			name:     "no conflict - partial match not at boundary",
-			ns1:      "ai",
-			ns2:      "air",
-			conflict: false,
-		},
-		{
-			name:     "no conflict - similar prefix but not exact",
-			ns1:      "ai.agent",
-			ns2:      "ai.agents",
-			conflict: false,
-		},
-		{
-			name:     "no conflict - case insensitive siblings",
-			ns1:      "AI.Agent",
-			ns2:      "ai.finetune",
-			conflict: false,
-		},
+		// Prefix-overlapping namespaces are NOT a conflict — bindExtension
+		// merges them into a single hybrid cobra node.
+		{name: "ns1 is prefix of ns2", ns1: "ai", ns2: "ai.agent", conflict: false},
+		{name: "ns2 is prefix of ns1", ns1: "ai.agent", ns2: "ai", conflict: false},
+		{name: "deeply nested overlap", ns1: "ai.models", ns2: "ai.models.finetune", conflict: false},
+		{name: "case insensitive prefix overlap", ns1: "AI", ns2: "ai.agent", conflict: false},
+		// Disjoint namespaces.
+		{name: "no conflict - different namespaces", ns1: "ai", ns2: "demo", conflict: false},
+		{name: "no conflict - sibling namespaces", ns1: "ai.agent", ns2: "ai.finetune", conflict: false},
+		{name: "no conflict - partial match not at boundary", ns1: "ai", ns2: "air", conflict: false},
 	}
 
 	for _, tt := range tests {
@@ -124,104 +66,79 @@ func TestNamespacesConflict(t *testing.T) {
 	}
 }
 
-func TestCheckNamespaceConflict(t *testing.T) {
+func TestCheckNamespaceCommandOverlap(t *testing.T) {
 	t.Parallel()
-	t.Run("no conflict with empty installed extensions", func(t *testing.T) {
+
+	t.Run("empty namespace allowed", func(t *testing.T) {
 		t.Parallel()
-		err := checkNamespaceConflict("new.ext", "demo", map[string]*extensions.Extension{})
+		err := checkNamespaceCommandOverlap("new.ext", "", map[string]*extensions.Extension{
+			"existing.ext": {Id: "existing.ext", Namespace: "ai"},
+		})
 		require.NoError(t, err)
 	})
 
-	t.Run("no conflict with different namespaces", func(t *testing.T) {
+	t.Run("disjoint namespaces allowed", func(t *testing.T) {
 		t.Parallel()
 		installed := map[string]*extensions.Extension{
-			"existing.ext": {Id: "existing.ext", Namespace: "other"},
+			"existing.ext": {Id: "existing.ext", Namespace: "ai"},
 		}
-		err := checkNamespaceConflict("new.ext", "demo", installed)
-		require.NoError(t, err)
+		require.NoError(t, checkNamespaceCommandOverlap("new.ext", "deploy", installed))
 	})
 
-	t.Run("conflict with installed extension - same namespace", func(t *testing.T) {
+	t.Run("prefix-overlapping namespaces allowed", func(t *testing.T) {
+		t.Parallel()
+		// Coexistence is enabled: bindExtension produces a single hybrid
+		// `ai` node, cobra resolves `ai finetune` to the nested extension's
+		// child subcommand, and the merged help renderer surfaces both
+		// extensions' contributions. No install-time block.
+		installed := map[string]*extensions.Extension{
+			"leaf.ext": {Id: "leaf.ext", Namespace: "ai"},
+		}
+		require.NoError(t, checkNamespaceCommandOverlap("nested.ext", "ai.finetune", installed))
+		require.NoError(t, checkNamespaceCommandOverlap("nested.ext", "ai.models.eval", installed))
+
+		installed = map[string]*extensions.Extension{
+			"nested.ext": {Id: "nested.ext", Namespace: "ai.finetune"},
+		}
+		require.NoError(t, checkNamespaceCommandOverlap("leaf.ext", "ai", installed))
+	})
+
+	t.Run("exact match always blocked", func(t *testing.T) {
 		t.Parallel()
 		installed := map[string]*extensions.Extension{
-			"existing.ext": {Id: "existing.ext", Namespace: "demo"},
+			"existing.ext": {Id: "existing.ext", Namespace: "ai"},
 		}
-		err := checkNamespaceConflict("new.ext", "demo", installed)
+		err := checkNamespaceCommandOverlap("new.ext", "ai", installed)
 		require.Error(t, err)
 
-		// Verify it's an ErrorWithSuggestion
 		var errWithSuggestion *internal.ErrorWithSuggestion
 		require.ErrorAs(t, err, &errWithSuggestion)
-		require.Contains(t, errWithSuggestion.Err.Error(), "conflicts with installed extension")
+		require.Contains(t, errWithSuggestion.Err.Error(), "namespace 'ai' conflicts")
 		require.Contains(t, errWithSuggestion.Err.Error(), "existing.ext")
-		require.Contains(t, errWithSuggestion.Suggestion, "uninstall")
 	})
 
-	t.Run("conflict with installed extension - overlapping namespace", func(t *testing.T) {
+	t.Run("exact match is case insensitive", func(t *testing.T) {
 		t.Parallel()
 		installed := map[string]*extensions.Extension{
-			"microsoft.azd.ai.builder": {Id: "microsoft.azd.ai.builder", Namespace: "ai"},
+			"existing.ext": {Id: "existing.ext", Namespace: "AI"},
 		}
-		err := checkNamespaceConflict("azure.ai.agents", "ai.agent", installed)
+		err := checkNamespaceCommandOverlap("new.ext", "ai", installed)
 		require.Error(t, err)
-
-		var errWithSuggestion *internal.ErrorWithSuggestion
-		require.ErrorAs(t, err, &errWithSuggestion)
-		require.Contains(t, errWithSuggestion.Err.Error(), "conflicts with installed extension")
-		require.Contains(t, errWithSuggestion.Err.Error(), "microsoft.azd.ai.builder")
 	})
 
-	t.Run("no conflict when checking against self (upgrade case)", func(t *testing.T) {
+	t.Run("ignores self for upgrades", func(t *testing.T) {
 		t.Parallel()
 		installed := map[string]*extensions.Extension{
-			"my.ext": {Id: "my.ext", Namespace: "demo"},
+			"my.ext": {Id: "my.ext", Namespace: "ai"},
 		}
-		err := checkNamespaceConflict("my.ext", "demo", installed)
-		require.NoError(t, err)
+		require.NoError(t, checkNamespaceCommandOverlap("my.ext", "ai", installed))
 	})
 
-	t.Run("no conflict with empty namespace for new extension", func(t *testing.T) {
+	t.Run("ignores installed extensions with no namespace", func(t *testing.T) {
 		t.Parallel()
 		installed := map[string]*extensions.Extension{
-			"existing.ext": {Id: "existing.ext", Namespace: "demo"},
+			"no-ns.ext": {Id: "no-ns.ext", Namespace: ""},
 		}
-		err := checkNamespaceConflict("new.ext", "", installed)
-		require.NoError(t, err)
-	})
-
-	t.Run("skips installed extensions with empty namespace", func(t *testing.T) {
-		t.Parallel()
-		installed := map[string]*extensions.Extension{
-			"existing.ext": {Id: "existing.ext", Namespace: ""},
-		}
-		err := checkNamespaceConflict("new.ext", "demo", installed)
-		require.NoError(t, err)
-	})
-
-	t.Run("case insensitive conflict detection", func(t *testing.T) {
-		t.Parallel()
-		installed := map[string]*extensions.Extension{
-			"existing.ext": {Id: "existing.ext", Namespace: "AI.Agent"},
-		}
-		err := checkNamespaceConflict("new.ext", "ai", installed)
-		require.Error(t, err)
-
-		var errWithSuggestion *internal.ErrorWithSuggestion
-		require.ErrorAs(t, err, &errWithSuggestion)
-	})
-
-	t.Run("multiple installed - finds conflict", func(t *testing.T) {
-		t.Parallel()
-		installed := map[string]*extensions.Extension{
-			"safe.ext":        {Id: "safe.ext", Namespace: "demo"},
-			"conflicting.ext": {Id: "conflicting.ext", Namespace: "ai.models"},
-			"another.ext":     {Id: "another.ext", Namespace: "tools"},
-		}
-		err := checkNamespaceConflict("new.ext", "ai", installed)
-		require.Error(t, err)
-
-		var errWithSuggestion *internal.ErrorWithSuggestion
-		require.ErrorAs(t, err, &errWithSuggestion)
-		require.Contains(t, errWithSuggestion.Err.Error(), "conflicting.ext")
+		require.NoError(t, checkNamespaceCommandOverlap("new.ext", "ai", installed))
 	})
 }

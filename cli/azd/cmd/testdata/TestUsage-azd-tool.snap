@@ -2,6 +2,7 @@
 Manage Azure development tools.
 
 Usage
+  azd tool [flags]
   azd tool [command]
 
 Available Commands

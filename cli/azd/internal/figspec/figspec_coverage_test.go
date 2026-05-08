@@ -966,6 +966,48 @@ func TestTryGenerateExtensionSubcommand(t *testing.T) {
 		require.Len(t, result.Subcommands, 1)
 		require.Equal(t, "A subcommand", result.Subcommands[0].Description)
 	})
+
+	t.Run("hybrid_leaf_merges_cobra_children_with_metadata", func(t *testing.T) {
+		// Hybrid leaves carry metadata-declared children AND sibling cobra
+		// children registered under the same namespace by other extensions.
+		// Both must surface in the figspec output, deduplicated by name so the
+		// same command is not emitted twice when an extension's metadata also
+		// happens to declare a child that another extension contributes via
+		// nested namespace.
+		sb := newTestSpecBuilder(false)
+		sb.globalFlagNames = map[string]bool{"help": true}
+		sb.extensionMetadataProvider = &mockExtensionProvider{
+			hasCapability: true,
+			metadata: &extensions.ExtensionCommandMetadata{
+				Commands: []extensions.Command{
+					{Name: []string{"agent"}, Short: "Manage agents"},
+					{Name: []string{"toolboxes"}, Short: "Manage toolboxes"},
+				},
+			},
+		}
+		cmd := &cobra.Command{Use: "ai", Short: "AI"}
+		cmd.Annotations = map[string]string{"extension.id": "test-ext"}
+		// Sibling cobra child contributed by another extension via nested namespace.
+		sibling := &cobra.Command{Use: "finetune", Short: "Fine-tune models"}
+		sibling.Annotations = map[string]string{"extension.namespace_owner": "true"}
+		cmd.AddCommand(sibling)
+		// Sibling whose name happens to match a metadata-declared child must
+		// not produce a duplicate entry.
+		dupe := &cobra.Command{Use: "agent", Short: "Some other agent"}
+		dupe.Annotations = map[string]string{"extension.namespace_owner": "true"}
+		cmd.AddCommand(dupe)
+
+		result := sb.tryGenerateExtensionSubcommand(cmd, []string{"ai"})
+		require.NotNil(t, result)
+
+		var names []string
+		for _, sub := range result.Subcommands {
+			require.NotEmpty(t, sub.Name)
+			names = append(names, sub.Name[0])
+		}
+		require.ElementsMatch(t, []string{"agent", "toolboxes", "finetune"}, names,
+			"hybrid subcommand list must dedupe by name and include cobra siblings")
+	})
 }
 
 func TestTryGenerateExtensionHelpSubcommand(t *testing.T) {

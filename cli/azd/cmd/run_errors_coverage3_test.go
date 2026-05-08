@@ -751,42 +751,4 @@ func Test_ParseConfigValue_String(t *testing.T) {
 	assert.Equal(t, "hello world", s)
 }
 
-// ---------------------------------------------------------------------------
-// checkNamespaceConflict — additional scenarios
-// ---------------------------------------------------------------------------
-
-func Test_CheckNamespaceConflict_NoConflict(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{}
-	err := checkNamespaceConflict("new.ext", "foo", installed)
-	require.NoError(t, err)
-}
-
-func Test_CheckNamespaceConflict_WithConflict(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"existing.ext": {Namespace: "foo"},
-	}
-	err := checkNamespaceConflict("new.ext", "foo", installed)
-	require.Error(t, err)
-}
-
-func Test_CheckNamespaceConflict_EmptyNs_NoConflict(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"existing.ext": {Namespace: "foo"},
-	}
-	err := checkNamespaceConflict("new.ext", "", installed)
-	require.NoError(t, err) // empty namespace => no conflict
-}
-
-func Test_CheckNamespaceConflict_SkipSelf(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"self.ext": {Namespace: "foo"},
-	}
-	err := checkNamespaceConflict("self.ext", "foo", installed)
-	require.NoError(t, err) // skips self
-}
-
 // (end of file)

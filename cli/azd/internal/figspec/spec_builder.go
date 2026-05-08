@@ -172,12 +172,54 @@ func (sb *SpecBuilder) tryGenerateExtensionSubcommand(cmd *cobra.Command, names 
 		Hidden:      cmd.Hidden,
 	}
 
+	// Track names emitted from metadata so we don't double-emit when the same
+	// name appears as both a metadata command and a sibling cobra child
+	// (hybrid leaves only — see the cobra walk below).
+	emitted := map[string]bool{}
+
 	// Add subcommands from metadata, filtering out global flags
 	for _, extCmd := range metadata.Commands {
 		figSubcmd := convertExtensionCommand(extCmd, sb.includeHidden, sb.globalFlagNames)
 		if figSubcmd != nil {
 			subcommand.Subcommands = append(subcommand.Subcommands, *figSubcmd)
+			for _, n := range figSubcmd.Name {
+				emitted[n] = true
+			}
 		}
+	}
+
+	// Hybrid leaves: a sibling extension may have registered its own cobra
+	// child under this leaf's namespace (e.g. extension A claims `ai`,
+	// extension B claims `ai.finetune`, so cmd has a `finetune` child not
+	// represented in A's metadata). Walk those cobra children so the figspec
+	// mirrors the merged help rendered at runtime.
+	for _, sub := range cmd.Commands() {
+		if !sb.includeHidden && sub.Hidden {
+			continue
+		}
+		if sub.Name() == "help" {
+			continue
+		}
+		if emitted[sub.Name()] {
+			continue
+		}
+		siblingNames := []string{sub.Name()}
+		siblingNames = append(siblingNames, sub.Aliases...)
+		siblingCtx := &CommandContext{
+			Command:     sub,
+			CommandPath: cmd.CommandPath() + " " + sub.Name(),
+		}
+		nested := sb.generateSubcommands(sub, siblingCtx)
+		localOpts := sb.generateOptions(sub.LocalNonPersistentFlags(), siblingCtx.CommandPath, false)
+		args := sb.generateCommandArgs(sub, siblingCtx)
+		subcommand.Subcommands = append(subcommand.Subcommands, Subcommand{
+			Name:        siblingNames,
+			Description: sub.Short,
+			Subcommands: nested,
+			Options:     localOpts,
+			Args:        args,
+			Hidden:      sub.Hidden,
+		})
 	}
 
 	return subcommand
@@ -387,12 +429,38 @@ func (sb *SpecBuilder) tryGenerateExtensionHelpSubcommand(cmd *cobra.Command, na
 		Description: cmd.Short,
 	}
 
+	emitted := map[string]bool{}
+
 	// Add help subcommands from metadata
 	for _, extCmd := range metadata.Commands {
 		helpSubcmd := convertExtensionCommandForHelp(extCmd, sb.includeHidden)
 		if helpSubcmd != nil {
 			subcommand.Subcommands = append(subcommand.Subcommands, *helpSubcmd)
+			for _, n := range helpSubcmd.Name {
+				emitted[n] = true
+			}
 		}
+	}
+
+	// Mirror hybrid-leaf cobra children into the help subcommand list (see
+	// tryGenerateExtensionSubcommand for the rationale).
+	for _, sub := range cmd.Commands() {
+		if !sb.includeHidden && sub.Hidden {
+			continue
+		}
+		if sub.Name() == "help" {
+			continue
+		}
+		if emitted[sub.Name()] {
+			continue
+		}
+		siblingNames := []string{sub.Name()}
+		siblingNames = append(siblingNames, sub.Aliases...)
+		subcommand.Subcommands = append(subcommand.Subcommands, Subcommand{
+			Name:        siblingNames,
+			Description: sub.Short,
+			Subcommands: sb.generateHelpSubcommands(sub),
+		})
 	}
 
 	return subcommand

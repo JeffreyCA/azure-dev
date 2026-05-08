@@ -84,7 +84,13 @@ func getCmdHelpDefaultDescription(cmd *cobra.Command) string {
 func getCmdHelpDefaultUsage(cmd *cobra.Command) string {
 	return fmt.Sprintf("%s\n  %s\n\n",
 		output.WithBold("%s", output.WithUnderline("Usage")),
-		"{{if .Runnable}}{{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}{{.CommandPath}} [command]{{end}}",
+		// Hybrid commands (Runnable AND HasAvailableSubCommands) need the
+		// runnable UseLine and the "[command]" suffix on separate lines so
+		// the rendered help is readable. Pure leaves and pure parents still
+		// render exactly one line.
+		"{{if .Runnable}}{{.UseLine}}{{end}}"+
+			"{{if and .Runnable .HasAvailableSubCommands}}\n  {{end}}"+
+			"{{if .HasAvailableSubCommands}}{{.CommandPath}} [command]{{end}}",
 	)
 }
 

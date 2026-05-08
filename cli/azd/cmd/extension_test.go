@@ -42,19 +42,19 @@ func TestNamespacesConflictCases(t *testing.T) {
 			conflict:    true,
 			reasonCheck: "the same namespace",
 		},
+		// Prefix-overlapping namespaces are not a conflict; bindExtension
+		// merges them into a single hybrid cobra node.
 		{
-			name:        "ns1_prefix_of_ns2",
-			ns1:         "demo",
-			ns2:         "demo.commands",
-			conflict:    true,
-			reasonCheck: "overlapping",
+			name:     "ns1_prefix_of_ns2",
+			ns1:      "demo",
+			ns2:      "demo.commands",
+			conflict: false,
 		},
 		{
-			name:        "ns2_prefix_of_ns1",
-			ns1:         "demo.commands.sub",
-			ns2:         "demo",
-			conflict:    true,
-			reasonCheck: "overlapping",
+			name:     "ns2_prefix_of_ns1",
+			ns1:      "demo.commands.sub",
+			ns2:      "demo",
+			conflict: false,
 		},
 		{
 			name:     "no_conflict",

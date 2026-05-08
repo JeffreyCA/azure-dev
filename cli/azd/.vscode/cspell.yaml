@@ -84,6 +84,7 @@ words:
   - rustc
   - figspec
   - finetune
+  - finetuning
   - gitdir
   - bubbletea
   - lipgloss

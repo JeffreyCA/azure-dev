@@ -841,20 +841,22 @@ func (a *extensionInstallAction) Run(ctx context.Context) (*actions.ActionResult
 			a.console.ShowSpinner(ctx, stepMessage, input.Step)
 		}
 
-		// Check for namespace conflicts with installed extensions
-		if err := checkNamespaceConflict(
+		// Determine target version for upgrade/downgrade decision-making below.
+		targetVersion := a.flags.version
+		if targetVersion == "" || targetVersion == "latest" {
+			targetVersion = extensions.LatestVersion(compatibleExtension.Versions).Version
+		}
+
+		// Block exact namespace collisions with already-installed extensions.
+		// Prefix-overlapping namespaces (e.g. "ai" + "ai.finetune") coexist
+		// via the hybrid-tree merge in bindExtension, so they are allowed.
+		if err := checkNamespaceCommandOverlap(
 			compatibleExtension.Id,
 			compatibleExtension.Namespace,
 			allInstalled,
 		); err != nil {
 			a.console.StopSpinner(ctx, stepMessage, input.StepFailed)
 			return nil, err
-		}
-
-		// Determine target version
-		targetVersion := a.flags.version
-		if targetVersion == "" || targetVersion == "latest" {
-			targetVersion = extensions.LatestVersion(compatibleExtension.Versions).Version
 		}
 
 		var extensionVersion *extensions.ExtensionVersion
@@ -1452,7 +1454,10 @@ func (a *extensionUpgradeAction) upgradeOneExtension(
 		return baseResult
 	}
 
-	// Perform the upgrade
+	// Perform the upgrade. Cobra's deterministic runtime resolution and the
+	// merged help renderer mean install-time metadata-driven shadow detection
+	// is intentionally out of scope; users discover what is reachable where
+	// via `azd <namespace> --help`.
 	extVersion, err := a.extensionManager.Upgrade(
 		ctx, compatExt, a.flags.version,
 	)
@@ -1930,9 +1935,12 @@ func selectDistinctExtension(
 	return matches[*sourceResponseIndex], nil
 }
 
-// checkNamespaceConflict checks if the given namespace conflicts with any installed extension.
-// Two namespaces conflict if one is a prefix of the other (e.g., "ai" and "ai.agent").
-func checkNamespaceConflict(
+// checkNamespaceCommandOverlap blocks installs that exact-match an already-installed
+// extension's namespace. Prefix-overlapping namespaces ("ai" + "ai.finetune") are
+// allowed: bindExtension merges them into a single hybrid cobra node, child
+// resolution wins over leaf pass-through, and the merged help renderer surfaces
+// what is reachable where. The comparison is case-insensitive.
+func checkNamespaceCommandOverlap(
 	newExtId string,
 	newNamespace string,
 	installedExtensions map[string]*extensions.Extension,
@@ -1941,51 +1949,41 @@ func checkNamespaceConflict(
 		return nil
 	}
 
+	newLower := strings.ToLower(newNamespace)
+
 	for extId, ext := range installedExtensions {
 		if extId == newExtId {
-			continue // Skip self (for upgrades)
+			continue // Skip self (re-install or upgrade)
 		}
 		if ext.Namespace == "" {
 			continue
 		}
-
-		if conflict, _ := namespacesConflict(newNamespace, ext.Namespace); conflict {
-			return &internal.ErrorWithSuggestion{
-				Err: fmt.Errorf(
-					"namespace '%s' conflicts with installed extension '%s' (namespace '%s')",
-					newNamespace, extId, ext.Namespace,
-				),
-				Suggestion: fmt.Sprintf(
-					"Suggestion: uninstall %s first or choose a different extension.",
-					output.WithHighLightFormat(extId),
-				),
-			}
+		if strings.ToLower(ext.Namespace) != newLower {
+			continue
+		}
+		return &internal.ErrorWithSuggestion{
+			Err: fmt.Errorf(
+				"namespace '%s' conflicts with installed extension '%s' (namespace '%s')",
+				newNamespace, ext.Id, ext.Namespace,
+			),
+			Suggestion: fmt.Sprintf(
+				"Uninstall %s first or choose a different extension.",
+				output.WithHighLightFormat(ext.Id),
+			),
 		}
 	}
 
 	return nil
 }
 
-// namespacesConflict checks if two namespaces conflict.
-// Returns true and a description if they conflict.
-// Comparison is case-insensitive.
+// namespacesConflict reports whether two extension namespaces conflict at install
+// time. Today only exact (case-insensitive) namespace matches conflict;
+// prefix-overlapping namespaces are supported via the hybrid-tree merge in
+// bindExtension.
 func namespacesConflict(ns1, ns2 string) (bool, string) {
-	// Normalize to lowercase for case-insensitive comparison
-	ns1Lower := strings.ToLower(ns1)
-	ns2Lower := strings.ToLower(ns2)
-
-	if ns1Lower == ns2Lower {
+	if strings.EqualFold(ns1, ns2) {
 		return true, "the same namespace"
 	}
-
-	// Check if one is a prefix of the other (with dot separator)
-	if strings.HasPrefix(ns1Lower, ns2Lower+".") {
-		return true, "overlapping namespaces"
-	}
-	if strings.HasPrefix(ns2Lower, ns1Lower+".") {
-		return true, "overlapping namespaces"
-	}
-
 	return false, ""
 }
 

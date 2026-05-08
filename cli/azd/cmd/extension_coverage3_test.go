@@ -106,18 +106,18 @@ func Test_NamespacesConflict_CaseInsensitive(t *testing.T) {
 	assert.True(t, conflict)
 }
 
-func Test_NamespacesConflict_PrefixConflict(t *testing.T) {
+func Test_NamespacesConflict_PrefixIsNotAConflict(t *testing.T) {
 	t.Parallel()
 	conflict, reason := namespacesConflict("ai", "ai.agent")
-	assert.True(t, conflict)
-	assert.Equal(t, "overlapping namespaces", reason)
+	assert.False(t, conflict)
+	assert.Equal(t, "", reason)
 }
 
-func Test_NamespacesConflict_ReversePrefixConflict(t *testing.T) {
+func Test_NamespacesConflict_ReversePrefixIsNotAConflict(t *testing.T) {
 	t.Parallel()
 	conflict, reason := namespacesConflict("ai.agent", "ai")
-	assert.True(t, conflict)
-	assert.Equal(t, "overlapping namespaces", reason)
+	assert.False(t, conflict)
+	assert.Equal(t, "", reason)
 }
 
 func Test_NamespacesConflict_NoConflict(t *testing.T) {
@@ -125,41 +125,4 @@ func Test_NamespacesConflict_NoConflict(t *testing.T) {
 	conflict, reason := namespacesConflict("ai", "ml")
 	assert.False(t, conflict)
 	assert.Equal(t, "", reason)
-}
-
-// --- checkNamespaceConflict Tests (additional paths) ---
-
-func Test_CheckNamespaceConflict_EmptyNamespace(t *testing.T) {
-	t.Parallel()
-	err := checkNamespaceConflict("new-ext", "", map[string]*extensions.Extension{})
-	assert.NoError(t, err)
-}
-
-func Test_CheckNamespaceConflict_SkipsSelf(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"my-ext": {Namespace: "demo"},
-	}
-	// Same ID should be skipped (upgrade scenario)
-	err := checkNamespaceConflict("my-ext", "demo", installed)
-	assert.NoError(t, err)
-}
-
-func Test_CheckNamespaceConflict_SkipsEmptyInstalledNamespace(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"other-ext": {Namespace: ""},
-	}
-	err := checkNamespaceConflict("new-ext", "demo", installed)
-	assert.NoError(t, err)
-}
-
-func Test_CheckNamespaceConflict_DetectsConflict(t *testing.T) {
-	t.Parallel()
-	installed := map[string]*extensions.Extension{
-		"other-ext": {Namespace: "demo"},
-	}
-	err := checkNamespaceConflict("new-ext", "demo", installed)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "conflicts with installed extension")
 }
