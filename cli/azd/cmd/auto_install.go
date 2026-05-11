@@ -134,8 +134,11 @@ func findFirstNonFlagArg(args []string, flagsWithValues map[string]bool) (comman
 }
 
 // checkForMatchingExtensions checks for extensions that match any possible namespace
-// from the command arguments. For example, "azd foo demo bar" will check for
-// extensions with namespaces: "foo", "foo.demo", "foo.demo.bar"
+// from the command arguments. For example, "azd foo demo bar" considers candidate
+// namespaces "foo", "foo.demo", "foo.demo.bar". Only matches at the deepest
+// candidate length are returned: a more specific extension is always preferred
+// over a broader one (e.g., "azd ai finetuning" surfaces an `ai.finetuning`
+// extension rather than also listing one that owns the bare `ai` namespace).
 func checkForMatchingExtensions(
 	ctx context.Context, extensionManager *extensions.Manager, args []string) ([]*extensions.ExtensionMetadata, error) {
 	if len(args) == 0 {
@@ -150,16 +153,19 @@ func checkForMatchingExtensions(
 
 	var matchingExtensions []*extensions.ExtensionMetadata
 
-	// Generate all possible namespace combinations from the command arguments
-	// For "azd something demo foo" -> check "something", "something.demo", "something.demo.foo"
 	for i := 1; i <= len(args); i++ {
 		candidateNamespace := strings.Join(args[:i], ".")
 
-		// Check if any extension has this exact namespace
+		var levelMatches []*extensions.ExtensionMetadata
 		for _, ext := range registryExtensions {
 			if ext.Namespace == candidateNamespace {
-				matchingExtensions = append(matchingExtensions, ext)
+				levelMatches = append(levelMatches, ext)
 			}
+		}
+		// Deeper prefix wins. Overwrite (rather than append) so a hit at a
+		// later iteration replaces hits collected at earlier, shorter prefixes.
+		if len(levelMatches) > 0 {
+			matchingExtensions = levelMatches
 		}
 	}
 
@@ -263,17 +269,18 @@ func buildNamespaceArgs(foundCmd *cobra.Command, remainingArgs []string) []strin
 // command group), but the user runs "azd ai bar init" where the "ai.bar" extension is not installed.
 // Without this check, Cobra would find the "ai" command and show its help instead of prompting to install
 // the "ai.bar" extension.
+//
+// Hybrid leaves (a node that is both an extension leaf and a parent of sibling-extension
+// subcommands) are also considered: when the user reaches an extension leaf and the next
+// positional arg matches no registered cobra child, that arg can still designate an
+// uninstalled sibling extension (e.g. user has `azure.ai.agents` at `ai` and types
+// `azd ai finetune ...` for the not-yet-installed `azure.ai.finetune` extension).
 func tryAutoInstallForPartialNamespace(
 	ctx context.Context,
 	rootContainer *ioc.NestedContainer,
 	foundCmd *cobra.Command,
 	remainingArgs []string,
 ) bool {
-	if _, isExtensionCmd := foundCmd.Annotations["extension.id"]; isExtensionCmd {
-		// Extension commands handle their own args via DisableFlagParsing
-		return false
-	}
-
 	var firstRemainingArg string
 	for _, arg := range remainingArgs {
 		if !strings.HasPrefix(arg, "-") {
@@ -285,6 +292,15 @@ func tryAutoInstallForPartialNamespace(
 	if firstRemainingArg == "" || hasSubcommand(foundCmd, firstRemainingArg) {
 		return false
 	}
+
+	// Extension leaves use DisableFlagParsing and forward unknown args to the
+	// binary, so cobra won't error and the binary would print its own
+	// "unknown command" instead of letting azd auto-install. Bypass the
+	// pass-through only when the next positional arg looks like a candidate
+	// for a sibling extension under this leaf's namespace (handled below by
+	// checkForMatchingExtensions). We don't need an extra check here: if no
+	// extension matches, the function returns false and execution falls
+	// through to the leaf binary's normal pass-through.
 
 	argsForMatching := buildNamespaceArgs(foundCmd, remainingArgs)
 	if len(argsForMatching) == 0 {
@@ -307,6 +323,18 @@ func tryAutoInstallForPartialNamespace(
 		log.Printf("failed to check for matching extensions: %v", err)
 		return false
 	}
+	// Drop already-installed extensions from the candidate list. They contribute
+	// no install action and surfacing them as "Command was not found, but
+	// there's an available extension that provides it" is misleading. This
+	// matters for hybrid leaves: when the user has `azure.ai.agents` at
+	// namespace `ai` and types `azd ai bogus`, the deepest-prefix match is
+	// `azure.ai.agents` (already installed); without this filter we'd print
+	// the install prompt only to immediately decline because the matched
+	// extension is already present.
+	extensionMatches = slices.DeleteFunc(extensionMatches, func(ext *extensions.ExtensionMetadata) bool {
+		_, err := extensionManager.GetInstalled(extensions.FilterOptions{Id: ext.Id})
+		return err == nil
+	})
 	if len(extensionMatches) == 0 {
 		return false
 	}

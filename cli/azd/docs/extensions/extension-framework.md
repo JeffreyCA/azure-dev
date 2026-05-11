@@ -879,6 +879,9 @@ Coexistence is supported by the namespace-tree merge in azd's command binding: p
 > [!IMPORTANT]
 > Avoid declaring top-level subcommands or root-level positional values whose names overlap with a sibling extension's namespace segment. Cobra resolves the sibling extension's nested subcommand first, shadowing the leaf extension's command. Use `azd <namespace> --help` to see what is reachable where.
 
+> [!WARNING]
+> When a sibling extension's namespace last segment matches a top-level subcommand of the leaf extension (e.g. extension A at `ai` has an internal `finetuning` command, extension B at `ai.finetuning`), cobra routes `azd ai finetuning` to extension B and **silently shadows** A's `finetuning` — it does not appear in `azd ai --help` and is unreachable while B is installed. azd does not detect this at install time. If your extension claims a bare namespace, avoid generic verbs that other authors might claim as nested namespaces.
+
 azd does not block prefix-overlapping installs. The only install-time namespace check is the exact-match block: two extensions cannot claim the same namespace. The merged help renderer (`azd <namespace> --help`) and the figspec autocomplete output both surface every contributor under the shared namespace.
 
 > [!NOTE]

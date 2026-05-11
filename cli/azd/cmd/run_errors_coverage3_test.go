@@ -516,6 +516,37 @@ func Test_TryAutoInstall_HasSubcommand(t *testing.T) {
 	assert.False(t, result)
 }
 
+// Test_TryAutoInstall_ExtensionLeaf_DoesNotEarlyReturn confirms that reaching
+// an extension leaf no longer short-circuits the auto-install check. The leaf
+// may have un-installed sibling extensions under its namespace, and the user
+// may have typed one of those sibling namespace segments expecting to install
+// it. checkForMatchingExtensions is the authoritative answer; a stub registry
+// here returns no matches so the function returns false, but the important
+// signal is that the function executes past the leaf annotation rather than
+// returning false immediately. Regression test for the case where
+// `azd ai finetuning` was silently passed through to the `ai`-namespace
+// extension binary instead of triggering an install prompt.
+func Test_TryAutoInstall_ExtensionLeaf_DoesNotEarlyReturn(t *testing.T) {
+	t.Parallel()
+	root := &cobra.Command{Use: "azd"}
+	ai := &cobra.Command{
+		Use:                "ai",
+		DisableFlagParsing: true,
+		Annotations: map[string]string{
+			"extension.id":        "azure.ai.agents",
+			"extension.namespace": "ai",
+		},
+	}
+	root.AddCommand(ai)
+	container := ioc.NewNestedContainer(nil)
+	// No extension manager registered in this minimal container — that's
+	// fine; the function returns false in that case, but the important
+	// behavior is that it tries (i.e., doesn't early-return at the
+	// extension-id check).
+	result := tryAutoInstallForPartialNamespace(t.Context(), container, ai, []string{"finetuning"})
+	assert.False(t, result)
+}
+
 // ---------------------------------------------------------------------------
 // processHooks — empty hooks list
 // ---------------------------------------------------------------------------

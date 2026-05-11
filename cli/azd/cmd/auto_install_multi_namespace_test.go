@@ -41,9 +41,26 @@ func TestCheckForMatchingExtensionsLogic(t *testing.T) {
 			DisplayName: "Other Extension",
 			Description: "Different namespace pattern",
 		},
+		// Fixture pair for the broad-leaf + nested-extension scenarios.
+		{
+			Id:          "agents-leaf",
+			Namespace:   "ai",
+			DisplayName: "AI Agents (leaf)",
+			Description: "Owns the bare `ai` namespace",
+		},
+		{
+			Id:          "finetune",
+			Namespace:   "ai.finetuning",
+			DisplayName: "AI Fine-tuning",
+			Description: "Nested under ai.finetuning",
+		},
 	}
 
-	// Helper function that mimics checkForMatchingExtensions logic
+	// Helper function that mimics checkForMatchingExtensions logic.
+	// Mirrors the production behavior: only matches at the deepest non-empty
+	// candidate prefix are returned (longest-match-wins). Shorter-prefix
+	// matches are dropped when a deeper prefix also has matches, so a more
+	// specific extension is always preferred over a broader one.
 	checkMatches := func(
 		args []string, availableExtensions []*extensions.ExtensionMetadata) []*extensions.ExtensionMetadata {
 		if len(args) == 0 {
@@ -52,15 +69,17 @@ func TestCheckForMatchingExtensionsLogic(t *testing.T) {
 
 		var matchingExtensions []*extensions.ExtensionMetadata
 
-		// Generate all possible namespace combinations from the command arguments
 		for i := 1; i <= len(args); i++ {
 			candidateNamespace := strings.Join(args[:i], ".")
 
-			// Check if any extension has this exact namespace
+			var levelMatches []*extensions.ExtensionMetadata
 			for _, ext := range availableExtensions {
 				if ext.Namespace == candidateNamespace {
-					matchingExtensions = append(matchingExtensions, ext)
+					levelMatches = append(levelMatches, ext)
 				}
+			}
+			if len(levelMatches) > 0 {
+				matchingExtensions = levelMatches
 			}
 		}
 
@@ -83,14 +102,20 @@ func TestCheckForMatchingExtensionsLogic(t *testing.T) {
 			expectedMatches: []string{"extension2"},
 		},
 		{
-			name:            "three words matches deep namespace",
-			args:            []string{"vhvb", "demo", "advanced"},
-			expectedMatches: []string{"extension2", "extension3"}, // Both vhvb.demo and vhvb.demo.advanced should match
+			name: "three words returns only the deepest match",
+			args: []string{"vhvb", "demo", "advanced"},
+			// vhvb.demo and vhvb.demo.advanced both have matches, but only
+			// the deeper one is returned so the user isn't asked to choose
+			// between a broad and a specific extension that overlap.
+			expectedMatches: []string{"extension3"},
 		},
 		{
-			name:            "multiple matches for progressive namespaces",
-			args:            []string{"vhvb", "demo", "advanced", "extra"},
-			expectedMatches: []string{"extension2", "extension3"}, // Both vhvb.demo and vhvb.demo.advanced should match
+			name: "multiple words returns only the deepest match",
+			args: []string{"vhvb", "demo", "advanced", "extra"},
+			// No extension has namespace vhvb.demo.advanced.extra; the
+			// deepest match is still vhvb.demo.advanced, so we return only
+			// that one and drop the shorter vhvb.demo match.
+			expectedMatches: []string{"extension3"},
 		},
 		{
 			name:            "no matches for unknown namespace",
@@ -107,6 +132,26 @@ func TestCheckForMatchingExtensionsLogic(t *testing.T) {
 			args:            []string{"vhvb"},
 			expectedMatches: []string{}, // No extension with namespace "vhvb" exists
 		},
+		{
+			name: "broad leaf shown when user typed an unknown subcommand",
+			// User has azure.ai.agents (namespace "ai") in the registry and
+			// types `azd ai blah` — `blah` matches nothing, but the leaf
+			// extension at `ai` is the right suggestion because once
+			// installed, the leaf binary can decide whether `blah` is a
+			// valid subcommand.
+			args:            []string{"ai", "blah"},
+			expectedMatches: []string{"agents-leaf"},
+		},
+		{
+			name: "specific match wins over broader leaf",
+			// User has azure.ai.agents (namespace "ai") AND azure.ai.finetune
+			// (namespace "ai.finetuning"). Typing `azd ai finetuning` exactly
+			// matches the more specific extension; the broader leaf must NOT
+			// be offered because finetune is the only extension that
+			// actually contributes a top-level `finetuning` command.
+			args:            []string{"ai", "finetuning"},
+			expectedMatches: []string{"finetune"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -115,18 +160,14 @@ func TestCheckForMatchingExtensionsLogic(t *testing.T) {
 			// Execute function
 			matches := checkMatches(tt.args, testExtensions)
 
-			// Verify results
-			assert.Equal(t, len(tt.expectedMatches), len(matches), "Number of matches should be correct")
-
-			// Check that the right extensions were matched
-			matchedIds := make([]string, len(matches))
-			for i, match := range matches {
-				matchedIds[i] = match.Id
+			// Tighten the assertion: the production helper now returns only
+			// the deepest matching prefix, so the matched IDs should equal
+			// the expected set exactly (not just be a subset).
+			matchedIds := make([]string, 0, len(matches))
+			for _, match := range matches {
+				matchedIds = append(matchedIds, match.Id)
 			}
-
-			for _, expectedId := range tt.expectedMatches {
-				assert.Contains(t, matchedIds, expectedId, "Expected extension %s to be in matches", expectedId)
-			}
+			assert.ElementsMatch(t, tt.expectedMatches, matchedIds)
 		})
 	}
 }
