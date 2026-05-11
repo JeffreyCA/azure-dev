@@ -993,6 +993,13 @@ func (p *BicepProvider) Deploy(ctx context.Context) (*provisioning.DeployResult,
 	// Start the deployment
 	p.console.ShowSpinner(ctx, "Creating/Updating resources", input.Step)
 
+	// If AZD_DEPLOYMENT_ID_FILE is set, expose the ARM deployment ID to the caller now
+	// that we are actually about to start the ARM deployment. Doing this here (rather
+	// than immediately after generating the deployment object) avoids advertising a
+	// deployment ID that never exists in Azure when the run short-circuits via the
+	// deployment-state cache or is aborted by preflight validation.
+	writeDeploymentIdFile(deployment, p.layer)
+
 	deployCtx, interruptStarted, interruptCh, markDeployCompleted, interruptCleanup :=
 		p.installDeploymentInterruptHandler(ctx, deployment, cancelProgress)
 	cleanupOnce := sync.OnceFunc(interruptCleanup)
