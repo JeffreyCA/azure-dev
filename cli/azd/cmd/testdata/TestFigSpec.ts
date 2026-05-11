@@ -946,64 +946,6 @@ const completionSpec: Fig.Spec = {
 							],
 						},
 					],
-					options: [
-						{
-							name: ['--output', '-o'],
-							description: 'The output format',
-							args: [
-								{
-									name: 'output',
-								},
-							],
-						},
-					],
-				},
-				{
-					name: ['toolboxes'],
-					description: 'Manage AI toolboxes.',
-					subcommands: [
-						{
-							name: ['create'],
-							description: 'Create a new toolbox.',
-							options: [
-								{
-									name: ['--output', '-o'],
-									description: 'The output format',
-									args: [
-										{
-											name: 'output',
-										},
-									],
-								},
-							],
-						},
-						{
-							name: ['version'],
-							description: 'Prints the version of the application',
-							options: [
-								{
-									name: ['--output', '-o'],
-									description: 'The output format',
-									args: [
-										{
-											name: 'output',
-										},
-									],
-								},
-							],
-						},
-					],
-					options: [
-						{
-							name: ['--output', '-o'],
-							description: 'The output format',
-							args: [
-								{
-									name: 'output',
-								},
-							],
-						},
-					],
 				},
 				{
 					name: ['finetuning'],
@@ -3610,20 +3552,6 @@ const completionSpec: Fig.Spec = {
 								{
 									name: ['show'],
 									description: 'Show the status of a hosted agent.',
-								},
-								{
-									name: ['version'],
-									description: 'Prints the version of the application',
-								},
-							],
-						},
-						{
-							name: ['toolboxes'],
-							description: 'Manage AI toolboxes.',
-							subcommands: [
-								{
-									name: ['create'],
-									description: 'Create a new toolbox.',
 								},
 								{
 									name: ['version'],
