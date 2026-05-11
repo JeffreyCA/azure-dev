@@ -2,10 +2,10 @@
 Commands for the ai extension namespace.
 
 Usage
+  azd ai [flags]
   azd ai [command]
 
 Available Commands
-  agent     	: Ship agents with Microsoft Foundry from your terminal. (Preview)
   finetuning	: Extension for Foundry Fine Tuning. (Preview)
   models    	: Extension for managing custom models in Azure AI Foundry. (Preview)
 

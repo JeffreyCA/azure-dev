@@ -92,7 +92,7 @@ func TestBindExtension_SharedNamespacePrefix(t *testing.T) {
 			root := newTestRoot()
 
 			for _, ext := range tt.extensions {
-				require.NoError(t, bindExtension(root, ext))
+				require.NoError(t, bindExtension(root, ext, nil))
 			}
 
 			for _, intermediateName := range tt.expectedIntermediateNames {
@@ -123,13 +123,13 @@ func TestBindExtension_DeterministicOrder(t *testing.T) {
 
 	// Test order 1: agents first
 	root1 := newTestRoot()
-	require.NoError(t, bindExtension(root1, ext1))
-	require.NoError(t, bindExtension(root1, ext2))
+	require.NoError(t, bindExtension(root1, ext1, nil))
+	require.NoError(t, bindExtension(root1, ext2, nil))
 
 	// Test order 2: finetune first
 	root2 := newTestRoot()
-	require.NoError(t, bindExtension(root2, ext2))
-	require.NoError(t, bindExtension(root2, ext1))
+	require.NoError(t, bindExtension(root2, ext2, nil))
+	require.NoError(t, bindExtension(root2, ext1, nil))
 
 	aiCmd1 := findChildByName(root1, "ai")
 	aiCmd2 := findChildByName(root2, "ai")
@@ -158,8 +158,8 @@ func TestBindExtension_DeeplyNestedNamespace(t *testing.T) {
 	}
 
 	root := newTestRoot()
-	require.NoError(t, bindExtension(root, ext1))
-	require.NoError(t, bindExtension(root, ext2))
+	require.NoError(t, bindExtension(root, ext1, nil))
+	require.NoError(t, bindExtension(root, ext2, nil))
 
 	// Verify "ai" intermediate command
 	aiCmd := findChildByName(root, "ai")
@@ -215,7 +215,7 @@ func TestBindExtension_HybridLeafAndParent(t *testing.T) {
 			t.Parallel()
 			root := newTestRoot()
 			for _, ext := range tc.bind {
-				require.NoError(t, bindExtension(root, ext))
+				require.NoError(t, bindExtension(root, ext, nil))
 			}
 
 			aiChildren := slices.Collect(func(yield func(*actions.ActionDescriptor) bool) {
@@ -295,7 +295,7 @@ func TestBindExtension_RejectsBuiltInCollision(t *testing.T) {
 				Id:          "contoso.auth",
 				Namespace:   tc.namespace,
 				Description: "Conflicting extension.",
-			})
+			}, nil)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "collides with the built-in azd command")
 			require.Contains(t, err.Error(), "auth")
@@ -314,7 +314,7 @@ func TestBindExtension_PureLeafKeepsLeafDescription(t *testing.T) {
 		Id:          "demo.ext",
 		Namespace:   "demo",
 		Description: "Demo extension.",
-	}))
+	}, nil))
 	demo := findChildByName(root, "demo")
 	require.NotNil(t, demo)
 	require.Equal(t, "Demo extension.", demo.Options.Command.Short)
@@ -354,12 +354,12 @@ func TestExtensionSiblingChildren(t *testing.T) {
 		Id:          "leaf.ext",
 		Namespace:   "ai",
 		Description: "Leaf extension",
-	}))
+	}, nil))
 	require.NoError(t, bindExtension(root, &extensions.Extension{
 		Id:          "nested.ext",
 		Namespace:   "ai.finetune",
 		Description: "Nested extension that fine-tunes models",
-	}))
+	}, nil))
 
 	leafDesc := findChildByName(root, "ai")
 	require.NotNil(t, leafDesc)

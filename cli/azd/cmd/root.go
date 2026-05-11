@@ -507,7 +507,7 @@ func newRootCmd(
 		// Bind custom extension commands for extensions that expose the capability
 		for _, ext := range sortedExtensions {
 			if ext.HasCapability(extensions.CustomCommandCapability) {
-				if err := bindExtension(root, ext); err != nil {
+				if err := bindExtension(root, ext, extensionManager); err != nil {
 					return fmt.Errorf("Failed to bind extension commands: %w", err)
 				}
 			}

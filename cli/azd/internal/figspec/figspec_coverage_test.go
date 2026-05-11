@@ -1008,6 +1008,55 @@ func TestTryGenerateExtensionSubcommand(t *testing.T) {
 		require.ElementsMatch(t, []string{"agent", "toolboxes", "finetune"}, names,
 			"hybrid subcommand list must dedupe by name and include cobra siblings")
 	})
+
+	t.Run("sibling_extension_leaf_is_expanded_from_its_own_metadata", func(t *testing.T) {
+		// Regression: when extension A claims namespace `ai` and extension B
+		// claims `ai.finetune`, the figspec walk of `ai` must expand B from
+		// B's own metadata rather than emitting it as a stub. Extension leaves
+		// have DisableFlagParsing=true and no cobra children of their own —
+		// their command tree lives in their published metadata.
+		sb := newTestSpecBuilder(false)
+		sb.globalFlagNames = map[string]bool{"help": true}
+		sb.extensionMetadataProvider = &mockExtensionProvider{
+			byId: map[string]*extensions.ExtensionCommandMetadata{
+				"azure.ai.agents": {
+					Commands: []extensions.Command{
+						{Name: []string{"agent"}, Short: "Manage agents"},
+					},
+				},
+				"azure.ai.finetune": {
+					Commands: []extensions.Command{
+						{Name: []string{"start"}, Short: "Start a fine-tune run"},
+						{Name: []string{"jobs"}, Short: "List fine-tune jobs"},
+					},
+				},
+			},
+		}
+		ai := &cobra.Command{Use: "ai", Short: "AI"}
+		ai.Annotations = map[string]string{"extension.id": "azure.ai.agents"}
+		finetune := &cobra.Command{Use: "finetune", Short: "Fine-tune"}
+		finetune.Annotations = map[string]string{
+			"extension.id":              "azure.ai.finetune",
+			"extension.namespace_owner": "true",
+		}
+		ai.AddCommand(finetune)
+
+		result := sb.tryGenerateExtensionSubcommand(ai, []string{"ai"})
+		require.NotNil(t, result)
+
+		var ftSub *Subcommand
+		for i := range result.Subcommands {
+			if result.Subcommands[i].Name[0] == "finetune" {
+				ftSub = &result.Subcommands[i]
+				break
+			}
+		}
+		require.NotNil(t, ftSub, "finetune sibling must appear in the merged figspec")
+		require.Len(t, ftSub.Subcommands, 2,
+			"sibling extension leaf must be expanded from its own metadata, not emitted as a stub")
+		names := []string{ftSub.Subcommands[0].Name[0], ftSub.Subcommands[1].Name[0]}
+		require.ElementsMatch(t, []string{"start", "jobs"}, names)
+	})
 }
 
 func TestTryGenerateExtensionHelpSubcommand(t *testing.T) {
@@ -1238,12 +1287,26 @@ type mockExtensionProvider struct {
 	hasCapability bool
 	metadata      *extensions.ExtensionCommandMetadata
 	loadErr       error
+	// byId, when set, overrides metadata to return per-extension data. Used by
+	// tests that need a hybrid namespace with multiple extension leaves under
+	// the same parent (e.g., azure.ai.agents + azure.ai.finetune).
+	byId map[string]*extensions.ExtensionCommandMetadata
 }
 
 func (m *mockExtensionProvider) HasMetadataCapability(extensionId string) bool {
+	if m.byId != nil {
+		_, ok := m.byId[extensionId]
+		return ok
+	}
 	return m.hasCapability
 }
 
 func (m *mockExtensionProvider) LoadMetadata(extensionId string) (*extensions.ExtensionCommandMetadata, error) {
+	if m.byId != nil {
+		if meta, ok := m.byId[extensionId]; ok {
+			return meta, nil
+		}
+		return nil, m.loadErr
+	}
 	return m.metadata, m.loadErr
 }

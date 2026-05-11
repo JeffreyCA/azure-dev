@@ -67,9 +67,14 @@ const (
 // If a namespace segment collides with a non-extension cobra command (a built-in
 // azd command such as "auth" or "init"), bindExtension returns an error rather than
 // attaching the extension to the built-in's tree.
+//
+// extensionManager is captured by the per-leaf HelpFunc so `azd help <leaf>` can
+// render the same merged Available Commands list that `azd <leaf>` and
+// `azd <leaf> --help` produce via extensionAction.Run.
 func bindExtension(
 	root *actions.ActionDescriptor,
 	extension *extensions.Extension,
+	extensionManager *extensions.Manager,
 ) error {
 	namespaceParts := strings.Split(extension.Namespace, ".")
 
@@ -104,11 +109,11 @@ func bindExtension(
 				existing.Name,
 			)
 		}
-		upgradeNamespaceNodeToLeaf(existing, extension)
+		upgradeNamespaceNodeToLeaf(existing, extension, extensionManager)
 		return nil
 	}
 
-	cmd := newExtensionLeafCommand(lastPart, extension)
+	cmd := newExtensionLeafCommand(lastPart, extension, extensionManager)
 	current.Add(lastPart, &actions.ActionDescriptorOptions{
 		Command:                cmd,
 		ActionResolver:         newExtensionAction,
@@ -192,8 +197,14 @@ func isExtensionNamespaceNode(descriptor *actions.ActionDescriptor) bool {
 // newExtensionLeafCommand constructs the cobra command for an extension leaf, including
 // the annotations CobraBuilder relies on to dispatch the extension action and the
 // ownership marker that allows other extensions to nest under the same namespace later.
-func newExtensionLeafCommand(name string, extension *extensions.Extension) *cobra.Command {
-	return &cobra.Command{
+// The HelpFunc installed here renders merged Available Commands for hybrid leaves so
+// `azd help <leaf>` (which bypasses RunE) produces the same output as `azd <leaf> --help`.
+func newExtensionLeafCommand(
+	name string,
+	extension *extensions.Extension,
+	extensionManager *extensions.Manager,
+) *cobra.Command {
+	cmd := &cobra.Command{
 		Use:                name,
 		Short:              extension.Description,
 		Long:               extension.Description,
@@ -204,6 +215,8 @@ func newExtensionLeafCommand(name string, extension *extensions.Extension) *cobr
 			extensionNamespaceOwnerAnnotation: "true",
 		},
 	}
+	installExtensionLeafHelpFunc(cmd, extensionManager)
+	return cmd
 }
 
 // upgradeNamespaceNodeToLeaf attaches a leaf extension's action and annotations
@@ -214,7 +227,11 @@ func newExtensionLeafCommand(name string, extension *extensions.Extension) *cobr
 // becoming hybrid (parent + leaf). Hybrid nodes use the shared-namespace header
 // for Short and Long; the leaf extension's description is reachable from the
 // binary's internal subcommand help.
-func upgradeNamespaceNodeToLeaf(descriptor *actions.ActionDescriptor, extension *extensions.Extension) {
+func upgradeNamespaceNodeToLeaf(
+	descriptor *actions.ActionDescriptor,
+	extension *extensions.Extension,
+	extensionManager *extensions.Manager,
+) {
 	cmd := descriptor.Options.Command
 	header := cmd.Short
 	cmd.Long = header
@@ -226,8 +243,38 @@ func upgradeNamespaceNodeToLeaf(descriptor *actions.ActionDescriptor, extension 
 	cmd.Annotations[extensionNamespaceAnnotation] = extension.Namespace
 	cmd.Annotations[extensionNamespaceOwnerAnnotation] = "true"
 
+	installExtensionLeafHelpFunc(cmd, extensionManager)
+
 	descriptor.Options.ActionResolver = newExtensionAction
 	descriptor.Options.DisableTroubleshooting = true
+}
+
+// installExtensionLeafHelpFunc installs a HelpFunc on an extension leaf cobra
+// command. When the leaf is hybrid at help-render time (has cobra children
+// contributed by other extensions) and its metadata is on disk, the HelpFunc
+// injects synthetic children derived from the leaf's metadata so the Available
+// Commands block lists both contributions. Both `azd help <leaf>` (cobra's
+// built-in help command) and `azd <leaf>` (RunE → cmd.Help) flow through this
+// func, so they produce the same merged output.
+//
+// For pure leaves and when metadata is unavailable, the func is a no-op and
+// delegates to cobra's default rendering by climbing to an ancestor's HelpFunc.
+func installExtensionLeafHelpFunc(cmd *cobra.Command, extensionManager *extensions.Manager) {
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		extensionId := c.Annotations[extensionIDAnnotation]
+		if extensionManager != nil && extensionId != "" && c.HasSubCommands() {
+			if meta, err := extensionManager.LoadMetadata(extensionId); err == nil && meta != nil {
+				added := injectMetadataChildren(c, meta)
+				defer c.RemoveCommand(added...)
+				c.SetHelpTemplate(generateCmdHelp(c, generateCmdHelpOptions{}))
+			}
+		}
+		// Delegate the actual rendering to an ancestor's HelpFunc (typically
+		// root's default). Calling c.Help() here would re-enter this func.
+		if c.HasParent() {
+			c.Parent().HelpFunc()(c, args)
+		}
+	})
 }
 
 // ensureNamespaceHeaderOnLeaf rewrites the existing extension leaf's Short and
@@ -414,20 +461,14 @@ func (a *extensionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		return nil, fmt.Errorf("failed to get extension %s: %w", extensionId, err)
 	}
 
-	// When the cobra command is a hybrid leaf (an extension leaf that is also
-	// a parent of sibling-extension subcommands) and the user requested help,
-	// render azd's own help instead of shelling out to the binary so the
-	// Available Commands block lists both the leaf's own subcommands and the
-	// sibling contributions; the binary alone would only list its own.
+	// Render azd's own help (with merged metadata + sibling children) when the
+	// user requests help on a hybrid leaf. The actual merge lives in the cobra
+	// HelpFunc installed by installHybridLeafHelpFunc, so `azd help <leaf>`
+	// produces the same output. We only short-circuit here when metadata is
+	// available; otherwise fall through to the extension binary so it can
+	// render its own internal-subcommand help.
 	if a.cmd.HasSubCommands() && isHelpInvocation(a.args) {
-		if meta, mErr := a.extensionManager.LoadMetadata(extensionId); mErr == nil && meta != nil {
-			added := injectMetadataChildren(a.cmd, meta)
-			defer a.cmd.RemoveCommand(added...)
-			// generateCmdHelp is captured at command registration time, so
-			// the Available Commands section reflects whatever children were
-			// attached then. Re-render with the augmented children before
-			// invoking cmd.Help().
-			a.cmd.SetHelpTemplate(generateCmdHelp(a.cmd, generateCmdHelpOptions{}))
+		if a.extensionManager.MetadataExists(extensionId) {
 			return nil, a.cmd.Help()
 		}
 		// Metadata unavailable — fall through to invoking the binary so it

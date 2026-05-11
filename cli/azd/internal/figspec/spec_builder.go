@@ -205,6 +205,15 @@ func (sb *SpecBuilder) tryGenerateExtensionSubcommand(cmd *cobra.Command, names 
 		}
 		siblingNames := []string{sub.Name()}
 		siblingNames = append(siblingNames, sub.Aliases...)
+		// If the sibling is itself an extension leaf with metadata, expand it
+		// from its own metadata. The bare cobra walk below would otherwise
+		// emit a stub because extension leaves have DisableFlagParsing=true
+		// and no cobra children — their subcommand tree lives only in the
+		// published metadata.
+		if extensionSubcmd := sb.tryGenerateExtensionSubcommand(sub, siblingNames); extensionSubcmd != nil {
+			subcommand.Subcommands = append(subcommand.Subcommands, *extensionSubcmd)
+			continue
+		}
 		siblingCtx := &CommandContext{
 			Command:     sub,
 			CommandPath: cmd.CommandPath() + " " + sub.Name(),
@@ -456,6 +465,13 @@ func (sb *SpecBuilder) tryGenerateExtensionHelpSubcommand(cmd *cobra.Command, na
 		}
 		siblingNames := []string{sub.Name()}
 		siblingNames = append(siblingNames, sub.Aliases...)
+		// Recurse through the extension path first so a sibling extension
+		// leaf is expanded from its own metadata rather than emitted as a
+		// stub.
+		if helpSubcmd := sb.tryGenerateExtensionHelpSubcommand(sub, siblingNames); helpSubcmd != nil {
+			subcommand.Subcommands = append(subcommand.Subcommands, *helpSubcmd)
+			continue
+		}
 		subcommand.Subcommands = append(subcommand.Subcommands, Subcommand{
 			Name:        siblingNames,
 			Description: sub.Short,
