@@ -339,10 +339,6 @@ func CreateHostedAgentAPIRequest(hostedAgent ContainerAgent, buildConfig *AgentB
 		}
 	}
 
-	if imageURL == "" {
-		return nil, fmt.Errorf("image URL is required for hosted agents - specify image in agent.yaml or use WithImageURL")
-	}
-
 	// Map protocol versions from the hosted agent definition
 	protocolVersions := make([]agent_api.ProtocolVersionRecord, 0)
 	if len(hostedAgent.Protocols) > 0 {
@@ -359,23 +355,50 @@ func CreateHostedAgentAPIRequest(hostedAgent ContainerAgent, buildConfig *AgentB
 		}
 	}
 
-	hostedDef := agent_api.HostedAgentDefinition{
+	// Code deploy path
+	if hostedAgent.CodeConfiguration != nil {
+		entryPoint := []string{"python", hostedAgent.CodeConfiguration.EntryPoint}
+		depRes := ""
+		if hostedAgent.CodeConfiguration.DependencyResolution != nil {
+			depRes = *hostedAgent.CodeConfiguration.DependencyResolution
+		}
+
+		codeDef := agent_api.HostedAgentDefinition{
+			AgentDefinition: agent_api.AgentDefinition{
+				Kind: agent_api.AgentKindHosted,
+			},
+			ProtocolVersions:     protocolVersions,
+			CPU:                  cpu,
+			Memory:               memory,
+			EnvironmentVariables: envVars,
+			CodeConfiguration: &agent_api.CodeConfigurationAPI{
+				Runtime:              hostedAgent.CodeConfiguration.Runtime,
+				EntryPoint:           entryPoint,
+				DependencyResolution: depRes,
+			},
+		}
+
+		return createAgentAPIRequest(hostedAgent.AgentDefinition, codeDef,
+			hostedAgent.AgentEndpoint, hostedAgent.AgentCard)
+	}
+
+	// Container/image deploy path
+	if imageURL == "" {
+		return nil, fmt.Errorf("image URL is required for hosted agents - use WithImageURL build option or specify in container.image")
+	}
+
+	imageDef := agent_api.HostedAgentDefinition{
 		AgentDefinition: agent_api.AgentDefinition{
 			Kind: agent_api.AgentKindHosted,
 		},
-		ContainerProtocolVersions: protocolVersions,
-		CPU:                       cpu,
-		Memory:                    memory,
-		EnvironmentVariables:      envVars,
+		ProtocolVersions:     protocolVersions,
+		CPU:                  cpu,
+		Memory:               memory,
+		EnvironmentVariables: envVars,
+		Image:                imageURL,
 	}
 
-	// Set the image from build configuration or container definition
-	imageHostedDef := agent_api.ImageBasedHostedAgentDefinition{
-		HostedAgentDefinition: hostedDef,
-		Image:                 imageURL,
-	}
-
-	return createAgentAPIRequest(hostedAgent.AgentDefinition, imageHostedDef,
+	return createAgentAPIRequest(hostedAgent.AgentDefinition, imageDef,
 		hostedAgent.AgentEndpoint, hostedAgent.AgentCard)
 }
 

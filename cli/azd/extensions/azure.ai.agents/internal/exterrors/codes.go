@@ -32,6 +32,7 @@ const (
 	CodeLocationMismatch          = "location_mismatch"
 	CodeTenantMismatch            = "tenant_mismatch"
 	CodeMissingPublishedContainer = "missing_published_container_artifact"
+	CodeMissingCodeZipArtifact    = "missing_code_zip_artifact"
 	CodeModelDeploymentNotFound   = "model_deployment_not_found"
 	CodeConflictingArguments      = "conflicting_arguments"
 	CodeInvalidPositionalArg      = "invalid_positional_arg"
@@ -136,6 +137,7 @@ const (
 	CodeCognitiveServicesClientFailed = "cognitiveservices_client_failed"
 	CodeContainerStartFailed          = "container_start_failed"
 	CodeContainerStartTimeout         = "container_start_timeout"
+	CodeAgentCreateFailed             = "agent_create_failed"
 )
 
 // Operation names for [ServiceFromAzure] errors.
