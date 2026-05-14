@@ -5,6 +5,7 @@ package project
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,6 +16,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -948,7 +950,23 @@ func (p *AgentServiceTargetProvider) packageCodeDeploy(serviceConfig *azdext.Ser
 	// Source directory is the service's relative path
 	srcDir := filepath.Dir(p.agentDefinitionPath)
 
+	// Load agent.yaml to check runtime and dependency resolution for dotnet bundled mode
+	if data, err := os.ReadFile(p.agentDefinitionPath); err == nil { //nolint:gosec // path from internal state
+		var agentDef agent_yaml.ContainerAgent
+		if err := yaml.Unmarshal(data, &agentDef); err == nil && agentDef.CodeConfiguration != nil {
+			isDotnet := strings.HasPrefix(agentDef.CodeConfiguration.Runtime, "dotnet_")
+			isBundled := false // default is remote_build (matches promptCodeConfig and deployHostedCodeAgent defaults)
+			if agentDef.CodeConfiguration.DependencyResolution != nil {
+				isBundled = *agentDef.CodeConfiguration.DependencyResolution == "bundled"
+			}
+			if isDotnet && isBundled {
+				return p.packageDotnetBundled(srcDir)
+			}
+		}
+	}
+
 	// Exclusion patterns
+	// TODO: support a .azdignore or similar ignore file for user-configurable exclusions.
 	excludeDirs := map[string]bool{
 		"__pycache__":   true,
 		".venv":         true,
@@ -958,10 +976,16 @@ func (p *AgentServiceTargetProvider) packageCodeDeploy(serviceConfig *azdext.Ser
 		".mypy_cache":   true,
 		".pytest_cache": true,
 		".azure":        true,
+		// .NET directories (for remote_build, exclude build artifacts)
+		"bin": true,
+		"obj": true,
+		".vs": true,
 	}
 	excludeExts := map[string]bool{
-		".pyc": true,
-		".pyo": true,
+		".pyc":  true,
+		".pyo":  true,
+		".user": true,
+		".suo":  true,
 	}
 	excludeFiles := map[string]bool{
 		".env": true,
@@ -1064,6 +1088,144 @@ func (p *AgentServiceTargetProvider) packageCodeDeploy(serviceConfig *azdext.Ser
 		return "", "", fmt.Errorf("failed to close temp file: %w", err)
 	}
 
+	// Enforce maximum ZIP size (250 MB)
+	const maxZipSize = 250 * 1024 * 1024
+	fi, err := os.Stat(tmpPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to stat ZIP file: %w", err)
+	}
+	if fi.Size() > maxZipSize {
+		return "", "", fmt.Errorf(
+			"code package too large: %d MB (max 250 MB). Reduce package size by excluding unnecessary files or using remote_build for dependency resolution",
+			fi.Size()/(1024*1024),
+		)
+	}
+
+	sha256Hex := hex.EncodeToString(hasher.Sum(nil))
+	success = true
+
+	return tmpPath, sha256Hex, nil
+}
+
+// packageDotnetBundled runs "dotnet publish" for the .NET project and creates a ZIP of the published output.
+func (p *AgentServiceTargetProvider) packageDotnetBundled(srcDir string) (string, string, error) {
+	// Find the .csproj file
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	var csprojPath string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".csproj") {
+			csprojPath = filepath.Join(srcDir, e.Name())
+			break
+		}
+	}
+	if csprojPath == "" {
+		return "", "", fmt.Errorf("no .csproj file found in %s; required for dotnet bundled packaging", srcDir)
+	}
+
+	// Create temp directory for publish output
+	publishDir, err := os.MkdirTemp("", "azd-dotnet-publish-*")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temp dir for dotnet publish: %w", err)
+	}
+	defer os.RemoveAll(publishDir)
+
+	// Run dotnet publish targeting linux (hosted agents run on linux)
+	fmt.Fprintf(os.Stderr, "Running 'dotnet publish' for bundled packaging...\n")
+	cmd := exec.Command("dotnet", "publish", csprojPath, //nolint:gosec // csprojPath is derived from user's project directory
+		"-c", "Release",
+		"-r", "linux-x64",
+		"--self-contained", "false",
+		"-o", publishDir,
+	)
+	cmd.Dir = srcDir
+	var publishOutput bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stderr, &publishOutput)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &publishOutput)
+	if err := cmd.Run(); err != nil {
+		return "", "", fmt.Errorf("dotnet publish failed: %w\nOutput:\n%s", err, publishOutput.String())
+	}
+
+	// ZIP the publish output
+	tmpFile, err := os.CreateTemp("", "azd-code-deploy-*.zip")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temp file for ZIP: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	success := false
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	hasher := sha256.New()
+	multiWriter := io.MultiWriter(tmpFile, hasher)
+	zipWriter := zip.NewWriter(multiWriter)
+
+	err = filepath.WalkDir(publishDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		relPath, relErr := filepath.Rel(publishDir, path)
+		if relErr != nil {
+			return relErr
+		}
+
+		if relPath == "." {
+			return nil
+		}
+
+		relPath = filepath.ToSlash(relPath)
+
+		if d.IsDir() {
+			return nil
+		}
+
+		fileData, readErr := os.ReadFile(path) //nolint:gosec // path from WalkDir within temp publish dir
+		if readErr != nil {
+			return fmt.Errorf("failed to read %s: %w", relPath, readErr)
+		}
+
+		w, createErr := zipWriter.Create(relPath)
+		if createErr != nil {
+			return fmt.Errorf("failed to create ZIP entry %s: %w", relPath, createErr)
+		}
+
+		if _, writeErr := w.Write(fileData); writeErr != nil {
+			return fmt.Errorf("failed to write ZIP entry %s: %w", relPath, writeErr)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", "", fmt.Errorf("failed to walk publish directory: %w", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return "", "", fmt.Errorf("failed to close ZIP: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return "", "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Enforce maximum ZIP size (250 MB) — same limit as packageCodeDeploy
+	const maxZipSizeBundled = 250 * 1024 * 1024
+	if fi, statErr := os.Stat(tmpPath); statErr == nil && fi.Size() > maxZipSizeBundled {
+		return "", "", fmt.Errorf(
+			"bundled package too large: %d MB (max 250 MB). Consider using remote_build for dependency resolution",
+			fi.Size()/(1024*1024),
+		)
+	}
+
 	sha256Hex := hex.EncodeToString(hasher.Sum(nil))
 	success = true
 
@@ -1133,7 +1295,8 @@ func (p *AgentServiceTargetProvider) deployHostedCodeAgent(
 
 	if agentDef.CodeConfiguration != nil {
 		fmt.Fprintf(os.Stderr, "Runtime: %s\n", agentDef.CodeConfiguration.Runtime)
-		fmt.Fprintf(os.Stderr, "Entry Point: [\"python\", \"%s\"]\n", agentDef.CodeConfiguration.EntryPoint)
+		cmdPrefix := agent_yaml.RuntimeCmdPrefix(agentDef.CodeConfiguration.Runtime)
+		fmt.Fprintf(os.Stderr, "Entry Point: [\"%s\", \"%s\"]\n", cmdPrefix, agentDef.CodeConfiguration.EntryPoint)
 		depRes := "remote_build"
 		if agentDef.CodeConfiguration.DependencyResolution != nil {
 			depRes = *agentDef.CodeConfiguration.DependencyResolution
