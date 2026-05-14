@@ -35,6 +35,11 @@ jobs:
         run: git fetch --unshallow origin && git fetch origin main:refs/remotes/origin/main
         continue-on-error: true
 
+      - name: Install gh-aw extension
+        uses: github/gh-aw-actions/setup-cli@622e8677853b93bfb741170504caecd58aef4f60 # v0.74.3
+        with:
+          version: v0.74.3
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
