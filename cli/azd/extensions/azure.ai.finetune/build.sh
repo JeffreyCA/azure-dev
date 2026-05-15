@@ -64,3 +64,4 @@ done
 
 echo "Build completed successfully!"
 echo "Binaries are located in the $OUTPUT_DIR directory."
+echo "Hello world!"
