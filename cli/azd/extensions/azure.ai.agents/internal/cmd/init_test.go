@@ -2213,6 +2213,39 @@ func TestEnsureLoggedIn_ContextCancelled(t *testing.T) {
 	}
 }
 
+// TestIsRunningInCloudShell exercises the AZD_IN_CLOUDSHELL env var parsing.
+func TestIsRunningInCloudShell(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		set   bool
+		want  bool
+	}{
+		{name: "unset returns false", set: false, want: false},
+		{name: "empty string returns false", value: "", set: true, want: false},
+		{name: "true", value: "true", set: true, want: true},
+		{name: "TRUE", value: "TRUE", set: true, want: true},
+		{name: "1", value: "1", set: true, want: true},
+		{name: "false", value: "false", set: true, want: false},
+		{name: "0", value: "0", set: true, want: false},
+		{name: "invalid value returns false", value: "yes", set: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.set {
+				t.Setenv("AZD_IN_CLOUDSHELL", tt.value)
+			} else {
+				_ = os.Unsetenv("AZD_IN_CLOUDSHELL")
+			}
+
+			if got := isRunningInCloudShell(); got != tt.want {
+				t.Errorf("isRunningInCloudShell() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAuthStatusJSON(t *testing.T) {
 	t.Parallel()
 

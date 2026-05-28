@@ -19,6 +19,7 @@ import (
 	osExec "os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -207,6 +208,18 @@ func ensureLoggedIn(ctx context.Context, getAuthStatusJSON func(ctx context.Cont
 // and returns the raw stdout bytes.
 func authStatusFromCLI(ctx context.Context) ([]byte, error) {
 	return osExec.CommandContext(ctx, "azd", "auth", "status", "--output", "json", "--no-prompt").Output()
+}
+
+// isRunningInCloudShell reports whether AZD_IN_CLOUDSHELL is set to a truthy value
+// (parsed by strconv.ParseBool). Mirrors cli/azd/internal/runcontext/cloudshell.go,
+// which this extension cannot import directly (separate module, internal package).
+func isRunningInCloudShell() bool {
+	v, ok := os.LookupEnv("AZD_IN_CLOUDSHELL")
+	if !ok {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	return err == nil && b
 }
 
 // parseAuthStatusJSON extracts the "status" field from `azd auth status --output json`.
@@ -674,7 +687,12 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 				return fmt.Errorf("failed waiting for debugger: %w", err)
 			}
 
-			if err := ensureLoggedIn(ctx, authStatusFromCLI); err != nil {
+			// Cloud Shell users are authenticated implicitly (managed credential or
+			// `auth.useAzCliAuth=true`), so `azd auth status` reports `unauthenticated`
+			// and would incorrectly block init.
+			if isRunningInCloudShell() {
+				log.Printf("auth status check skipped: running in Cloud Shell (AZD_IN_CLOUDSHELL)")
+			} else if err := ensureLoggedIn(ctx, authStatusFromCLI); err != nil {
 				return err
 			}
 
