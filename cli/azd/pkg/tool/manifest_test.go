@@ -17,7 +17,7 @@ func TestBuiltInTools(t *testing.T) {
 		t.Parallel()
 
 		tools := BuiltInTools()
-		require.Len(t, tools, 8, "expected 8 built-in tools")
+		require.Len(t, tools, 7, "expected 7 built-in tools")
 	})
 
 	t.Run("ContainsAllExpectedToolIDs", func(t *testing.T) {
@@ -28,7 +28,6 @@ func TestBuiltInTools(t *testing.T) {
 			"github-copilot-cli",
 			"vscode-azure-tools",
 			"vscode-bicep",
-			"GitHub.copilot-chat",
 			"azure-mcp-server",
 			"azure.ai.agents",
 			"azure-skills",
@@ -97,7 +96,7 @@ func TestBuiltInTools(t *testing.T) {
 		}
 	})
 
-	t.Run("AllToolsHaveValidPriority", func(t *testing.T) {
+	t.Run("AllToolsHaveValidScenarioPriorities", func(t *testing.T) {
 		t.Parallel()
 
 		validPriorities := map[ToolPriority]bool{
@@ -107,9 +106,29 @@ func TestBuiltInTools(t *testing.T) {
 
 		tools := BuiltInTools()
 		for _, tool := range tools {
-			assert.True(t, validPriorities[tool.Priority],
-				"tool %q has invalid priority %q",
-				tool.Id, tool.Priority)
+			assert.NotEmpty(t, tool.Scenarios,
+				"tool %q must belong to at least one scenario", tool.Id)
+			for scenario, priority := range tool.Scenarios {
+				assert.True(t, validPriorities[priority],
+					"tool %q has invalid priority %q for scenario %q",
+					tool.Id, priority, scenario)
+			}
+		}
+	})
+
+	t.Run("AllToolsOnlyBelongToCoreScenario", func(t *testing.T) {
+		t.Parallel()
+
+		// Ownership model: built-in tools never hardcode non-core scenario
+		// membership - that's owned entirely by extensions. This guards
+		// against accidentally reintroducing a dual source of truth.
+		tools := BuiltInTools()
+		for _, tool := range tools {
+			for scenario := range tool.Scenarios {
+				assert.Equal(t, ScenarioCore, scenario,
+					"built-in tool %q must not declare membership in any scenario other than %q",
+					tool.Id, ScenarioCore)
+			}
 		}
 	})
 
@@ -296,7 +315,8 @@ func TestSpecificToolDefinitions(t *testing.T) {
 
 		assert.Equal(t, "Azure CLI", tool.Name)
 		assert.Equal(t, ToolCategoryCLI, tool.Category)
-		assert.Equal(t, ToolPriorityRecommended, tool.Priority)
+		assert.Equal(t, ToolPriorityRecommended, tool.Priority())
+		assert.Equal(t, ToolPriorityRecommended, tool.Scenarios[ScenarioCore])
 		assert.Equal(t, "az", tool.DetectCommand)
 		assert.Equal(t, []string{"--version"}, tool.VersionArgs)
 		assert.NotEmpty(t, tool.VersionRegex)

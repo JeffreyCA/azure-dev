@@ -120,6 +120,37 @@ func TestManager_GetToolsByCategory(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ToolsForScenario
+// ---------------------------------------------------------------------------
+
+func TestManager_ToolsForScenario(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(&mockDetector{}, &mockInstaller{}, nil)
+
+	t.Run("CoreReturnsEveryBuiltInTool", func(t *testing.T) {
+		t.Parallel()
+
+		// Every built-in tool belongs only to ScenarioCore today, so
+		// resolving "core" must return the full manifest.
+		tools := mgr.ToolsForScenario(ScenarioCore)
+		require.Len(t, tools, len(BuiltInTools()))
+		for _, tool := range tools {
+			_, ok := tool.Scenarios[ScenarioCore]
+			assert.True(t, ok, "tool %q missing from resolved core scenario", tool.Id)
+		}
+	})
+
+	t.Run("UnknownScenarioReturnsEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		tools := mgr.ToolsForScenario("ai-foundry")
+		assert.Empty(t, tools,
+			"no built-in tool may declare membership in a non-core scenario")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // FindTool
 // ---------------------------------------------------------------------------
 

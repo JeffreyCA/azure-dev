@@ -43,6 +43,24 @@ func (m *Manager) GetAllTools() []*ToolDefinition {
 	return slices.Clone(m.manifest)
 }
 
+// ToolsForScenario returns every tool in the manifest that belongs to the
+// given scenario id, in manifest order. This is a resolver, not a static
+// filter: today it only ever matches built-in tools tagged ScenarioCore,
+// since built-in tools never declare membership in any other scenario (see
+// the ownership model documented on ScenarioCore). Once extensions can
+// contribute their own scenario-scoped tool references (a later phase),
+// this becomes the composition point that unions built-in tools with
+// extension-contributed ones for the resolved scenario.
+func (m *Manager) ToolsForScenario(scenario string) []*ToolDefinition {
+	var result []*ToolDefinition
+	for _, t := range m.manifest {
+		if _, ok := t.Scenarios[scenario]; ok {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
 // GetToolsByCategory returns every tool in the manifest whose
 // [ToolDefinition.Category] matches the given category.
 func (m *Manager) GetToolsByCategory(

@@ -122,8 +122,14 @@ type ToolDefinition struct {
 	Description string
 	// Category classifies the tool (CLI, VS Code extension, server, or azd extension).
 	Category ToolCategory
-	// Priority indicates whether the tool is recommended or optional.
-	Priority ToolPriority
+	// Scenarios maps a scenario id (see ScenarioCore) to the tool's
+	// recommendation priority within that scenario. A tool with no entry
+	// for a given scenario is not shown when checking that scenario.
+	//
+	// Every built-in tool's Scenarios map only ever contains the
+	// ScenarioCore key — see the ownership model documented on
+	// ScenarioCore for why non-core scenarios are never added here.
+	Scenarios map[string]ToolPriority
 	// Website is the canonical documentation URL.
 	Website string
 	// DetectCommand is the binary name used to verify the tool is installed (e.g. "az").
@@ -145,6 +151,21 @@ type ToolDefinition struct {
 	SkillHosts []SkillHost
 	// Dependencies lists the IDs of tools that must be installed before this one.
 	Dependencies []string
+}
+
+// Priority returns the tool's recommendation priority for scenario-agnostic
+// surfaces (e.g. `azd tool list`/`install`, which show the full registry
+// rather than a single scenario's subset). It is the strongest
+// (most-recommending) priority across every scenario the tool belongs to.
+// Every built-in tool belongs only to ScenarioCore today, so this is
+// identical to the tool's core priority.
+func (t *ToolDefinition) Priority() ToolPriority {
+	for _, p := range t.Scenarios {
+		if p == ToolPriorityRecommended {
+			return ToolPriorityRecommended
+		}
+	}
+	return ToolPriorityOptional
 }
 
 // BuiltInTools returns the full set of tools that ship with the azd tool registry.
@@ -182,7 +203,6 @@ var builtInTools = []*ToolDefinition{
 	githubCopilotCLI(),
 	vscodeAzureTools(),
 	vscodeBicep(),
-	vscodeGitHubCopilot(),
 	azureMCPServer(),
 	azdAIExtensions(),
 	azureSkills(),
@@ -199,7 +219,7 @@ func azCLI() *ToolDefinition {
 		Name:          "Azure CLI",
 		Description:   "The Azure command-line interface for managing Azure resources.",
 		Category:      ToolCategoryCLI,
-		Priority:      ToolPriorityRecommended,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
 		Website:       "https://learn.microsoft.com/cli/azure/",
 		DetectCommand: "az",
 		VersionArgs:   []string{"--version"},
@@ -229,7 +249,7 @@ func githubCopilotCLI() *ToolDefinition {
 		Name:          "GitHub Copilot CLI",
 		Description:   "AI-powered CLI assistant from GitHub Copilot.",
 		Category:      ToolCategoryCLI,
-		Priority:      ToolPriorityRecommended,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
 		Website:       "https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli",
 		DetectCommand: "copilot",
 		VersionArgs:   []string{"--version"},
@@ -259,7 +279,7 @@ func vscodeAzureTools() *ToolDefinition {
 		Description: "VS Code extension for browsing and managing " +
 			"Azure resources.",
 		Category:      ToolCategoryVSCodeExtension,
-		Priority:      ToolPriorityRecommended,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
 		Website:       "https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-azureresourcegroups",
 		DetectCommand: "code",
 		VersionArgs:   []string{"--list-extensions", "--show-versions"},
@@ -277,7 +297,7 @@ func vscodeBicep() *ToolDefinition {
 		Name:          "Bicep VS Code Extension",
 		Description:   "VS Code extension providing language support for Azure Bicep.",
 		Category:      ToolCategoryVSCodeExtension,
-		Priority:      ToolPriorityRecommended,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
 		Website:       "https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-bicep",
 		DetectCommand: "code",
 		VersionArgs:   []string{"--list-extensions", "--show-versions"},
@@ -289,32 +309,13 @@ func vscodeBicep() *ToolDefinition {
 	}
 }
 
-func vscodeGitHubCopilot() *ToolDefinition {
-	return &ToolDefinition{
-		Id:            "GitHub.copilot-chat",
-		Name:          "GitHub Copilot Chat VS Code Extension",
-		Description:   "VS Code extension for AI-powered code completions, chat, and agent mode.",
-		Category:      ToolCategoryVSCodeExtension,
-		Priority:      ToolPriorityOptional,
-		Website:       "https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat",
-		DetectCommand: "code",
-		VersionArgs:   []string{"--list-extensions", "--show-versions"},
-		VersionRegex:  `(?i)github\.copilot-chat@(\d+\.\d+\.\d+)`,
-		InstallStrategies: allPlatforms(InstallStrategy{
-			PackageManager: "code",
-			PackageId:      "GitHub.copilot-chat",
-			FallbackUrl:    "https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat",
-		}),
-	}
-}
-
 func azureMCPServer() *ToolDefinition {
 	return &ToolDefinition{
 		Id:            "azure-mcp-server",
 		Name:          "Azure MCP Server",
 		Description:   "Model Context Protocol server for Azure resource interaction.",
 		Category:      ToolCategoryServer,
-		Priority:      ToolPriorityOptional,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityOptional},
 		Website:       "https://github.com/microsoft/mcp",
 		DetectCommand: "npm",
 		VersionArgs:   []string{"list", "-g", "@azure/mcp", "--json"},
@@ -333,7 +334,7 @@ func azdAIExtensions() *ToolDefinition {
 		Name:          "azd AI Agent Extensions",
 		Description:   "Azure Developer CLI extensions for AI agent workflows.",
 		Category:      ToolCategoryAzdExtension,
-		Priority:      ToolPriorityOptional,
+		Scenarios:     map[string]ToolPriority{ScenarioCore: ToolPriorityOptional},
 		Website:       "https://learn.microsoft.com/azure/developer/azure-developer-cli/",
 		DetectCommand: "azd",
 		VersionArgs:   []string{"extension", "list", "--installed", "--output", "json"},
@@ -350,9 +351,9 @@ func azureSkills() *ToolDefinition {
 		Name: "Azure Skills",
 		Description: "Azure skills for AI coding assistants. " +
 			"Provides skills and MCP server configurations for Azure scenarios.",
-		Category: ToolCategorySkill,
-		Priority: ToolPriorityRecommended,
-		Website:  "https://github.com/microsoft/azure-skills",
+		Category:  ToolCategorySkill,
+		Scenarios: map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
+		Website:   "https://github.com/microsoft/azure-skills",
 		SkillHosts: []SkillHost{
 			{
 				Host:                   "copilot",

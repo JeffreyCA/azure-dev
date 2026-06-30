@@ -1137,10 +1137,10 @@ var allSkillHostNames = []string{"copilot", "claude"}
 // MarketplaceAddCommand).
 func newSkillTool() *ToolDefinition {
 	return &ToolDefinition{
-		Id:       "test-azure-skills",
-		Name:     "Test Azure Skills",
-		Category: ToolCategorySkill,
-		Priority: ToolPriorityRecommended,
+		Id:        "test-azure-skills",
+		Name:      "Test Azure Skills",
+		Category:  ToolCategorySkill,
+		Scenarios: map[string]ToolPriority{ScenarioCore: ToolPriorityRecommended},
 		SkillHosts: []SkillHost{
 			{
 				Host:                   "copilot",
