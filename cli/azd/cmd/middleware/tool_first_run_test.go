@@ -382,13 +382,90 @@ func TestToolFirstRunMiddleware_ShouldSkip_FirstRunCompletedValue(t *testing.T) 
 	}
 }
 
+// TestToolFirstRunMiddleware_ShouldSkip_PerScenarioCompletedKey verifies
+// shouldSkip honors the new per-scenario completion key (the format
+// markCompleted writes), independent of the legacy migration path.
+func TestToolFirstRunMiddleware_ShouldSkip_PerScenarioCompletedKey(t *testing.T) {
+	clearCIVars(t)
+	t.Setenv(envKeySkipFirstRun, "")
+	os.Unsetenv(envKeySkipFirstRun)
+
+	cfg := config.NewEmptyConfig()
+	require.NoError(t, cfg.Set(scenarioCompletedConfigKey(tool.ScenarioCore), "true"))
+
+	m := &ToolFirstRunMiddleware{
+		configManager: &mockUserConfigManager{cfg: cfg},
+		console:       mockinput.NewMockConsole(),
+		options:       &internal.GlobalCommandOptions{},
+		// nil runOptions resolves to the core scenario.
+	}
+
+	reason, skip := m.shouldSkip(t.Context())
+	assert.True(t, skip, "a completed per-scenario key must suppress the experience")
+	assert.Equal(t, skipReasonAlreadyCompleted, reason)
+}
+
+// ---------------------------------------------------------------------------
+// legacyCoreCompletion
+// ---------------------------------------------------------------------------
+
+// TestLegacyCoreCompletion verifies the migration shim: a completed legacy
+// global flag suppresses ONLY the core scenario. Other scenarios must
+// remain eligible so existing users aren't silently denied a newly-relevant
+// scenario prompt once extensions contribute scenarios in a later phase.
+func TestLegacyCoreCompletion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		scenario  string
+		legacySet bool
+		legacyVal string
+		want      bool
+	}{
+		{name: "CoreWithCompletedLegacyFlag", scenario: tool.ScenarioCore, legacySet: true, legacyVal: "true", want: true},
+		{
+			name:      "CoreWithTimestampLegacyFlag",
+			scenario:  tool.ScenarioCore,
+			legacySet: true,
+			legacyVal: "2024-01-01T00:00:00Z",
+			want:      true,
+		},
+		{name: "CoreWithFalsyLegacyFlag", scenario: tool.ScenarioCore, legacySet: true, legacyVal: "false", want: false},
+		{name: "CoreWithNoLegacyFlag", scenario: tool.ScenarioCore, legacySet: false, want: false},
+		{
+			// The decision under test: legacy completion must NOT carry over
+			// to a non-core scenario, even when the legacy flag is set.
+			name:      "NonCoreWithCompletedLegacyFlagIsNotSuppressed",
+			scenario:  "ai-foundry",
+			legacySet: true,
+			legacyVal: "true",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.NewEmptyConfig()
+			if tt.legacySet {
+				require.NoError(t, cfg.Set(configKeyFirstRunCompleted, tt.legacyVal))
+			}
+
+			assert.Equal(t, tt.want, legacyCoreCompletion(tt.scenario, cfg))
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // markCompleted
 // ---------------------------------------------------------------------------
 
 // TestToolFirstRunMiddleware_MarkCompleted_PersistsKey verifies that
-// markCompleted writes the documented `tool.firstRunCompleted` key into
-// user config so the experience is suppressed on subsequent runs.
+// markCompleted writes the per-scenario `tool.firstRun.<scenario>.completed`
+// key into user config so the experience is suppressed on subsequent runs
+// for that scenario.
 func TestToolFirstRunMiddleware_MarkCompleted_PersistsKey(t *testing.T) {
 	cfg := config.NewEmptyConfig()
 	ucm := &mockUserConfigManager{cfg: cfg}
@@ -397,11 +474,16 @@ func TestToolFirstRunMiddleware_MarkCompleted_PersistsKey(t *testing.T) {
 		configManager: ucm,
 	}
 
-	m.markCompleted()
+	m.markCompleted(tool.ScenarioCore)
 
-	got, ok := cfg.Get(configKeyFirstRunCompleted)
-	require.True(t, ok, "markCompleted must persist the firstRunCompleted key")
+	got, ok := cfg.Get(scenarioCompletedConfigKey(tool.ScenarioCore))
+	require.True(t, ok, "markCompleted must persist the per-scenario completed key")
 	require.NotEmpty(t, got, "persisted value should be a non-empty timestamp")
+
+	// The legacy global key must never be written going forward — only
+	// read, as a one-time migration signal.
+	_, legacySet := cfg.Get(configKeyFirstRunCompleted)
+	assert.False(t, legacySet, "markCompleted must not write the legacy global key")
 }
 
 // TestToolFirstRunMiddleware_MarkCompleted_LoadError verifies that a
@@ -420,7 +502,7 @@ func TestToolFirstRunMiddleware_MarkCompleted_LoadError(t *testing.T) {
 
 	// Should not panic; should silently swallow the load error.
 	require.NotPanics(t, func() {
-		m.markCompleted()
+		m.markCompleted(tool.ScenarioCore)
 	})
 }
 
@@ -497,8 +579,9 @@ func TestNewToolFirstRunMiddleware(t *testing.T) {
 	console := mockinput.NewMockConsole()
 	ucm := &mockUserConfigManager{cfg: config.NewEmptyConfig()}
 	opts := &internal.GlobalCommandOptions{}
+	runOpts := &Options{CommandPath: "azd init"}
 
-	mw := NewToolFirstRunMiddleware(ucm, console, nil, opts)
+	mw := NewToolFirstRunMiddleware(ucm, console, nil, opts, runOpts)
 	require.NotNil(t, mw)
 
 	concrete, ok := mw.(*ToolFirstRunMiddleware)
@@ -507,6 +590,45 @@ func TestNewToolFirstRunMiddleware(t *testing.T) {
 	assert.Same(t, console, concrete.console)
 	assert.Nil(t, concrete.manager)
 	assert.Same(t, opts, concrete.options)
+	assert.Same(t, runOpts, concrete.runOptions)
+}
+
+// ---------------------------------------------------------------------------
+// scenario resolution
+// ---------------------------------------------------------------------------
+
+// TestToolFirstRunMiddleware_Scenario verifies scenario() resolves the
+// command path through ScenarioForCommandPath, defaulting to
+// tool.ScenarioCore whenever runOptions is unset or unresolvable — the
+// common case in tests that construct the middleware directly.
+func TestToolFirstRunMiddleware_Scenario(t *testing.T) {
+	tests := []struct {
+		name string
+		m    *ToolFirstRunMiddleware
+		want string
+	}{
+		{
+			name: "NilRunOptionsDefaultsToCore",
+			m:    &ToolFirstRunMiddleware{},
+			want: tool.ScenarioCore,
+		},
+		{
+			name: "WorkflowCommandResolvesCore",
+			m:    &ToolFirstRunMiddleware{runOptions: &Options{CommandPath: "azd up"}},
+			want: tool.ScenarioCore,
+		},
+		{
+			name: "UnknownCommandDefaultsToCore",
+			m:    &ToolFirstRunMiddleware{runOptions: &Options{CommandPath: "azd extension list"}},
+			want: tool.ScenarioCore,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.m.scenario())
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +655,7 @@ func TestToolFirstRunMiddleware_OfferInstall_PromptError(t *testing.T) {
 				Id:          "az-cli",
 				Name:        "Azure CLI",
 				Description: "Microsoft Azure CLI",
-				Priority:    tool.ToolPriorityRecommended,
+				Scenarios:   map[string]tool.ToolPriority{tool.ScenarioCore: tool.ToolPriorityRecommended},
 			},
 			Installed: false,
 		},
@@ -542,7 +664,7 @@ func TestToolFirstRunMiddleware_OfferInstall_PromptError(t *testing.T) {
 				Id:          "github-copilot-cli",
 				Name:        "GitHub Copilot CLI",
 				Description: "GitHub Copilot in the terminal",
-				Priority:    tool.ToolPriorityRecommended,
+				Scenarios:   map[string]tool.ToolPriority{tool.ScenarioCore: tool.ToolPriorityRecommended},
 			},
 			Installed: false,
 		},

@@ -28,9 +28,19 @@ import (
 	uxlib "github.com/azure/azure-dev/cli/azd/pkg/ux"
 )
 
-// configKeyFirstRunCompleted is the user-config path that records
-// the timestamp of a completed first-run experience.
+// configKeyFirstRunCompleted is the legacy, scenario-agnostic user-config
+// path that recorded the timestamp of a completed first-run experience.
+// Still read (never written) as a one-time migration signal: a legacy
+// completion only ever implied that the core scenario was satisfied, since
+// the legacy experience always checked core's tool list. See
+// legacyCoreCompletion.
 const configKeyFirstRunCompleted = "tool.firstRunCompleted"
+
+// scenarioCompletedConfigKey returns the per-scenario user-config path that
+// records the timestamp of a completed first-run experience for scenario.
+func scenarioCompletedConfigKey(scenario string) string {
+	return fmt.Sprintf("tool.firstRun.%s.completed", scenario)
+}
 
 // envKeySkipFirstRun is the environment variable that, when set to
 // "true", suppresses the first-run tool check entirely.
@@ -82,6 +92,12 @@ type ToolFirstRunMiddleware struct {
 	console       input.Console
 	manager       *tool.Manager
 	options       *internal.GlobalCommandOptions
+	// runOptions carries the resolved per-invocation command metadata
+	// (CommandPath, etc.) used to determine which scenario this invocation
+	// belongs to. It is nil in tests that construct the middleware
+	// directly without going through the DI container; scenario()
+	// degrades gracefully to tool.ScenarioCore in that case.
+	runOptions *Options
 }
 
 // NewToolFirstRunMiddleware creates a new [ToolFirstRunMiddleware].
@@ -90,13 +106,32 @@ func NewToolFirstRunMiddleware(
 	console input.Console,
 	manager *tool.Manager,
 	options *internal.GlobalCommandOptions,
+	runOptions *Options,
 ) Middleware {
 	return &ToolFirstRunMiddleware{
 		configManager: configManager,
 		console:       console,
 		manager:       manager,
 		options:       options,
+		runOptions:    runOptions,
 	}
+}
+
+// scenario resolves the scenario id for the current invocation from
+// runOptions.CommandPath, defaulting to tool.ScenarioCore when runOptions
+// is unset or the command path can't be resolved (e.g. direct struct
+// construction in tests).
+func (m *ToolFirstRunMiddleware) scenario() string {
+	if m.runOptions == nil {
+		return tool.ScenarioCore
+	}
+
+	scenario, ok := ScenarioForCommandPath(m.runOptions.CommandPath)
+	if !ok {
+		return tool.ScenarioCore
+	}
+
+	return scenario
 }
 
 // Run executes the first-run experience if it has not been completed
@@ -149,28 +184,62 @@ func (m *ToolFirstRunMiddleware) shouldSkip(ctx context.Context) (string, bool) 
 		return skipReasonNonInteractive, true
 	}
 
-	// 5. Already completed.
+	// 5. Already completed for this scenario.
 	cfg, err := m.configManager.Load()
 	if err != nil {
 		log.Printf("tool first-run: failed to load user config: %v", err)
 		return skipReasonConfigError, true // err on the side of not blocking the user
 	}
 
-	if v, ok := cfg.Get(configKeyFirstRunCompleted); ok {
-		s, _ := v.(string)
-		if check, err := strconv.ParseBool(s); err == nil && check {
-			return skipReasonAlreadyCompleted, true
-		}
-		if _, err := time.Parse(time.RFC3339, s); err == nil {
-			return skipReasonAlreadyCompleted, true
-		}
+	scenario := m.scenario()
+
+	if v, ok := cfg.Get(scenarioCompletedConfigKey(scenario)); ok && isCompletedValue(v) {
+		return skipReasonAlreadyCompleted, true
+	}
+
+	// 6. Legacy migration shim.
+	if legacyCoreCompletion(scenario, cfg) {
+		return skipReasonAlreadyCompleted, true
 	}
 
 	return "", false
 }
 
+// legacyCoreCompletion reports whether a completed legacy global first-run
+// flag (configKeyFirstRunCompleted) should count as completing the given
+// scenario. The legacy experience always checked core's tool list, so a
+// legacy completion only ever satisfies the core scenario — every other
+// scenario remains eligible even for users who already completed the legacy
+// flow, so they aren't silently denied a newly-relevant scenario prompt
+// later.
+func legacyCoreCompletion(scenario string, cfg config.Config) bool {
+	if scenario != tool.ScenarioCore {
+		return false
+	}
+
+	v, ok := cfg.Get(configKeyFirstRunCompleted)
+	return ok && isCompletedValue(v)
+}
+
+// isCompletedValue interprets a persisted first-run completion config
+// value. A parseable truthy boolean or an RFC3339 timestamp (the format
+// markCompleted writes) both count as "completed".
+func isCompletedValue(v any) bool {
+	s, _ := v.(string)
+	if check, err := strconv.ParseBool(s); err == nil && check {
+		return true
+	}
+	if _, err := time.Parse(time.RFC3339, s); err == nil {
+		return true
+	}
+	return false
+}
+
 // runFirstRunExperience drives the interactive welcome flow.
 func (m *ToolFirstRunMiddleware) runFirstRunExperience(ctx context.Context) error {
+	scenario := m.scenario()
+	tracing.SetUsageAttributes(fields.ToolFirstRunScenarioKey.String(scenario))
+
 	// ---------------------------------------------------------------
 	// Tool check banner
 	// ---------------------------------------------------------------
@@ -184,7 +253,7 @@ func (m *ToolFirstRunMiddleware) runFirstRunExperience(ctx context.Context) erro
 	m.console.Message(ctx, output.WithGrayFormat(
 		"To skip this check, set %s or run %s.",
 		output.WithHighLightFormat("AZD_SKIP_FIRST_RUN=true"),
-		output.WithHighLightFormat("azd config set tool.firstRunCompleted true"),
+		output.WithHighLightFormat(fmt.Sprintf("azd config set %s true", scenarioCompletedConfigKey(scenario))),
 	))
 	m.console.Message(ctx, "")
 
@@ -215,7 +284,7 @@ func (m *ToolFirstRunMiddleware) runFirstRunExperience(ctx context.Context) erro
 			fields.ToolFirstRunOptInKey.Bool(false),
 			fields.ToolFirstRunOutcomeKey.String(outcomeDeclined),
 		)
-		m.markCompleted()
+		m.markCompleted(scenario)
 		return nil
 	}
 
@@ -267,7 +336,10 @@ func (m *ToolFirstRunMiddleware) runFirstRunExperience(ctx context.Context) erro
 	// ---------------------------------------------------------------
 	var missingRecommended []*tool.ToolStatus
 	for _, s := range statuses {
-		if !s.Installed && s.Tool != nil && s.Tool.Priority == tool.ToolPriorityRecommended {
+		if s.Installed || s.Tool == nil {
+			continue
+		}
+		if priority, inScenario := s.Tool.Scenarios[scenario]; inScenario && priority == tool.ToolPriorityRecommended {
 			missingRecommended = append(missingRecommended, s)
 		}
 	}
@@ -292,7 +364,7 @@ func (m *ToolFirstRunMiddleware) runFirstRunExperience(ctx context.Context) erro
 	}
 
 	tracing.SetUsageAttributes(fields.ToolFirstRunOutcomeKey.String(finalOutcome))
-	m.markCompleted()
+	m.markCompleted(scenario)
 	return nil
 }
 
@@ -476,16 +548,19 @@ func (m *ToolFirstRunMiddleware) offerInstall(
 	return "", nil
 }
 
-// markCompleted persists a timestamp in the user config so the
-// first-run experience is not shown again.
-func (m *ToolFirstRunMiddleware) markCompleted() {
+// markCompleted persists a timestamp in the user config under the given
+// scenario's key, so the first-run experience is not shown again for that
+// scenario. The legacy, scenario-agnostic configKeyFirstRunCompleted is
+// never written going forward — only read, as a one-time migration signal
+// (see shouldSkip).
+func (m *ToolFirstRunMiddleware) markCompleted(scenario string) {
 	cfg, err := m.configManager.Load()
 	if err != nil {
 		log.Printf("tool first-run: failed to load config for marking complete: %v", err)
 		return
 	}
 
-	if err := cfg.Set(configKeyFirstRunCompleted, time.Now().Format(time.RFC3339)); err != nil {
+	if err := cfg.Set(scenarioCompletedConfigKey(scenario), time.Now().Format(time.RFC3339)); err != nil {
 		log.Printf("tool first-run: failed to set config key: %v", err)
 		return
 	}

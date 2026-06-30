@@ -480,14 +480,14 @@ func newRootCmd(
 			"toolFirstRun",
 			middleware.NewToolFirstRunMiddleware,
 			func(descriptor *actions.ActionDescriptor) bool {
-				return isWorkflowCommand(descriptor)
+				return middleware.IsWorkflowCommand(descriptor)
 			},
 		).
 		UseMiddlewareWhen(
 			"toolUpdateCheck",
 			middleware.NewToolUpdateCheckMiddleware,
 			func(descriptor *actions.ActionDescriptor) bool {
-				return isWorkflowCommand(descriptor)
+				return middleware.IsWorkflowCommand(descriptor)
 			},
 		)
 
@@ -562,42 +562,6 @@ func newRootCmd(
 		}))
 
 	return cmd
-}
-
-// workflowCommands lists root-level commands where the first-run tool
-// check and update notifications add value.  Utility commands (auth,
-// config, env, extension, etc.) are excluded to avoid blocking and to
-// prevent recursive subprocess issues when the tool check spawns
-// `azd extension list` (#8052).
-var workflowCommands = map[string]struct{}{
-	"init":      {},
-	"up":        {},
-	"provision": {},
-	"deploy":    {},
-	"down":      {},
-	"publish":   {},
-	"build":     {},
-	"package":   {},
-	"restore":   {},
-}
-
-// isWorkflowCommand reports whether the command is a primary workflow
-// command where a first-run tool check adds value.
-func isWorkflowCommand(descriptor *actions.ActionDescriptor) bool {
-	// Walk up to the root-level subcommand (first segment after "azd").
-	current := descriptor
-	for current.Parent() != nil && current.Parent().Parent() != nil {
-		current = current.Parent()
-	}
-
-	if current.Options == nil || current.Options.Command == nil {
-		return false
-	}
-
-	name := current.Options.Command.Name()
-
-	_, ok := workflowCommands[name]
-	return ok
 }
 
 func getCmdRootHelpFooter(cmd *cobra.Command) string {

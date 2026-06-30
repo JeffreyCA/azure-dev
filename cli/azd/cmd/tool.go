@@ -228,7 +228,7 @@ func (a *toolAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 				s.Tool.Name,
 				output.WithGrayFormat("(%s)", version),
 			))
-		} else if s.Tool.Priority == tool.ToolPriorityRecommended {
+		} else if s.Tool.Priority() == tool.ToolPriorityRecommended {
 			a.console.Message(ctx, fmt.Sprintf(
 				"  %s %s %s",
 				output.WithWarningFormat("(○)"),
@@ -269,7 +269,7 @@ func (a *toolAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 		choices[i] = &uxlib.MultiSelectChoice{
 			Value:    s.Tool.Id,
 			Label:    s.Tool.Name,
-			Selected: s.Tool.Priority == tool.ToolPriorityRecommended,
+			Selected: s.Tool.Priority() == tool.ToolPriorityRecommended,
 		}
 	}
 
@@ -391,7 +391,7 @@ func (a *toolListAction) Run(ctx context.Context) (*actions.ActionResult, error)
 			Id:       s.Tool.Id,
 			Name:     s.Tool.Name,
 			Category: string(s.Tool.Category),
-			Priority: string(s.Tool.Priority),
+			Priority: string(s.Tool.Priority()),
 			Status:   status,
 			Version:  version,
 		})
@@ -870,7 +870,7 @@ func (a *toolInstallAction) resolveToolIds(ctx context.Context) ([]string, error
 
 		var ids []string
 		for _, s := range statuses {
-			if !s.Installed && s.Tool.Priority == tool.ToolPriorityRecommended {
+			if !s.Installed && s.Tool.Priority() == tool.ToolPriorityRecommended {
 				ids = append(ids, s.Tool.Id)
 			}
 		}
@@ -912,7 +912,7 @@ func (a *toolInstallAction) resolveToolIds(ctx context.Context) ([]string, error
 		choices[i] = &uxlib.MultiSelectChoice{
 			Value:    s.Tool.Id,
 			Label:    s.Tool.Name,
-			Selected: s.Tool.Priority == tool.ToolPriorityRecommended,
+			Selected: s.Tool.Priority() == tool.ToolPriorityRecommended,
 		}
 	}
 
@@ -1690,7 +1690,7 @@ func (a *toolShowAction) Run(ctx context.Context) (*actions.ActionResult, error)
 			Name:        toolDef.Name,
 			Description: toolDef.Description,
 			Category:    string(toolDef.Category),
-			Priority:    string(toolDef.Priority),
+			Priority:    string(toolDef.Priority()),
 			Website:     toolDef.Website,
 			Installed:   status.Installed,
 			Version:     status.InstalledVersion,
@@ -1758,7 +1758,7 @@ func (a *toolShowAction) displayToolDetails(
 		{"Name", ":", toolDef.Name},
 		{"Description", ":", toolDef.Description},
 		{"Category", ":", string(toolDef.Category)},
-		{"Priority", ":", string(toolDef.Priority)},
+		{"Priority", ":", string(toolDef.Priority())},
 	}
 	if toolDef.Website != "" {
 		toolInfo = append(toolInfo, []string{"Website", ":", toolDef.Website})
