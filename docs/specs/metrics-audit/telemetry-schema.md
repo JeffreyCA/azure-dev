@@ -292,6 +292,7 @@ no file paths, no user-identifiable data, no raw error text.
 
 | Field | OTel Key | Classification | Purpose | Notes |
 |-------|----------|----------------|---------|-------|
+| Scenario | `tool.firstrun.scenario` | SystemMetadata | FeatureInsight | Scenario id resolved for this invocation (e.g. `core`). Emitted raw — currently only fixed, compile-time literals are possible. Must switch to hashed once azd extensions can contribute their own scenario ids |
 | Skip reason | `tool.firstrun.skip_reason` | SystemMetadata | FeatureInsight | Why the first-run flow was bypassed. Values: `env_var`, `no_prompt`, `ci_cd`, `non_interactive`, `already_completed`, `config_error` |
 | Opt-in | `tool.firstrun.opt_in` | SystemMetadata | FeatureInsight | Whether the user accepted the first-run prompt |
 | Tools detected | `tool.firstrun.tools_detected` | SystemMetadata | FeatureInsight | **Measurement** — built-in tools already installed at first-run |

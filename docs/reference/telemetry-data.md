@@ -454,7 +454,7 @@ Emitted on `azd provision` / `azd up` to measure adoption and safety of `infra.l
 
 Fields for the `azd tool` feature — the first-run experience and `install`/`upgrade`/`check` operations for azd-managed developer tools. These are **distinct** from the [Tool Invocation Attributes](#tool-invocation-attributes-external-cli-tools) above (which describe external processes azd shells out to).
 
-> **Privacy:** only built-in tool IDs (e.g. `az-cli`, `vscode-bicep`) and version strings are captured. No file paths, no user-identifiable data, and no raw per-tool error text — failed tool IDs are recorded, but error detail stays with the global error middleware.
+> **Privacy:** only built-in tool IDs (e.g. `az-cli`, `vscode-bicep`) and version strings are captured. No file paths, no user-identifiable data, and no raw per-tool error text — failed tool IDs are recorded, but error detail stays with the global error middleware. The scenario id (`tool.firstrun.scenario`) is emitted raw today because every value is a fixed, compile-time literal known to azd's own source (currently only `core`); if azd extensions are later able to contribute their own scenario ids, those values must be hashed instead, since they are no longer fixed enums.
 
 Built-in tool IDs come from azd's curated tool manifest (run `azd tool list` to see the current set), e.g. `az-cli`, `github-copilot-cli`, `vscode-azure-tools`, `vscode-bicep`, `azure-mcp-server`.
 
@@ -462,6 +462,7 @@ Built-in tool IDs come from azd's curated tool manifest (run `azd tool list` to 
 
 | Field Key | Type | Description |
 |-----------|------|-------------|
+| `tool.firstrun.scenario` | string | Scenario id the first-run experience resolved for this invocation (e.g. `core`) |
 | `tool.firstrun.skip_reason` | string | Why first-run was bypassed (`env_var`, `no_prompt`, `ci_cd`, `non_interactive`, `already_completed`, `config_error`). Mutually exclusive with `tool.firstrun.outcome` |
 | `tool.firstrun.outcome` | string | Terminal state when first-run ran (`completed`, `declined`, `cancelled`, `detect_failed`, `install_failed`) |
 | `tool.firstrun.opt_in` | string | Whether the user accepted the first-run prompt |

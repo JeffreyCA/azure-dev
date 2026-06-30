@@ -88,6 +88,10 @@ func TestTelemetryFieldConstants(t *testing.T) {
 		t.Parallel()
 
 		// First-run experience fields
+		kvScenario := fields.ToolFirstRunScenarioKey.String("core")
+		require.Equal(t, "tool.firstrun.scenario", string(kvScenario.Key))
+		require.Equal(t, "core", kvScenario.Value.AsString())
+
 		kvSkip := fields.ToolFirstRunSkipReasonKey.String("ci_cd")
 		require.Equal(t, "tool.firstrun.skip_reason", string(kvSkip.Key))
 		require.Equal(t, "ci_cd", kvSkip.Value.AsString())

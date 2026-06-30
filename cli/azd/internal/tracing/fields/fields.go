@@ -413,6 +413,19 @@ var (
 // Privacy: only built-in tool IDs (e.g. "az-cli") and version strings are
 // captured. No file paths, no user-identifiable data, no raw error text.
 var (
+	// ToolFirstRunScenarioKey records the scenario id the first-run
+	// experience resolved for this invocation (e.g. "core"). Emitted raw:
+	// today every value is a compile-time literal known to azd's own
+	// source. Once a later phase lets azd extensions contribute their own
+	// scenario ids, those values are no longer fixed enums and must be
+	// hashed instead — see fields.StringHashed.
+	// Example: "core"
+	ToolFirstRunScenarioKey = AttributeKey{
+		Key:            attribute.Key("tool.firstrun.scenario"),
+		Classification: SystemMetadata,
+		Purpose:        FeatureInsight,
+	}
+
 	// ToolFirstRunSkipReasonKey records why the first-run experience was
 	// bypassed for this invocation.
 	// Example: "env_var", "no_prompt", "ci_cd", "non_interactive",
