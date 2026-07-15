@@ -795,16 +795,8 @@ func (m *Manager) Uninstall(id string) error {
 	}
 
 	extensionDir := filepath.Join(userConfigDir, "extensions", extension.Id)
-	if err := os.MkdirAll(extensionDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
-	}
-
-	// Remove the extension artifacts when it exists
-	_, err = os.Stat(extensionDir)
-	if err == nil {
-		if err := os.RemoveAll(extensionDir); err != nil {
-			return fmt.Errorf("failed to remove extension: %w", err)
-		}
+	if err := osutil.RemoveAll(context.Background(), extensionDir); err != nil {
+		return fmt.Errorf("failed to remove extension: %w", err)
 	}
 
 	// Update the user config

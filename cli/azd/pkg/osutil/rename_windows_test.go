@@ -61,3 +61,17 @@ func TestRename(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+func TestRemoveAll_FileInUse(t *testing.T) {
+	dir := t.TempDir()
+	file, err := os.Create(filepath.Join(dir, "locked"))
+	assert.NoError(t, err)
+
+	go func() {
+		time.Sleep(time.Second)
+		_ = file.Close()
+	}()
+
+	assert.NoError(t, RemoveAll(t.Context(), dir))
+	assert.NoDirExists(t, dir)
+}
