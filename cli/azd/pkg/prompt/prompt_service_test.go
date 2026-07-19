@@ -4,6 +4,7 @@
 package prompt
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -70,6 +71,27 @@ func Test_PromptService_PromptSubscription(t *testing.T) {
 
 	promptService := NewPromptService(authManager, mockConsole, ucm, subscriptionManager, resourceService)
 	require.NotNil(t, promptService)
+}
+
+func TestPromptService_PromptSubscriptionLoadingSpinnerUsesWriter(t *testing.T) {
+	ucm := newInMemoryUserConfigManager(nil)
+	authManager := &mockauth.MockAuthManager{}
+	subscriptionManager := &mockaccount.MockSubscriptionManager{}
+	resourceService := &mockazapi.MockResourceService{}
+	mockConsole := mockinput.NewMockConsole()
+	loadErr := errors.New("loading failed")
+	var output bytes.Buffer
+
+	subscriptionManager.
+		On("GetSubscriptions", mock.Anything).
+		Return([]account.Subscription(nil), loadErr)
+
+	promptService := NewPromptService(authManager, mockConsole, ucm, subscriptionManager, resourceService)
+	_, err := promptService.PromptSubscription(t.Context(), &SelectOptions{Writer: &output})
+
+	require.ErrorIs(t, err, loadErr)
+	require.Contains(t, output.String(), "\x1b[?25l")
+	require.Contains(t, output.String(), "\x1b[?25h")
 }
 
 func TestFormatSubscriptionDisplayName_DemoModeHidesId(t *testing.T) {
@@ -267,9 +289,10 @@ func TestPromptCustomResource_LoadDataError(t *testing.T) {
 	t.Parallel()
 
 	loadErr := errors.New("loading failed")
+	var output bytes.Buffer
 
 	result, err := PromptCustomResource(t.Context(), CustomResourceOptions[string]{
-		SelectorOptions: &SelectOptions{Message: "Pick", SkipLoadingSpinner: true},
+		SelectorOptions: &SelectOptions{Message: "Pick", Writer: &output},
 		LoadData: func(ctx context.Context) ([]*string, error) {
 			return nil, loadErr
 		},
@@ -277,6 +300,8 @@ func TestPromptCustomResource_LoadDataError(t *testing.T) {
 	require.Nil(t, result)
 	require.Error(t, err)
 	require.ErrorIs(t, err, loadErr)
+	require.Contains(t, output.String(), "\x1b[?25l")
+	require.Contains(t, output.String(), "\x1b[?25h")
 }
 
 func TestPromptCustomResource_NoResourcesAndNotAllowedNew_ReturnsSentinel(t *testing.T) {

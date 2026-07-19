@@ -27,8 +27,13 @@ func Test_CLI_Extension_ForceInstall(t *testing.T) {
 	ctx, cancel := newTestContext(t)
 	defer cancel()
 
+	configDir := tempDirWithDiagnostics(t)
 	cli := azdcli.NewCLI(t)
-	cli.Env = append(cli.Env, os.Environ()...)
+	cli.Env = append(
+		os.Environ(),
+		"AZD_CONFIG_DIR="+configDir,
+		"AZURE_DEV_COLLECT_TELEMETRY=no",
+	)
 
 	// Setup: Add local extension source
 	sourcePath := azdcli.GetSourcePath()
@@ -36,14 +41,6 @@ func Test_CLI_Extension_ForceInstall(t *testing.T) {
 	t.Logf("Adding local extension source from: %s", registryPath)
 	_, err := cli.RunCommand(ctx, "ext", "source", "add", "-n", "test-local", "-t", "file", "-l", registryPath)
 	require.NoError(t, err)
-
-	// Cleanup function to ensure extension is uninstalled and source removed
-	defer func() {
-		t.Log("Cleaning up: uninstalling microsoft.azd.demo extension")
-		_, _ = cli.RunCommand(ctx, "ext", "uninstall", "microsoft.azd.demo")
-		t.Log("Cleaning up: removing test-local source")
-		_, _ = cli.RunCommand(ctx, "ext", "source", "remove", "test-local")
-	}()
 
 	// Step 1: Install the latest version of microsoft.azd.demo extension
 	t.Log("Installing microsoft.azd.demo extension (latest version)")
@@ -104,9 +101,7 @@ func Test_CLI_Extension_ForceInstall(t *testing.T) {
 	t.Logf("Testing reinstall of same version (%s) with --force", targetVersion)
 
 	// Get the extension binary path before deletion
-	homeDir, err := os.UserHomeDir()
-	require.NoError(t, err)
-	extPath := filepath.Join(homeDir, ".azd", "extensions", "microsoft.azd.demo")
+	extPath := filepath.Join(configDir, "extensions", "microsoft.azd.demo")
 
 	// Delete the extension files but keep the metadata
 	t.Log("Deleting extension files to simulate corruption")
