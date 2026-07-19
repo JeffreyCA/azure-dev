@@ -1,0 +1,14 @@
+Can you, without using gh cli or ado tools, on best effort basis, improve these windows test flakiness?
+
+The Windows test job in internal ADO build exposed several related reliability problems that amplified one initiating failure into many reported failures.
+
+Findings
+Test_CLI_Extension_ForceInstall failed while replacing microsoft.azd.demo because Windows still held the extension executable open: failed to remove extension: ... Access is denied.
+The failed cleanup left the demo extension installed in shared user configuration. Later quota, telemetry, and storage tests then received an unexpected provisioning warning from that extension and entered prompt paths they did not expect.
+Test_CLI_Up_Down_FuncApp used unchecked fixture type assertions, so missing environment values caused a panic that aborted the remaining functional-test package.
+Several command tests completed successfully but were reported as failures because spinner and cursor escape sequences were written directly to stdout and corrupted the go test -json stream.
+Expected behavior
+Extension replacement and cleanup should tolerate transient Windows file locks without test-specific sleeps.
+Functional tests that modify extensions or user configuration should use isolated state and leave no contamination for later tests.
+Prompt and spinner output should honor injected writers so test JSON remains machine-readable.
+Missing fixture values should produce focused assertion failures rather than package-wide panics.

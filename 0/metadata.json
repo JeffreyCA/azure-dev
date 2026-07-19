@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.8.42",
+  "checkpoint_id": "01KXYAY6X6AX6YHS3EQP27BY7E",
+  "session_id": "45f1a36c-ba4d-4362-9be9-027260dbd18e",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-19T23:21:19.358686Z",
+  "branch": "fix/windows-test-flakiness",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "cli/azd/cmd/extension.go",
+    "cli/azd/pkg/extensions/manager.go",
+    "cli/azd/pkg/extensions/manager_test.go",
+    "cli/azd/pkg/osutil/remove_all_unix.go",
+    "cli/azd/pkg/osutil/remove_all_windows.go",
+    "cli/azd/pkg/osutil/rename_windows.go",
+    "cli/azd/pkg/osutil/windows_file_operations.go",
+    "cli/azd/pkg/osutil/windows_file_operations_test.go",
+    "cli/azd/pkg/prompt/prompt_service.go",
+    "cli/azd/pkg/prompt/prompt_service_test.go",
+    "cli/azd/test/functional/extension_test.go",
+    "cli/azd/test/functional/up_test.go"
+  ],
+  "agent": "Copilot CLI",
+  "model": "gpt-5.6-sol",
+  "turn_id": "8a15e9707ba8",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 17832,
+    "api_call_count": 27
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-19T23:21:19.310367Z",
+    "agent_lines": 191,
+    "agent_removed": 54,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 191,
+    "total_lines_changed": 245,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 61,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".github/hooks/entire.json": 61
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 252,
+      "agent_lines_removed": 54
+    }
+  ]
+}
