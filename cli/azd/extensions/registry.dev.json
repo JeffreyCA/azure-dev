@@ -4,7 +4,7 @@
     {
       "id": "azure.ai.training",
       "namespace": "ai.training",
-      "displayName": "Microsoft Foundry Training (Preview)",
+      "displayName": "Microsoft Foundry Training (Preview) E2E",
       "description": "Extension for Microsoft Foundry training jobs. (Preview)",
       "versions": [
         {
