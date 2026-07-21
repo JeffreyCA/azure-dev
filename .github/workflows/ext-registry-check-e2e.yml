@@ -1,0 +1,55 @@
+name: ext-registry-check-e2e
+
+on:
+  pull_request:
+    branches: [jeffreyca/ext-registry-check-e2e-base-v2]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  extension-registry-check:
+    name: Temporary extension registry E2E check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check if an extension registry changed
+        id: changed
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+            const registryPaths = new Set([
+              'cli/azd/extensions/registry.json',
+              'cli/azd/extensions/registry.dev.json',
+            ]);
+            const changed = files.some(
+              (f) => registryPaths.has(f.filename) || registryPaths.has(f.previous_filename),
+            );
+            core.info(`extension registry changed: ${changed}`);
+            core.setOutput('registry_changed', changed);
+
+      - name: Checkout trusted base
+        if: steps.changed.outputs.registry_changed == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Check extension registry update
+        if: steps.changed.outputs.registry_changed == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const script = require('./.github/scripts/src/ext-registry-check.js');
+            await script({
+              github,
+              context,
+              core,
+              coreTeam: new Set(['temporary-non-author-maintainer']),
+            });
