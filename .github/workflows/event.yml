@@ -12,20 +12,19 @@ on:
   # entirely of github actions won't trigger this action.
   workflow_run:
     types: [completed]
-    workflows: ["cli-ci", "templates-ci", "vscode-ci", "pr-governance"]
+    workflows: ["cli-ci", "templates-ci", "vscode-ci"]
 
 permissions: {}
 
 jobs:
   event-handler:
     permissions:
-      actions: read # to identify the latest GitHub Actions workflow runs
       statuses: write # to set status (azure/azure-sdk-actions)
       pull-requests: write # to read pull requests and write comments (azure/azure-sdk-actions)
       checks: read # to read check status (azure/azure-sdk-actions)
     name: Handle ${{ github.event_name }} ${{ github.event.action }} event
     runs-on: ubuntu-latest
     steps:
-      - uses: JeffreyCA/azure-sdk-actions@copilot/check-enforcer-dedupe-manual-test-20260722
+      - uses: azure/azure-sdk-actions@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
