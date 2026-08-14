@@ -163,13 +163,9 @@ async function run({ github: octokit, context, core, coreTeam, registryBaseRef }
  */
 function getCoreReviewers({ core }) {
   const logins = [
-    'hemarina',
-    'JeffreyCA',
-    'RickWinter',
-    // TODO: bring me back after we get this all working in production
-    //'richardpark-msft',
-    'tg-msft',
-    'vhvb1989',
+    // TEST-ONLY (fork): real maintainers removed so PRs authored by the fork owner
+    // exercise the registry policy instead of short-circuiting.
+    'not-a-real-maintainer',
   ];
 
   core.info(`Loaded ${logins.length} registry maintainer(s): ${logins.join(', ')}`);
