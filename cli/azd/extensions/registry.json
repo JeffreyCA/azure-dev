@@ -7526,6 +7526,71 @@
               "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-windows-arm64.zip"
             }
           }
+        },
+        {
+          "version": "0.1.2",
+          "capabilities": [
+            "custom-commands",
+            "metadata"
+          ],
+          "usage": "azd appservice <command> [options]",
+          "examples": [
+            {
+              "name": "swap",
+              "description": "Swap deployment slots for an App Service.",
+              "usage": "azd appservice swap --service <service-name> --src <source-slot> --dst <destination-slot>"
+            }
+          ],
+          "artifacts": {
+            "darwin/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "5abda3ef17a4fbcd058e46f5ffc6ab602bf9570cd0a572a53d51754f7a29cdc9"
+              },
+              "entryPoint": "azure-appservice-darwin-amd64",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-darwin-amd64.zip"
+            },
+            "darwin/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "db9a0dcd0805d30d0338a259335db0b98d3b8ebb7eb67bae214e8f3b83536340"
+              },
+              "entryPoint": "azure-appservice-darwin-arm64",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-darwin-arm64.zip"
+            },
+            "linux/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "46a10b103030b3124e4326f31894ed5872bfca4f95b83a39cd213e019a49d8d8"
+              },
+              "entryPoint": "azure-appservice-linux-amd64",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-linux-amd64.tar.gz"
+            },
+            "linux/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "e0dcae29dccc5d8fee4c33656ee7959733b5c6b35e6d4514699452b4757423ac"
+              },
+              "entryPoint": "azure-appservice-linux-arm64",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-linux-arm64.tar.gz"
+            },
+            "windows/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "aeb86c156e482a823d16f347a91b6263b61b74a57720cff79329a76ce044ea86"
+              },
+              "entryPoint": "azure-appservice-windows-amd64.exe",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-windows-amd64.zip"
+            },
+            "windows/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "3f55c50e17075a1326aa077a37aecd0aa03413239ce277572ebc55d440ed4fa1"
+              },
+              "entryPoint": "azure-appservice-windows-arm64.exe",
+              "url": "https://github.com/Azure/azure-dev/releases/download/azd-ext-azure-appservice_0.1.1/azure-appservice-windows-arm64.zip"
+            }
+          }
         }
       ]
     },
