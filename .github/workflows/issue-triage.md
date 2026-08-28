@@ -66,6 +66,7 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 5. Add only existing labels that are clearly supported by the issue:
    - add `bug` for a `Bug`
    - add `enhancement` for a `Feature`
+   - add `question` for a usage or support question
    - add relevant `area/*` and `ext-*` labels based on their descriptions
    - add another allowed label only when the issue directly matches its description
    - add no more than four labels unless a cross-cutting issue clearly needs a fifth
@@ -78,4 +79,4 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 
 Do not apply priority, ownership, workflow-state, or contributor labels. In particular, do not add `blocker`, `customer-reported`, `production`, `needs-*`, `good first issue`, `help wanted`, `need-upvotes`, or `keep`.
 
-Use only the configured safe outputs. Call `noop` with a short reason only if a tool or data failure prevents all classification.
+Use only the configured safe outputs. Call `noop` with a short reason when no label or issue type change is needed. If a required tool or data source is unavailable, use `missing_tool` or `missing_data` instead of guessing.
