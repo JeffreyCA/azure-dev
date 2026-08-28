@@ -1,6 +1,7 @@
 ---
 name: Issue Triage
 description: Classifies new issues with relevant labels and issue types.
+run-name: "Issue Triage #${{ github.event.issue.number }}"
 on:
   issues:
     types: [opened]
