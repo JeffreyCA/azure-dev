@@ -12,6 +12,7 @@ permissions:
   copilot-requests: write
   pull-requests: read
   issues: read
+checkout: false
 strict: true
 network:
   allowed: [defaults, github]
