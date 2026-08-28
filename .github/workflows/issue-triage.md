@@ -75,7 +75,7 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 ## Extension routing
 
 - For issues involving `azd package/publish/deploy/provision`, use `services.<name>.host`, `infra.provider` or `infra.layers[].provider`, and the relevant implementation to determine ownership. Extension service targets can participate in package, publish, and deploy, while extension provisioning providers can participate in provision, but core code also orchestrates these commands.
-- When the behavior belongs to a specific extension, add the matching `ext-*` label. An exact match from `services.<name>.host`, an infrastructure provider, an extension folder, or a repository label description is high-confidence evidence.
+- When the behavior belongs to a specific extension, add the matching `ext-*` label. Service host and provider names do not always match extension IDs literally, so verify their registration in the extension manifest or source. A verified mapping is high-confidence evidence, including `azure.ai.agent` to `ext-agents` and `azure.ai.project` or `microsoft.foundry` to `ext-projects`.
 - Add `area/ext-framework` when the issue concerns shared extension loading, discovery, SDK, protocol, events, or runner behavior rather than one extension implementation.
 
 Do not apply priority, ownership, workflow-state, or contributor labels. In particular, do not add `blocker`, `customer-reported`, `production`, `needs-*`, `good first issue`, `help wanted`, `need-upvotes`, or `keep`.
