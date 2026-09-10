@@ -15,7 +15,7 @@ permissions:
   issues: read
 engine:
   id: copilot
-  model: gpt-5.6-sol?effort=medium
+  model: copilot/gpt-5.6-sol?effort=medium
 checkout: false
 strict: true
 network:
