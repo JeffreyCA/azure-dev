@@ -13,6 +13,9 @@ permissions:
   copilot-requests: write
   pull-requests: read
   issues: read
+engine:
+  id: copilot
+  model: gpt-5.6-sol?effort=medium
 checkout: false
 strict: true
 network:
@@ -25,7 +28,7 @@ safe-outputs:
   group-reports: true
   add-labels:
     allowed: [area/extensions, ext-*]
-    max: 10
+    max: 25
 timeout-minutes: 5
 ---
 

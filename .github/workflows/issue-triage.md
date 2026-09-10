@@ -11,6 +11,9 @@ permissions:
   copilot-requests: write
   issues: read
   pull-requests: read
+engine:
+  id: copilot
+  model: gpt-5.6-sol?effort=medium
 strict: true
 network:
   allowed: [defaults, github]
@@ -39,7 +42,7 @@ safe-outputs:
       - regression
       - release-activity
       - test automation
-    max: 5
+    max: 10
     pull-requests: false
   set-issue-type:
     allowed: [Bug, Feature, Task]
