@@ -81,7 +81,7 @@ Agent Inspector after the local agent port is accepting connections. The
 inspector launch is best-effort: if `azure.ai.inspector` is not installed or
 fails to start, the agent process keeps running and azd prints install guidance.
 
-Use `--no-inspector` to run only the local agent process:
+Use `--no-inspector` when another client will connect to the local agent, or when you do not want the inspector to open:
 
 ```bash
 azd ai agent run --no-inspector
