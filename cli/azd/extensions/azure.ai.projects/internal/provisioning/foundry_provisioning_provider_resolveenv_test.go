@@ -16,6 +16,7 @@ import (
 	"azure.ai.projects/internal/exterrors"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
+	v1beta "github.com/azure/azure-dev/cli/azd/pkg/azdext/contracts/v1beta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -118,12 +119,16 @@ func newResolveEnvTestClient(
 	t *testing.T,
 	envSrv azdext.EnvironmentServiceServer,
 	promptSrv azdext.PromptServiceServer,
+	accountServers ...v1beta.AccountServiceServer,
 ) *azdext.AzdClient {
 	t.Helper()
 
 	srv := grpc.NewServer()
 	azdext.RegisterEnvironmentServiceServer(srv, envSrv)
 	azdext.RegisterPromptServiceServer(srv, promptSrv)
+	for _, accountServer := range accountServers {
+		v1beta.RegisterAccountServiceServer(srv, accountServer)
+	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -452,7 +457,11 @@ func TestResolveEnvTracksExplicitPrincipalID(t *testing.T) {
 			credential := &stubTokenCredential{err: errors.New("unexpected credential lookup")}
 			provider.credential = credential
 			if test.configured {
-				require.NoError(t, provider.ensurePrincipalID(t.Context()))
+				provider.armTemplate = map[string]any{}
+				source, err := provider.resolveProvisioningTemplate(t.Context(), func(string) {})
+				require.NoError(t, err)
+				assert.Equal(t, map[string]any{"value": test.wantID}, source.parameters["principalId"])
+				assert.Equal(t, map[string]any{"value": test.wantType}, source.parameters["principalType"])
 				assert.Empty(t, credential.options)
 			}
 		})

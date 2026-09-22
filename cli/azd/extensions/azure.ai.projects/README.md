@@ -63,7 +63,9 @@ When `endpoint` is omitted, `azd provision` creates a Foundry account and projec
 
 ### Provisioning identity
 
-For a new Foundry project, the provider resolves the current principal's object ID and type for the developer role assignment when `AZURE_PRINCIPAL_ID` is absent. Explicit principal IDs are read from layer inputs first, then the active azd environment, then the host process environment. `AZURE_PRINCIPAL_TYPE` defaults to `User` for an explicit ID; set it to `ServicePrincipal` when supplying a service principal's object ID.
+For a new Foundry project, the provider calls the azd host's preview `Account.GetCurrentPrincipal` API with the selected subscription ID when `AZURE_PRINCIPAL_ID` is absent. The host returns the object ID in the subscription's resource tenant and the principal type, so the extension does not acquire or parse a token for this lookup. Automatic lookup requires an azd release that supports this API; unsupported hosts return upgrade guidance.
+
+Explicit principal IDs are read from layer inputs first, then the active azd environment, then the host process environment. These overrides bypass the host lookup. `AZURE_PRINCIPAL_TYPE` defaults to `User` for an explicit ID; set it to `ServicePrincipal` when supplying a service principal's object ID.
 
 To disable the developer role assignment, persist an empty value with `azd env set AZURE_PRINCIPAL_ID ""`. This takes precedence over a process-level value.
 
