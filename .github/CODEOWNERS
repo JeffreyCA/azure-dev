@@ -1,2 +1,2 @@
-# Deliberately invalid syntax
-***/*.rb @JeffreyCA
+# Corrected syntax, with the PR no-op workflow still present
+* @JeffreyCA
