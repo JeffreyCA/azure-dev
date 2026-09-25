@@ -1,0 +1,45 @@
+name: checkout-live-ref-validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - copilot/checkout-live-ref-base-20260924
+
+permissions:
+  contents: read
+
+jobs:
+  default-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out event revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report checkout
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "MODE=default"
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "PARENTS=$(git show --no-patch --format=%P HEAD)"
+          echo "REMOTE_MERGE=$(git ls-remote origin "refs/pull/${PR_NUMBER}/merge" | cut -f1)"
+
+  live-merge-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out live pull request merge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Report checkout
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "MODE=live"
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "PARENTS=$(git show --no-patch --format=%P HEAD)"
+          echo "REMOTE_MERGE=$(git ls-remote origin "refs/pull/${PR_NUMBER}/merge" | cut -f1)"
