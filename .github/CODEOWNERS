@@ -1,2 +1,2 @@
-# Valid ownership on the isolated demo base
-* @JeffreyCA
+# Deliberate syntax error to demonstrate a non-required check
+***/*.rb @JeffreyCA
