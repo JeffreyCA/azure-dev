@@ -24,9 +24,10 @@ network:
   allowed: [defaults, github]
 tools:
   github:
+    mode: gh-proxy
     toolsets: [default, pull_requests, labels]
 safe-outputs:
-  group-reports: false
+  group-reports: true
   report-failed-jobs: false
   # Fork filtering and short-lived runtime failures can skip this best-effort labeler without creating tracking noise.
   report-failure-as-issue:
