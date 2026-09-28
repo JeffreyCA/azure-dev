@@ -56,9 +56,6 @@ safe-outputs:
       - test automation
     max: 10
     pull-requests: false
-  set-issue-type:
-    allowed: [Bug, Feature, Task]
-    max: 1
 ---
 
 # Issue Triage
@@ -87,15 +84,12 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 1. Read the issue title and body using the issue command above.
 2. List the repository labels and their descriptions using the label command above.
 3. If the classification or owning component is unclear, inspect the relevant source, documentation, or configuration files and search through related issues or PRs in `${{ github.repository }}`. Keep the investigation bounded and read-only.
-4. Set an issue type based on the issue's primary intent:
-   - `Bug` for unexpected behavior, errors, failures, or regressions
-   - `Feature` for a request to add or change user-facing behavior
-   - `Task` for maintenance, documentation, testing, investigation, refactoring, release, process work, or a pure usage or support question
+4. Skip issue types. This test repository does not support them.
 5. Add only existing labels that are clearly supported by the issue:
    - request a label only when confidence is `HIGH`; omit labels supported only by a possible or indirect relationship
    - add `bug` for a `Bug`
    - add `enhancement` for a `Feature`
-   - add `question` for a pure usage or support question, with issue type `Task`; do not add `bug` or `enhancement` for these questions
+   - add `question` for a pure usage or support question; do not add `bug` or `enhancement` for these questions
    - add `engineering item` for internal implementation, maintenance, testing, documentation, or process work
    - add `epic` only when the issue coordinates a large initiative made up of multiple related issues
    - add relevant `area/*` and `ext-*` labels based on their descriptions
@@ -110,4 +104,4 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 
 Do not apply priority, ownership, workflow-state, or contributor labels. In particular, do not add `blocker`, `customer-reported`, `production`, `needs-*`, `good first issue`, `help wanted`, `need-upvotes`, or `keep`.
 
-Use only the configured safe outputs. Include issue number `${{ github.event.issue.number }}` when calling `add_labels`. Call `noop` with a short reason when no label or issue type change is needed. If a required tool or data source is unavailable, use `missing_tool` or `missing_data` instead of guessing. Do not finish without calling `add_labels`, `set_issue_type`, `noop`, `missing_tool`, or `missing_data`.
+Use only the configured safe outputs. Include issue number `${{ github.event.issue.number }}` when calling `add_labels`. Call `noop` with a short reason when no label or issue type change is needed. If a required tool or data source is unavailable, use `missing_tool` or `missing_data` instead of guessing. Do not finish without calling `add_labels`, `noop`, `missing_tool`, or `missing_data`.
