@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   accounting:
@@ -25,4 +26,4 @@ jobs:
             const { setupGlobals } = require(path.join(actionsDir, 'setup_globals.cjs'));
             setupGlobals(core, github, context, exec, io, getOctokit);
             const validate = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/aw-upgrade-accounting-test.cjs'));
-            await validate(actionsDir, core);
+            await validate(actionsDir, core, github, context);

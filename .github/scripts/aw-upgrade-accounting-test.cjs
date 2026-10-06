@@ -3,13 +3,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-module.exports = async (actionsDir, core) => {
+module.exports = async (actionsDir, core, github, context) => {
   const { scanDailyAIC } = require(path.join(actionsDir, "daily_aic_scan.cjs"));
   const { scanCacheEntry } = require(path.join(actionsDir, "daily_aic_cache_helpers.cjs"));
   const { createAPIBudget } = require(path.join(actionsDir, "daily_aic_api_budget.cjs"));
   const { renderDailyAICSummary } = require(path.join(actionsDir, "check_daily_aic_workflow_guardrail.cjs"));
   const { buildDailyAICExceededContext } = require(path.join(actionsDir, "handle_agent_failure.cjs"));
   const { formatAICCredits } = require(path.join(actionsDir, "daily_aic_workflow_helpers.cjs"));
+  const { loadBillableJobs } = require(path.join(actionsDir, "daily_aic_component_coverage.cjs"));
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aw-v0912-accounting-"));
   const now = Date.now();
   const timestamp = new Date(now - 60_000).toISOString();
@@ -107,6 +108,20 @@ module.exports = async (actionsDir, core) => {
     assert.equal(migrated.countedRuns.find((run) => run.id === 2).aic, 7);
     assert.equal(migrated.countedRuns.find((run) => run.id === 2).source, "recorded");
     core.info("PASS: legacy cache values without provenance are re-resolved");
+
+    const source = await github.rest.actions.getWorkflowRun({
+      ...context.repo,
+      run_id: 37532807067,
+    });
+    const components = await loadBillableJobs(
+      { github, budget: createAPIBudget() },
+      context.repo.owner,
+      context.repo.repo,
+      source.data,
+    );
+    assert.ok(components.has("agent"), "A completed v0.91.2 Agent job must be included in billable coverage");
+    assert.ok(components.has("detection"), "A completed v0.91.2 Detection job must be included in billable coverage");
+    core.info("PASS: real compiler-generated job names are recognized as billable components");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
