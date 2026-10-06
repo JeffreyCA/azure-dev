@@ -1,0 +1,28 @@
+name: AW upgrade accounting validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accounting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: github/gh-aw-actions/setup@412fe67603b37050ffd87e02cf22892153dfc577
+        with:
+          destination: ${{ runner.temp }}/gh-aw/actions
+      - name: Validate released accounting and reporting
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const path = require('node:path');
+            const actionsDir = path.join(process.env.RUNNER_TEMP, 'gh-aw', 'actions');
+            const { setupGlobals } = require(path.join(actionsDir, 'setup_globals.cjs'));
+            setupGlobals(core, github, context, exec, io, getOctokit);
+            const validate = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/aw-upgrade-accounting-test.cjs'));
+            await validate(actionsDir, core);

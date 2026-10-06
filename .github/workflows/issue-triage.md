@@ -56,9 +56,6 @@ safe-outputs:
       - test automation
     max: 10
     pull-requests: false
-  set-issue-type:
-    allowed: [Bug, Feature, Task]
-    max: 1
 ---
 
 # Issue Triage
@@ -87,7 +84,7 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 1. Read the issue title and body using the issue command above.
 2. List the repository labels and their descriptions using the label command above.
 3. If the classification or owning component is unclear, inspect the relevant source, documentation, or configuration files and search through related issues or PRs in `${{ github.repository }}`. Keep the investigation bounded and read-only.
-4. Set an issue type based on the issue's primary intent:
+4. Determine the issue's primary intent for label selection. This fork-only validation cannot set issue types:
    - `Bug` for unexpected behavior, errors, failures, or regressions
    - `Feature` for a request to add or change user-facing behavior
    - `Task` for maintenance, documentation, testing, investigation, refactoring, release, process work, or a pure usage or support question
@@ -113,4 +110,4 @@ Objective: Reduce maintainer effort spent classifying new issues without mislabe
 
 Do not apply priority, ownership, workflow-state, or contributor labels. In particular, do not add `blocker`, `customer-reported`, `production`, `needs-*`, `good first issue`, `help wanted`, `need-upvotes`, or `keep`.
 
-Use only the configured safe outputs. Include issue number `${{ github.event.issue.number }}` when calling `add_labels`. Call `noop` with a short reason when no label or issue type change is needed, including when an issue contains insufficient information or an unfilled template to classify with high confidence. Reserve `missing_tool` and `missing_data` strictly for tool execution or repository metadata access failures. Do not finish without calling `add_labels`, `set_issue_type`, `noop`, `missing_tool`, or `missing_data`.
+Use only the configured safe outputs. Include issue number `${{ github.event.issue.number }}` when calling `add_labels`. Do not set issue types in this fork. Call `noop` with a short reason when no label change is needed, including when an issue contains insufficient information or an unfilled template to classify with high confidence. Reserve `missing_tool` and `missing_data` strictly for tool execution or repository metadata access failures. Do not finish without calling `add_labels`, `noop`, `missing_tool`, or `missing_data`.
