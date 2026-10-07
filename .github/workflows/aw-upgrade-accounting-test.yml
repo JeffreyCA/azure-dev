@@ -14,11 +14,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: github/gh-aw-actions/setup@412fe67603b37050ffd87e02cf22892153dfc577
+      - uses: github/gh-aw-actions/setup@16b430146d5d5646eccef5a1ceb72152333b18b9
         with:
           destination: ${{ runner.temp }}/gh-aw/actions
       - name: Validate released accounting and reporting
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          VALIDATION_GITHUB_TOKEN: ${{ github.token }}
         with:
           script: |
             const path = require('node:path');
