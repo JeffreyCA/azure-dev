@@ -9,7 +9,7 @@
       "versions": [
         {
           "version": "0.0.1-preview",
-          "requiredAzdVersion": ">=1.25.1",
+          "requiredAzdVersion": ">=1.37.0",
           "capabilities": [
             "custom-commands",
             "metadata"
