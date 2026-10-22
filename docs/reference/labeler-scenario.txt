@@ -1,0 +1,2 @@
+Disposable documentation fixture outside the extension labeler path filters.
+No extension source or extension documentation is changed.
