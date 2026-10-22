@@ -4,6 +4,7 @@ description: Labels PRs that touch azd extension folders with matching ext-* lab
 run-name: "Extension PR Labeler #${{ github.event.pull_request.number }}"
 on:
   pull_request_target:
+    acknowledge-risk: true
     types: [opened, reopened, synchronize]
     paths:
       - "cli/azd/extensions/**"
