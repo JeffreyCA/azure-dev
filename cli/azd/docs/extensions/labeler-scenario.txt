@@ -1,0 +1,2 @@
+This disposable documentation fixture describes the azure.ai.training extension.
+There are no extension source changes in this scenario.
