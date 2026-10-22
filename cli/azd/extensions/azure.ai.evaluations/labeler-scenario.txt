@@ -1,0 +1,2 @@
+Disposable text fixture for the multiple-extension labeler scenario.
+This file is not executable and will not be merged.
