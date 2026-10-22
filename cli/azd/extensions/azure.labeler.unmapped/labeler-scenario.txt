@@ -1,0 +1,2 @@
+Disposable fixture for an extension without a matching repository label.
+This file is not executable and will not be merged.
