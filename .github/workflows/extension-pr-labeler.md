@@ -30,7 +30,7 @@ tools:
   github:
     mode: gh-proxy
     toolsets: [default, pull_requests, labels]
-    allowed-repos: "${{ github.repository }}"
+    allowed-repos: ["${{ github.repository }}"]
     min-integrity: none
 safe-outputs:
   group-reports: true
