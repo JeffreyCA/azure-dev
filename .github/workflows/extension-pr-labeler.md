@@ -68,6 +68,8 @@ Read GitHub data with `gh api`, one request at a time.
 2. List the PR title/body and repository labels whose names match `ext-*`, plus `area/extensions`. Use the label names
    and descriptions to infer which extension ID each label represents. Prefer exact extension ID matches in label
    descriptions, such as `azure.ai.agents extension` -> `ext-agents`.
+   Expand brace shorthand such as `azure.ai.{agents,projects}` into its individual extension IDs. Include matching
+   umbrella labels alongside extension-specific labels.
 3. Identify candidate extension IDs from:
    - the folder name immediately under `cli/azd/extensions/`, such as `azure.ai.agents` in
      `cli/azd/extensions/azure.ai.agents/**`
