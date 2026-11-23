@@ -1,5 +1,7 @@
 # Azure Developer CLI (azd) Agents Extension
 
+<!-- Temporary same-repository extension labeler smoke-test fixture. -->
+
 <!-- cspell:ignore strconv kubelet -->
 ## Project monitoring
 
